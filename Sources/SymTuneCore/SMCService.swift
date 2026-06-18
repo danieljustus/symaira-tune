@@ -322,14 +322,33 @@ public struct SMCService: Sendable {
     public func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
         guard conn.isOpen, bytes.count <= 32 else { return false }
 
-        var inBlock = SMCParamBlock()
-        inBlock.key = smcEncodeKey(key)
-        inBlock.data8 = 6  // kSMCWriteKey
+        // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
+        var in1 = SMCParamBlock()
+        in1.key = smcEncodeKey(key)
+        in1.data8 = 9 // kSMCReadKeyInfo
 
-        var outBlock = SMCParamBlock()
+        var out1 = SMCParamBlock()
+        guard smcRawCall(handle: conn.handle, input: &in1, output: &out1),
+              out1.result == 0
+        else { return false }
 
-        guard smcRawCall(handle: conn.handle, input: &inBlock, output: &outBlock),
-              outBlock.result == 0
+        let dataSize = out1.keyInfoDataSize
+        guard dataSize > 0, dataSize <= 32 else { return false }
+
+        // Step 2: WRITE_KEY — write the value with keyInfo populated.
+        var in2 = SMCParamBlock()
+        in2.key = smcEncodeKey(key)
+        in2.data8 = 6  // kSMCWriteKey
+        in2.copyKeyInfo(from: out1)
+        in2.data32 = dataSize
+
+        for i in 0..<min(Int(dataSize), bytes.count) {
+            in2.data[48 + i] = bytes[i]
+        }
+
+        var out2 = SMCParamBlock()
+        guard smcRawCall(handle: conn.handle, input: &in2, output: &out2),
+              out2.result == 0
         else { return false }
 
         return true

@@ -79,6 +79,27 @@ final class ProfileServiceTests: XCTestCase {
         XCTAssertNoThrow(try TuneProfile(name: "my-profile_123"))
     }
 
+    func testLoadProfileRejectsPathTraversal() {
+        XCTAssertThrowsError(try service.loadProfile(name: "../etc/passwd")) { error in
+            guard case TuneError.usage = error else {
+                return XCTFail("expected .usage, got \(error)")
+            }
+        }
+    }
+
+    func testDeleteProfileRejectsPathTraversal() {
+        XCTAssertThrowsError(try service.deleteProfile(name: "../etc/passwd")) { error in
+            guard case TuneError.usage = error else {
+                return XCTFail("expected .usage, got \(error)")
+            }
+        }
+    }
+
+    func testSaveProfileRejectsPathTraversal() throws {
+        let profile = try TuneProfile(name: "valid")
+        XCTAssertNoThrow(try service.saveProfile(profile))
+    }
+
     // MARK: - Rules
 
     func testSaveAndLoadRules() throws {

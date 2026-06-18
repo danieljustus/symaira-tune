@@ -82,18 +82,16 @@ public enum UpdateChecker {
     private static let configKey = "check_updates"
 
     // MARK: - Session cache
-    //
-    // Protected by sequential access within the single async call path.
-    // `nonisolated(unsafe)` suppresses the concurrency check; the cache
-    // is only read/written from `checkForUpdate` which serializes via
-    // the `cacheFetched` flag.
 
+    private static let cacheQueue = DispatchQueue(label: "com.symaira-tune.update-checker.cache")
     nonisolated(unsafe) private static var cachedResult: UpdateInfo?
     nonisolated(unsafe) private static var cacheFetched = false
 
     static func resetCache() {
-        cachedResult = nil
-        cacheFetched = false
+        cacheQueue.sync {
+            cachedResult = nil
+            cacheFetched = false
+        }
     }
 
     // MARK: - Public API
@@ -129,8 +127,15 @@ public enum UpdateChecker {
     ) async -> UpdateInfo? {
         guard isUpdateCheckEnabled() else { return nil }
 
-        if cacheFetched { return cachedResult }
-        defer { cacheFetched = true }
+        let cached = cacheQueue.sync { () -> UpdateInfo? in
+            if cacheFetched { return cachedResult }
+            return nil
+        }
+        if let cached { return cached }
+
+        defer {
+            cacheQueue.sync { cacheFetched = true }
+        }
 
         guard let url = URL(string: releaseURL) else { return nil }
 
@@ -144,35 +149,40 @@ public enum UpdateChecker {
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200
             else {
-                cachedResult = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
-                return cachedResult
+                let result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+                cacheQueue.sync { cachedResult = result }
+                return result
             }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tagName = json["tag_name"] as? String,
                   let latestVersion = SemVer.parse(tagName)
             else {
-                cachedResult = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
-                return cachedResult
+                let result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+                cacheQueue.sync { cachedResult = result }
+                return result
             }
 
             guard let currentSemVer = SemVer.parse("v\(currentVersion)") else {
-                cachedResult = UpdateInfo(updateAvailable: false, latestVersion: tagName, downloadURL: nil)
-                return cachedResult
+                let result = UpdateInfo(updateAvailable: false, latestVersion: tagName, downloadURL: nil)
+                cacheQueue.sync { cachedResult = result }
+                return result
             }
 
             let downloadURL = (json["html_url"] as? String)
             let updateAvailable = latestVersion > currentSemVer
 
-            cachedResult = UpdateInfo(
+            let result = UpdateInfo(
                 updateAvailable: updateAvailable,
                 latestVersion: tagName,
                 downloadURL: downloadURL
             )
-            return cachedResult
+            cacheQueue.sync { cachedResult = result }
+            return result
         } catch {
-            cachedResult = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
-            return cachedResult
+            let result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+            cacheQueue.sync { cachedResult = result }
+            return result
         }
     }
 }

@@ -151,8 +151,8 @@ public final class TuneController: Sendable {
     }
 
     public func applyWarmth(_ value: Double) throws {
-        restoreTracker.saveWarmth(0)
         let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)
+        restoreTracker.saveWarmth(Float(clamped))
         try displays.applyWarmth(Float(clamped))
     }
 
