@@ -312,11 +312,14 @@ public final class MCPServer {
     private func readHeader(from handle: FileHandle) throws -> Data? {
         var data = Data()
         while true {
-            guard let chunk = try handle.read(upToCount: 1), !chunk.isEmpty else {
+            let remaining = 512 - data.count
+            guard remaining > 0, let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
                 return data.isEmpty ? nil : data
             }
             data.append(chunk)
-            if data.count >= 4, data.suffix(4) == Data([13, 10, 13, 10]) { return data }
+            if let range = data.range(of: Data([13, 10, 13, 10])) {
+                return data[data.startIndex...range.lowerBound]
+            }
         }
     }
 
