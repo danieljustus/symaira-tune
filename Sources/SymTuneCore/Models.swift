@@ -99,6 +99,22 @@ public struct ApplyResult: Codable, Sendable {
     }
 }
 
+public struct ProfileSaved: Codable, Sendable {
+    public let saved: String
+
+    public init(saved: String) {
+        self.saved = saved
+    }
+}
+
+public struct ProfileList: Codable, Sendable {
+    public let profiles: [TuneProfile]
+
+    public init(profiles: [TuneProfile]) {
+        self.profiles = profiles
+    }
+}
+
 // MARK: - Capabilities (doctor)
 
 public struct Capability: Codable, Sendable {

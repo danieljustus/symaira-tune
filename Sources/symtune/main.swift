@@ -30,6 +30,10 @@ WRITE COMMANDS (planned / Pro — see docs/roadmap.md)
   warmth set <0.0-1.0>         Color temperature warmth (gamma)     (v0.2)
   warmth reset                 Reset warmth to neutral              (v0.2)
   restore                      Restore all overrides to defaults    (v0.2)
+  profile save <name>          Save current settings as a profile  (v0.2)
+  profile load <name>          Apply a saved profile               (v0.2)
+  profile list                 List saved profiles                 (v0.2)
+  profile delete <name>        Delete a saved profile              (v0.2)
   fan set <0.0-1.0>            Fan speed fraction                   (Pro: needs helper)
   battery-limit set <50-100>   Hold charge at target percent        (Pro: needs helper)
 
@@ -103,6 +107,46 @@ func runAwake(_ args: [String], controller: TuneController) throws {
     }
 }
 
+func runProfile(_ args: [String], controller: TuneController) throws {
+    guard let subcommand = args.first else {
+        throw TuneError.usage("profile: expected subcommand (save, load, list, delete).")
+    }
+    let rest = Array(args.dropFirst())
+
+    switch subcommand {
+    case "save":
+        guard let name = rest.first else {
+            throw TuneError.usage("profile save: expected a name.")
+        }
+        let brightness = try? controller.getBuiltinBrightness()
+        let profile = TuneProfile(
+            name: name,
+            brightness: brightness,
+            dim: controller.getDimLevel()
+        )
+        try controller.saveProfile(profile)
+        try emitJSON(ProfileSaved(saved: name))
+    case "load":
+        guard let name = rest.first else {
+            throw TuneError.usage("profile load: expected a name.")
+        }
+        let profile = try controller.loadProfile(name: name)
+        try controller.applyProfile(profile)
+        try emitJSON(ApplyResult(applied: true))
+    case "list":
+        let profiles = controller.listProfiles()
+        try emitJSON(profiles)
+    case "delete":
+        guard let name = rest.first else {
+            throw TuneError.usage("profile delete: expected a name.")
+        }
+        try controller.deleteProfile(name: name)
+        try emitJSON(ApplyResult(applied: true))
+    default:
+        throw TuneError.usage("profile: unknown subcommand '\(subcommand)'.")
+    }
+}
+
 func runMain() -> Int32 {
     guard let command = CommandLine.arguments.dropFirst().first else {
         emit(usage)
@@ -155,6 +199,8 @@ func runMain() -> Int32 {
         case "restore":
             controller.restoreAll()
             try emitJSON(ApplyResult(applied: true))
+        case "profile":
+            try runProfile(rest, controller: controller)
         case "fan":
             try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
         case "battery-limit":

@@ -9,11 +9,13 @@ public final class TuneController: Sendable {
     private let displays = DisplayService()
     private let power = PowerService()
     private let dimOverlay = DimOverlay()
+    private let profiles: ProfileService
     public let config: TuneConfig
     private let restoreTracker = OverrideTracker()
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
+        self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
         restoreTracker.registerSignalHandlers()
     }
 
@@ -148,6 +150,54 @@ public final class TuneController: Sendable {
 
     public func restoreAll() {
         restoreTracker.restoreAll()
+    }
+
+    // MARK: - Profiles
+
+    public func saveProfile(_ profile: TuneProfile) throws {
+        try profiles.saveProfile(profile)
+    }
+
+    public func loadProfile(name: String) throws -> TuneProfile {
+        try profiles.loadProfile(name: name)
+    }
+
+    public func listProfiles() -> [TuneProfile] {
+        profiles.listProfiles()
+    }
+
+    public func deleteProfile(name: String) throws {
+        try profiles.deleteProfile(name: name)
+    }
+
+    public func applyProfile(_ profile: TuneProfile) throws {
+        if let brightness = profile.brightness {
+            try applyBuiltinBrightness(brightness)
+        }
+        if let dim = profile.dim {
+            try applyDim(dim)
+        }
+        if let warmth = profile.warmth {
+            try applyWarmth(warmth)
+        }
+    }
+
+    // MARK: - Rules
+
+    public func saveRules(_ rules: [TuneRule]) throws {
+        try profiles.saveRules(rules)
+    }
+
+    public func loadRules() -> [TuneRule] {
+        profiles.loadRules()
+    }
+
+    public func addRule(_ rule: TuneRule) throws {
+        try profiles.addRule(rule)
+    }
+
+    public func removeRule(id: String) throws {
+        try profiles.removeRule(id: id)
     }
 
     public func applyFan(fraction: Double) throws {

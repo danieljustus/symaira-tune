@@ -101,6 +101,22 @@ public final class MCPServer {
             tool("set_dim", "Set software dim overlay (0.15=max dim, 1.0=no dim).", warmthInput),
             tool("reset_dim", "Remove all dim overlays.", [:]),
             tool("restore", "Restore all overrides to system defaults.", [:]),
+            tool("save_profile", "Save current settings as a named profile.", [
+                "type": "object",
+                "properties": ["name": ["type": "string"]],
+                "required": ["name"],
+            ]),
+            tool("load_profile", "Apply a saved profile by name.", [
+                "type": "object",
+                "properties": ["name": ["type": "string"]],
+                "required": ["name"],
+            ]),
+            tool("list_profiles", "List all saved profiles.", [:]),
+            tool("delete_profile", "Delete a saved profile by name.", [
+                "type": "object",
+                "properties": ["name": ["type": "string"]],
+                "required": ["name"],
+            ]),
             tool("set_fan", "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper.", [
                 "type": "object",
                 "properties": ["fraction": ["type": "number"]],
@@ -163,6 +179,30 @@ public final class MCPServer {
             payload = ApplyResult(applied: true)
         case "restore":
             controller.restoreAll()
+            payload = ApplyResult(applied: true)
+        case "save_profile":
+            guard let name = arguments["name"] as? String else {
+                throw TuneError.usage("save_profile requires a name.")
+            }
+            let brightness = try? controller.getBuiltinBrightness()
+            let profile = TuneProfile(name: name, brightness: brightness, dim: controller.getDimLevel())
+            try controller.saveProfile(profile)
+            payload = ProfileSaved(saved: name)
+        case "load_profile":
+            guard let name = arguments["name"] as? String else {
+                throw TuneError.usage("load_profile requires a name.")
+            }
+            let profile = try controller.loadProfile(name: name)
+            try controller.applyProfile(profile)
+            payload = ApplyResult(applied: true)
+        case "list_profiles":
+            let profiles = controller.listProfiles()
+            payload = ProfileList(profiles: profiles)
+        case "delete_profile":
+            guard let name = arguments["name"] as? String else {
+                throw TuneError.usage("delete_profile requires a name.")
+            }
+            try controller.deleteProfile(name: name)
             payload = ApplyResult(applied: true)
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
