@@ -321,9 +321,13 @@ public final class MCPServer {
 
     private func readHeader(from handle: FileHandle) throws -> Data? {
         var data = Data()
+        let maxHeaderSize = 8192  // Generous limit; standard MCP headers are well under 512.
         while true {
-            let remaining = 512 - data.count
+            let remaining = maxHeaderSize - data.count
             guard remaining > 0, let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
+                if data.count >= maxHeaderSize {
+                    FileHandle.standardError.write("[mcp] Header exceeded \(maxHeaderSize) bytes — possible protocol error.\n".data(using: .utf8) ?? Data())
+                }
                 return data.isEmpty ? nil : data
             }
             data.append(chunk)
