@@ -135,7 +135,7 @@ func runProfile(_ args: [String], controller: TuneController) throws {
         try emitJSON(ApplyResult(applied: true))
     case "list":
         let profiles = controller.listProfiles()
-        try emitJSON(profiles)
+        try emitJSON(ProfileList(profiles: profiles))
     case "delete":
         guard let name = rest.first else {
             throw TuneError.usage("profile delete: expected a name.")
