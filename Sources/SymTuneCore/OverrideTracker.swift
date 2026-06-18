@@ -128,13 +128,7 @@ final class OverrideTracker: @unchecked Sendable {
     }
 
     private func builtinDisplayID() -> CGDirectDisplayID? {
-        for screen in NSScreen.screens {
-            let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            if displayID != 0, CGDisplayIsBuiltin(displayID) != 0 {
-                return CGDirectDisplayID(displayID)
-            }
-        }
-        return nil
+        DisplayHelpers.builtinDisplayIDOrNil()
     }
 
     deinit {

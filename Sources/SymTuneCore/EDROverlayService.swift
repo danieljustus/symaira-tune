@@ -96,23 +96,11 @@ public final class EDROverlayService: @unchecked Sendable {
     // MARK: - Private Helpers
 
     private func builtinDisplayID() throws -> CGDirectDisplayID {
-        for screen in NSScreen.screens {
-            let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            if displayID != 0, CGDisplayIsBuiltin(displayID) != 0 {
-                return CGDirectDisplayID(displayID)
-            }
-        }
-        throw TuneError.unsupported("No built-in display detected for EDR overlay.")
+        try DisplayHelpers.builtinDisplayID()
     }
 
     private func screenForDisplayID(_ displayID: CGDirectDisplayID) -> NSScreen? {
-        for screen in NSScreen.screens {
-            let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            if CGDirectDisplayID(id) == displayID {
-                return screen
-            }
-        }
-        return nil
+        DisplayHelpers.screenForDisplayID(displayID)
     }
 }
 
