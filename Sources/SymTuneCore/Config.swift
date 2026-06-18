@@ -134,7 +134,7 @@ public struct TuneConfig: Equatable, Sendable {
             return fallback
         }
 
-        return TuneConfig(
+        var config = TuneConfig(
             extendedBrightnessMin: doubleVal(
                 "brightness", "extended_brightness_min",
                 "SYMTUNE_EXTBRIGHT_MIN", SafetyPolicy.extendedBrightnessMin),
@@ -169,5 +169,20 @@ public struct TuneConfig: Equatable, Sendable {
                 "general", "default_profile",
                 "SYMTUNE_DEFAULT_PROFILE", "default")
         )
+
+        // Validate min < max for each range; fall back to defaults on inversion.
+        let rangesValid =
+            config.extendedBrightnessMin < config.extendedBrightnessMax
+            && config.dimMin < config.dimMax
+            && config.brightnessMin < config.brightnessMax
+            && config.fanFractionMin < config.fanFractionMax
+            && config.chargeLimitMin < config.chargeLimitMax
+
+        if !rangesValid {
+            fputs("symtune: config error: inverted min/max range detected, falling back to defaults\n", stderr)
+            config = TuneConfig()
+        }
+
+        return config
     }
 }

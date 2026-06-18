@@ -377,4 +377,42 @@ final class TuneConfigTests: XCTestCase {
         let controller = TuneController()
         XCTAssertEqual(controller.config, TuneConfig())
     }
+
+    // MARK: - Inverted range validation
+
+    func testInvertedRangeFallsBackToDefaults() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: [
+                "SYMTUNE_BRIGHTNESS_MIN": "0.9",
+                "SYMTUNE_BRIGHTNESS_MAX": "0.5",
+            ]
+        )
+        XCTAssertEqual(config.brightnessMin, SafetyPolicy.brightnessMin)
+        XCTAssertEqual(config.brightnessMax, SafetyPolicy.brightnessMax)
+    }
+
+    func testValidRangeAccepted() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: [
+                "SYMTUNE_BRIGHTNESS_MIN": "0.1",
+                "SYMTUNE_BRIGHTNESS_MAX": "0.9",
+            ]
+        )
+        XCTAssertEqual(config.brightnessMin, 0.1, accuracy: 0.001)
+        XCTAssertEqual(config.brightnessMax, 0.9, accuracy: 0.001)
+    }
+
+    func testInvertedDimRangeFallsBackToDefaults() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: [
+                "SYMTUNE_DIM_MIN": "0.9",
+                "SYMTUNE_DIM_MAX": "0.5",
+            ]
+        )
+        XCTAssertEqual(config.dimMin, SafetyPolicy.dimMin)
+        XCTAssertEqual(config.dimMax, SafetyPolicy.dimMax)
+    }
 }
