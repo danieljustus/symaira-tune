@@ -85,21 +85,6 @@ public struct TuneConfig: Equatable, Sendable {
 
     // MARK: - Loading
 
-    /// Environment variable → (TOML section, TOML key) mapping.
-    private static let envMap: [(env: String, section: String, key: String)] = [
-        ("SYMTUNE_EXTBRIGHT_MIN", "brightness", "extended_brightness_min"),
-        ("SYMTUNE_EXTBRIGHT_MAX", "brightness", "extended_brightness_max"),
-        ("SYMTUNE_DIM_MIN", "brightness", "dim_min"),
-        ("SYMTUNE_DIM_MAX", "brightness", "dim_max"),
-        ("SYMTUNE_BRIGHTNESS_MIN", "brightness", "brightness_min"),
-        ("SYMTUNE_BRIGHTNESS_MAX", "brightness", "brightness_max"),
-        ("SYMTUNE_FAN_MIN", "fan", "fan_fraction_min"),
-        ("SYMTUNE_FAN_MAX", "fan", "fan_fraction_max"),
-        ("SYMTUNE_CHARGE_MIN", "charge", "charge_limit_min"),
-        ("SYMTUNE_CHARGE_MAX", "charge", "charge_limit_max"),
-        ("SYMTUNE_DEFAULT_PROFILE", "general", "default_profile"),
-    ]
-
     /// Load config from disk (if present) and apply env overrides.
     /// Missing file or parse errors silently return defaults.
     public static func load(
