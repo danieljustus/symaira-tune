@@ -173,46 +173,47 @@ private extension Array where Element == UInt8 {
 
 /// Reference-type wrapper for the IOKit `io_connect_t` handle.
 /// Prevents accidental double-close when `SMCService` (a struct) is copied.
+/// The connection is opened eagerly in `init` so that `handle` is set once
+/// and never mutated afterward, fulfilling the `@unchecked Sendable` contract.
 private final class SMCConnection: @unchecked Sendable {
     private static let taskPort: mach_port_t = mach_task_self_
-    var handle: io_connect_t = IO_OBJECT_NULL
-    var isOpen: Bool = false
+    let handle: io_connect_t
+    let isOpen: Bool
 
-    func open() -> Bool {
+    init() {
+        var openedHandle: io_connect_t = IO_OBJECT_NULL
+        var opened = false
+
         let service = IOServiceGetMatchingService(
             kIOMainPortDefault,
             IOServiceMatching("AppleSMC")
         )
-        guard service != IO_OBJECT_NULL else { return false }
-        defer { IOObjectRelease(service) }
-
-        let kr = IOServiceOpen(service, Self.taskPort, 0, &handle)
-        guard kr == kIOReturnSuccess else { return false }
-
-        // Probe: try reading a well-known key to confirm the driver works.
-        var probe = SMCParamBlock()
-        probe.key = smcEncodeKey("FNum")
-        probe.data8 = 9 // READ_KEYINFO
-        var out = SMCParamBlock()
-        guard smcRawCall(handle: handle, input: &probe, output: &out) else {
-            IOServiceClose(handle)
-            handle = IO_OBJECT_NULL
-            return false
+        if service != IO_OBJECT_NULL {
+            defer { IOObjectRelease(service) }
+            let kr = IOServiceOpen(service, Self.taskPort, 0, &openedHandle)
+            if kr == kIOReturnSuccess {
+                var probe = SMCParamBlock()
+                probe.key = smcEncodeKey("FNum")
+                probe.data8 = 9
+                var out = SMCParamBlock()
+                if smcRawCall(handle: openedHandle, input: &probe, output: &out) {
+                    opened = true
+                } else {
+                    IOServiceClose(openedHandle)
+                    openedHandle = IO_OBJECT_NULL
+                }
+            }
         }
 
-        isOpen = true
-        return true
+        self.handle = openedHandle
+        self.isOpen = opened
     }
 
-    func close() {
+    deinit {
         if handle != IO_OBJECT_NULL {
             IOServiceClose(handle)
-            handle = IO_OBJECT_NULL
         }
-        isOpen = false
     }
-
-    deinit { close() }
 }
 
 // MARK: - Raw IOKit Call
@@ -269,7 +270,6 @@ public struct SMCService: Sendable {
     /// Read an SMC key: returns the data type (as UInt32) and raw bytes,
     /// or nil if the key doesn't exist or the read fails.
     private func readKeyRaw(_ key: String) -> (UInt32, [UInt8])? {
-        if !conn.isOpen { _ = conn.open() }
         guard conn.isOpen else { return nil }
 
         // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
