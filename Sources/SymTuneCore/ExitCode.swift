@@ -3,7 +3,7 @@ import Foundation
 /// Typed process exit codes, aligned with the Symaira ecosystem convention
 /// (see ../ECOSYSTEM.md §6). `serve` (MCP) never calls these — it reports
 /// errors as JSON-RPC error frames instead.
-public enum ExitCode: Int32 {
+public enum ExitCode: Int32, Sendable {
     /// Successful execution.
     case ok = 0
     /// Generic runtime error.

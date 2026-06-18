@@ -10,7 +10,7 @@ public struct KeepAwakeToken: Sendable {
 
 /// Wraps IOKit power-management assertions to prevent idle sleep. Fully
 /// unprivileged — the analog of `/usr/bin/caffeinate`.
-public struct PowerService {
+public struct PowerService: Sendable {
     public init() {}
 
     public func begin(reason: String, preventDisplaySleep: Bool) throws -> KeepAwakeToken {
