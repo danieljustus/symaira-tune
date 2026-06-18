@@ -11,11 +11,12 @@ public final class TuneController: Sendable {
     private let dimOverlay = DimOverlay()
     private let profiles: ProfileService
     public let config: TuneConfig
-    private let restoreTracker = OverrideTracker()
+    private let restoreTracker: OverrideTracker
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
         self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
+        self.restoreTracker = OverrideTracker(displayService: displays)
         restoreTracker.registerSignalHandlers()
     }
 

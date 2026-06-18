@@ -10,8 +10,13 @@ final class OverrideTracker: @unchecked Sendable {
     private var appliedWarmth: Float = 0
     private var hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
+    private var displayService: DisplayService?
 
     var currentWarmth: Float { appliedWarmth }
+
+    init(displayService: DisplayService? = nil) {
+        self.displayService = displayService
+    }
 
     func registerSignalHandlers() {
         let signals: [Int32] = [SIGINT, SIGTERM]
@@ -50,10 +55,7 @@ final class OverrideTracker: @unchecked Sendable {
         }
 
         if originalWarmth != nil {
-            if let displayID = builtinDisplayID() {
-                CGDisplayRestoreColorSyncSettings()
-                _ = displayID
-            }
+            CGDisplayRestoreColorSyncSettings()
         }
 
         originalBrightness = nil
@@ -61,17 +63,12 @@ final class OverrideTracker: @unchecked Sendable {
         hasOverrides = false
     }
 
-    private func builtinDisplayID() -> CGDirectDisplayID? {
-        for screen in NSScreen.screens {
-            let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            if displayID != 0, CGDisplayIsBuiltin(displayID) != 0 {
-                return CGDirectDisplayID(displayID)
-            }
-        }
-        return nil
-    }
-
     private func restoreBrightness(_ value: Float) {
+        if let displayService {
+            try? displayService.setBuiltinBrightness(value)
+            return
+        }
+
         guard let displayID = builtinDisplayID() else { return }
 
         var iter: io_iterator_t = 0
@@ -99,6 +96,16 @@ final class OverrideTracker: @unchecked Sendable {
             IODisplaySetFloatParameter(service, 0, key, value)
             return
         }
+    }
+
+    private func builtinDisplayID() -> CGDirectDisplayID? {
+        for screen in NSScreen.screens {
+            let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+            if displayID != 0, CGDisplayIsBuiltin(displayID) != 0 {
+                return CGDirectDisplayID(displayID)
+            }
+        }
+        return nil
     }
 
     deinit {
