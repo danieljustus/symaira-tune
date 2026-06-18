@@ -1,0 +1,34 @@
+name: SymairaTune
+options:
+  bundleIdPrefix: com.symaira
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: false
+
+packages:
+  SymTuneCore:
+    path: ./
+
+targets:
+  - name: SymairaTune
+    type: application
+    platform: macOS
+    sources:
+      - Sources/SymairaTune
+    dependencies:
+      - package: SymTuneCore
+        product: SymTuneCore
+    settings:
+      base:
+        INFOPLIST_FILE: Sources/SymairaTune/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.symaira.tune
+        CODE_SIGN_STYLE: Automatic
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "6.0"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
+        OTHER_LDFLAGS:
+          - "-framework"
+          - "AppKit"
+          - "-framework"
+          - "IOKit"
