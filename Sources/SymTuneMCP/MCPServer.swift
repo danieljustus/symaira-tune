@@ -37,9 +37,9 @@ public final class MCPServer {
                 let result = try dispatch(method: method, params: params)
                 try sendResponse(id: id, result: result)
             } catch let error as TuneError {
-                try sendError(id: id, code: -32000, message: error.description)
+                try sendError(id: id, code: jsonRPCCode(for: error), message: error.description, data: ["exitCode": error.exitCode])
             } catch {
-                try sendError(id: id, code: -32000, message: error.localizedDescription)
+                try sendError(id: id, code: -32603, message: error.localizedDescription)
             }
         }
     }
@@ -206,10 +206,10 @@ public final class MCPServer {
             payload = ApplyResult(applied: true)
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
-            payload = ["applied": false]
+            payload = ApplyResult(applied: false)
         case "set_charge_limit":
             try controller.applyChargeLimit(percent: requireInt(arguments["percent"], name: "percent"))
-            payload = ["applied": false]
+            payload = ApplyResult(applied: false)
         default:
             throw TuneError.usage("Unknown tool '\(name)'.")
         }
@@ -217,7 +217,6 @@ public final class MCPServer {
         let structured = try encodeToJSONObject(payload)
         return [
             "content": [["type": "text", "text": jsonString(structured)]],
-            "structuredContent": structured,
             "isError": false,
         ]
     }
@@ -279,10 +278,21 @@ public final class MCPServer {
         try send(message)
     }
 
-    private func sendError(id: Any?, code: Int, message: String) throws {
-        var payload: [String: Any] = ["jsonrpc": "2.0", "error": ["code": code, "message": message]]
+    private func sendError(id: Any?, code: Int, message: String, data: [String: Any]? = nil) throws {
+        var errorPayload: [String: Any] = ["code": code, "message": message]
+        if let data { errorPayload["data"] = data }
+        var payload: [String: Any] = ["jsonrpc": "2.0", "error": errorPayload]
         if let id { payload["id"] = id }
         try send(payload)
+    }
+
+    /// Map `TuneError` variants to JSON-RPC 2.0 error codes.
+    private func jsonRPCCode(for error: TuneError) -> Int {
+        switch error {
+        case .usage:       return -32602  // invalid params
+        case .unsupported, .notImplemented: return -32601  // method not found
+        case .config, .permission, .failed: return -32603  // internal error
+        }
     }
 
     private func send(_ payload: [String: Any]) throws {

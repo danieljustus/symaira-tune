@@ -5,14 +5,19 @@ import IOKit
 /// Tracks applied display overrides and restores them on process exit.
 /// Handles both normal exit (deinit) and abnormal signals (SIGINT/SIGTERM).
 final class OverrideTracker: @unchecked Sendable {
-    private var originalBrightness: Float?
-    private var originalWarmth: Float?
-    private var appliedWarmth: Float = 0
-    private var hasOverrides = false
+    private let lock = NSLock()
+    private var _originalBrightness: Float?
+    private var _originalWarmth: Float?
+    private var _appliedWarmth: Float = 0
+    private var _hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
     private var displayService: DisplayService?
 
-    var currentWarmth: Float { appliedWarmth }
+    var currentWarmth: Float {
+        lock.lock()
+        defer { lock.unlock() }
+        return _appliedWarmth
+    }
 
     init(displayService: DisplayService? = nil) {
         self.displayService = displayService
@@ -25,7 +30,7 @@ final class OverrideTracker: @unchecked Sendable {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             source.setEventHandler { [weak self] in
                 self?.restoreAll()
-                exit(ExitCode.ok.rawValue)
+                _exit(ExitCode.ok.rawValue)
             }
             source.resume()
             signalSources.append(source)
@@ -33,34 +38,43 @@ final class OverrideTracker: @unchecked Sendable {
     }
 
     func saveBrightness(_ value: Float) {
-        if originalBrightness == nil {
-            originalBrightness = value
-            hasOverrides = true
+        lock.lock()
+        defer { lock.unlock() }
+        if _originalBrightness == nil {
+            _originalBrightness = value
+            _hasOverrides = true
         }
     }
 
     func saveWarmth(_ value: Float) {
-        appliedWarmth = value
-        if originalWarmth == nil {
-            originalWarmth = value
-            hasOverrides = true
+        lock.lock()
+        defer { lock.unlock() }
+        _appliedWarmth = value
+        if _originalWarmth == nil {
+            _originalWarmth = value
+            _hasOverrides = true
         }
     }
 
     func restoreAll() {
+        lock.lock()
+        let hasOverrides = _hasOverrides
+        let brightness = _originalBrightness
+        let warmth = _originalWarmth
+        _originalBrightness = nil
+        _originalWarmth = nil
+        _hasOverrides = false
+        lock.unlock()
+
         guard hasOverrides else { return }
 
-        if let brightness = originalBrightness {
+        if let brightness {
             restoreBrightness(brightness)
         }
 
-        if originalWarmth != nil {
+        if warmth != nil {
             CGDisplayRestoreColorSyncSettings()
         }
-
-        originalBrightness = nil
-        originalWarmth = nil
-        hasOverrides = false
     }
 
     private func restoreBrightness(_ value: Float) {

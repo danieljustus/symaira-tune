@@ -15,6 +15,30 @@ public final class DimOverlay: @unchecked Sendable {
     }
 
     public func applyDim(_ opacity: Float) {
+        if Thread.isMainThread {
+            applyDimOnMain(opacity)
+        } else {
+            DispatchQueue.main.sync { [self] in applyDimOnMain(opacity) }
+        }
+    }
+
+    public func removeAllOverlays() {
+        if Thread.isMainThread {
+            removeAllOnMain()
+        } else {
+            DispatchQueue.main.sync { [self] in removeAllOnMain() }
+        }
+    }
+
+    public var dimLevel: Float {
+        if Thread.isMainThread {
+            return currentOpacity
+        } else {
+            return DispatchQueue.main.sync { [self] in currentOpacity }
+        }
+    }
+
+    private nonisolated func applyDimOnMain(_ opacity: Float) {
         MainActor.assumeIsolated {
             currentOpacity = opacity
             let overlayAlpha = CGFloat(1.0 - opacity)
@@ -48,15 +72,11 @@ public final class DimOverlay: @unchecked Sendable {
         }
     }
 
-    public func removeAllOverlays() {
+    private nonisolated func removeAllOnMain() {
         MainActor.assumeIsolated {
             for (_, window) in windows { window.orderOut(nil) }
             windows.removeAll()
             currentOpacity = 1.0
         }
-    }
-
-    public var dimLevel: Float {
-        MainActor.assumeIsolated { currentOpacity }
     }
 }
