@@ -7,7 +7,11 @@ public final class DimOverlay: @unchecked Sendable {
     public init() {}
 
     deinit {
-        for (_, window) in windows { window.close() }
+        for (_, window) in windows {
+            Task { @MainActor in
+                window.close()
+            }
+        }
     }
 
     public func applyDim(_ opacity: Float) {
