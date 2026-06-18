@@ -25,7 +25,7 @@ final class OverrideTracker: @unchecked Sendable {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             source.setEventHandler { [weak self] in
                 self?.restoreAll()
-                exit(ExitCode.ok.rawValue)
+                _exit(ExitCode.ok.rawValue)
             }
             source.resume()
             signalSources.append(source)
