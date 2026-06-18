@@ -82,6 +82,79 @@ final class WriteSurfaceTests: XCTestCase {
             }
         }
     }
+
+    func testDimClampedBySafetyPolicy() {
+        let controller = TuneController()
+        XCTAssertNoThrow(try controller.applyDim(0.5))
+        XCTAssertNoThrow(try controller.applyDim(0.0))
+        XCTAssertNoThrow(try controller.applyDim(2.0))
+    }
+
+    func testDimLevelTracked() {
+        let controller = TuneController()
+        XCTAssertEqual(controller.getDimLevel(), 1.0)
+        XCTAssertNoThrow(try controller.applyDim(0.5))
+    }
+
+    func testResetDimClearsOverlays() {
+        let controller = TuneController()
+        XCTAssertNoThrow(try controller.applyDim(0.5))
+        controller.resetDim()
+    }
+
+    func testWarmthClampedBySafetyPolicy() {
+        let controller = TuneController()
+        XCTAssertNoThrow(try controller.applyWarmth(0.5))
+        XCTAssertNoThrow(try controller.applyWarmth(0.0))
+        XCTAssertNoThrow(try controller.applyWarmth(2.0))
+    }
+
+    func testResetWarmth() {
+        let controller = TuneController()
+        XCTAssertNoThrow(try controller.applyWarmth(0.5))
+        XCTAssertNoThrow(try controller.resetWarmth())
+    }
+
+    func testRestoreAllNoOpWithoutOverrides() {
+        let controller = TuneController()
+        controller.restoreAll()
+    }
+
+    func testChargeLimitUnsupported() {
+        XCTAssertThrowsError(try TuneController().applyChargeLimit(percent: 80)) { error in
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported, got \(error)")
+            }
+        }
+    }
+
+    func testApplyProfileWithBrightnessAndDim() throws {
+        let controller = TuneController()
+        let profile = try TuneProfile(name: "test", brightness: 0.5, dim: 0.7)
+        XCTAssertNoThrow(try controller.applyProfile(profile))
+    }
+
+    func testApplyProfileWithWarmth() throws {
+        let controller = TuneController()
+        let profile = try TuneProfile(name: "test", warmth: 0.4)
+        XCTAssertNoThrow(try controller.applyProfile(profile))
+    }
+
+    func testApplyProfileMinimal() throws {
+        let controller = TuneController()
+        let profile = try TuneProfile(name: "empty")
+        XCTAssertNoThrow(try controller.applyProfile(profile))
+    }
+
+    func testGetWarmthLevelDefault() {
+        let controller = TuneController()
+        XCTAssertEqual(controller.getWarmthLevel(), 0)
+    }
+
+    func testGetDimLevelDefault() {
+        let controller = TuneController()
+        XCTAssertEqual(controller.getDimLevel(), 1.0)
+    }
 }
 
 // MARK: - SemVer parsing
