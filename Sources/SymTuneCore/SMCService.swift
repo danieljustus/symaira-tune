@@ -174,6 +174,7 @@ private extension Array where Element == UInt8 {
 /// Reference-type wrapper for the IOKit `io_connect_t` handle.
 /// Prevents accidental double-close when `SMCService` (a struct) is copied.
 private final class SMCConnection: @unchecked Sendable {
+    private static let taskPort: mach_port_t = mach_task_self_
     var handle: io_connect_t = IO_OBJECT_NULL
     var isOpen: Bool = false
 
@@ -185,7 +186,7 @@ private final class SMCConnection: @unchecked Sendable {
         guard service != IO_OBJECT_NULL else { return false }
         defer { IOObjectRelease(service) }
 
-        let kr = IOServiceOpen(service, mach_task_self_, 0, &handle)
+        let kr = IOServiceOpen(service, Self.taskPort, 0, &handle)
         guard kr == kIOReturnSuccess else { return false }
 
         // Probe: try reading a well-known key to confirm the driver works.
