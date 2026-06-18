@@ -68,22 +68,32 @@ final class OverrideTracker: @unchecked Sendable {
     }
 
     private func restoreBrightness(_ value: Float) {
+        guard let displayID = builtinDisplayID() else { return }
+
         var iter: io_iterator_t = 0
         let matching = IOServiceMatching("IODisplayConnect")
         guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter) == KERN_SUCCESS else { return }
         defer { IOObjectRelease(iter) }
 
+        let cgVendor = CGDisplayVendorNumber(displayID)
+        let cgProduct = CGDisplayModelNumber(displayID)
+
         var service = IOIteratorNext(iter)
         while service != 0 {
             defer { IOObjectRelease(service) }
             let info = IODisplayCreateInfoDictionary(service, UInt32(kIODisplayOnlyPreferredName)).takeRetainedValue() as? [String: Any]
-            guard info?["DisplayVendorID"] != nil else {
+            guard let vendorID = info?["DisplayVendorID"] as? UInt32,
+                  let productID = info?["DisplayProductID"] as? UInt32 else {
+                service = IOIteratorNext(iter)
+                continue
+            }
+            guard vendorID == cgVendor, productID == cgProduct else {
                 service = IOIteratorNext(iter)
                 continue
             }
             let key = "brightness" as CFString
             IODisplaySetFloatParameter(service, 0, key, value)
-            service = IOIteratorNext(iter)
+            return
         }
     }
 
