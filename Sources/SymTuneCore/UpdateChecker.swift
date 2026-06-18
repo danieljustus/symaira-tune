@@ -137,6 +137,7 @@ public enum UpdateChecker {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeoutInterval
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        request.setValue("symtune/\(TuneVersion.current)", forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, response) = try await session.data(for: request)
