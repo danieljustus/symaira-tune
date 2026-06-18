@@ -8,10 +8,14 @@ public final class DimOverlay: @unchecked Sendable {
 
     deinit {
         if Thread.isMainThread {
-            for (_, window) in windows { window.close() }
+            MainActor.assumeIsolated {
+                for (_, window) in windows { window.close() }
+            }
         } else {
             DispatchQueue.main.sync { [windows] in
-                for (_, window) in windows { window.close() }
+                MainActor.assumeIsolated {
+                    for (_, window) in windows { window.close() }
+                }
             }
         }
     }
