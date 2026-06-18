@@ -177,6 +177,7 @@ func runMain() -> Int32 {
                 try emitJSON(BrightnessReadback(brightness: brightness))
             } else {
                 try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
+                try emitJSON(ApplyResult(applied: true))
             }
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
