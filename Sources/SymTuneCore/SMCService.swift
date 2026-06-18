@@ -259,7 +259,6 @@ public struct SMCService: Sendable {
 
     public init() {
         conn = SMCConnection()
-        _ = conn.open()
     }
 
     /// Whether the SMC bridge successfully connected to the AppleSMC driver.
@@ -270,6 +269,7 @@ public struct SMCService: Sendable {
     /// Read an SMC key: returns the data type (as UInt32) and raw bytes,
     /// or nil if the key doesn't exist or the read fails.
     private func readKeyRaw(_ key: String) -> (UInt32, [UInt8])? {
+        if !conn.isOpen { _ = conn.open() }
         guard conn.isOpen else { return nil }
 
         // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
