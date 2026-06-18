@@ -249,9 +249,10 @@ private func smcRawCall(
 
 /// Bridge to the System Management Controller (SMC) for temperature/fan sensors.
 ///
-/// **Read-only** — fan/charge writes belong to the privileged Pro helper.
-/// The connection is opened lazily on first use and closed on deinit.
-/// All reads are unprivileged (user type 0).
+/// **Read-only in v0.1** — fan/charge writes belong to the privileged Pro helper.
+/// Write methods are available for use by the helper IPC layer (see
+/// `SMCHelperProtocol`). The connection is opened lazily on first use and closed
+/// on deinit. All reads are unprivileged (user type 0).
 ///
 /// Handles Apple Silicon vs Intel key differences automatically. Fanless Macs
 /// are supported: `FNum` returning 0 produces an empty fans array.
@@ -312,6 +313,45 @@ public struct SMCService: Sendable {
         var result: UInt = 0
         for b in bytes { result = (result << 8) | UInt(b) }
         return result
+    }
+
+    // MARK: - Key Writing (privileged, used by helper IPC)
+
+    /// Write a raw value to an SMC key. Requires root/SMC connection privileges.
+    /// Used by the privileged Pro helper for fan/charge control.
+    public func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
+        guard conn.isOpen, bytes.count <= 32 else { return false }
+
+        var inBlock = SMCParamBlock()
+        inBlock.key = smcEncodeKey(key)
+        inBlock.data8 = 6  // kSMCWriteKey
+
+        var outBlock = SMCParamBlock()
+
+        guard smcRawCall(handle: conn.handle, input: &inBlock, output: &outBlock),
+              outBlock.result == 0
+        else { return false }
+
+        return true
+    }
+
+    /// Write a value to an SMC key, encoding as the specified data type.
+    public func writeKeyValue(_ key: String, value: Double, dataType: String = "fpe2") -> Bool {
+        let typeUInt = smcEncodeKey(dataType)
+        let bytes: [UInt8]
+        switch dataType {
+        case "fpe2":
+            let raw = UInt16((value * 256.0).rounded())
+            bytes = [UInt8((raw >> 8) & 0xFF), UInt8(raw & 0xFF)]
+        case "ui8 ":
+            bytes = [UInt8(min(max(value, 0), 255))]
+        case "ui16":
+            let raw = UInt16(min(max(value, 0), 65535))
+            bytes = [UInt8((raw >> 8) & 0xFF), UInt8(raw & 0xFF)]
+        default:
+            return false
+        }
+        return writeKeyRaw(key, dataType: typeUInt, bytes: bytes)
     }
 
     // MARK: - Temperature Sensors

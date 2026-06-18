@@ -13,6 +13,7 @@ public final class TuneController: Sendable {
     private let profiles: ProfileService
     public let config: TuneConfig
     private let restoreTracker: OverrideTracker
+    nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
@@ -36,11 +37,13 @@ public final class TuneController: Sendable {
     public func displaysReport() -> DisplaysReport { displays.list() }
 
     public func permissions() -> PermissionStatus {
-        PermissionStatus(
-            privilegedHelperInstalled: false,
+        let helperInstalled = helperClient != nil
+        return PermissionStatus(
+            privilegedHelperInstalled: helperInstalled,
             notes: [
-                "v0.1 read features (sensors, battery, displays, keep-awake) need no special permission.",
-                "Fan and charge-limit writes will require a privileged SMC helper, installed separately (Pro).",
+                helperInstalled
+                    ? "Privileged SMC helper is installed and ready for fan/charge writes."
+                    : "Privileged SMC helper not detected. Fan and charge-limit writes require the Pro helper.",
             ]
         )
     }
@@ -210,17 +213,23 @@ public final class TuneController: Sendable {
     }
 
     public func applyFan(fraction: Double) throws {
-        _ = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
-        throw TuneError.unsupported(
-            "fan control requires the privileged SMC helper (Pro tier), not present in v0.1."
-        )
+        let clamped = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
+        guard let helper = helperClient else {
+            throw TuneError.unsupported(
+                "fan control requires the privileged SMC helper (Pro tier)."
+            )
+        }
+        try helper.setFanFraction(clamped)
     }
 
     public func applyChargeLimit(percent: Int) throws {
-        _ = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
-        throw TuneError.unsupported(
-            "charge limit requires the privileged SMC helper (Pro tier), not present in v0.1."
-        )
+        let clamped = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
+        guard let helper = helperClient else {
+            throw TuneError.unsupported(
+                "charge limit requires the privileged SMC helper (Pro tier)."
+            )
+        }
+        try helper.setChargeLimit(clamped)
     }
 
     static var architecture: String {
