@@ -85,12 +85,18 @@ public final class ProfileService: @unchecked Sendable {
     // MARK: - Profiles
 
     public func saveProfile(_ profile: TuneProfile) throws {
+        guard TuneProfile.isValidProfileName(profile.name) else {
+            throw TuneError.usage("Invalid profile name: '\(profile.name)'.")
+        }
         let file = dataDir.appendingPathComponent("profile-\(profile.name).json")
         let data = try makeEncoder().encode(profile)
         try data.write(to: file, options: .atomic)
     }
 
     public func loadProfile(name: String) throws -> TuneProfile {
+        guard TuneProfile.isValidProfileName(name) else {
+            throw TuneError.usage("Invalid profile name: '\(name)'.")
+        }
         let file = dataDir.appendingPathComponent("profile-\(name).json")
         let data = try Data(contentsOf: file)
         return try makeDecoder().decode(TuneProfile.self, from: data)
@@ -107,6 +113,9 @@ public final class ProfileService: @unchecked Sendable {
     }
 
     public func deleteProfile(name: String) throws {
+        guard TuneProfile.isValidProfileName(name) else {
+            throw TuneError.usage("Invalid profile name: '\(name)'.")
+        }
         let file = dataDir.appendingPathComponent("profile-\(name).json")
         if fm.fileExists(atPath: file.path) {
             try fm.removeItem(at: file)

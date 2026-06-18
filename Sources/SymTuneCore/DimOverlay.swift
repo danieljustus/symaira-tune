@@ -7,9 +7,15 @@ public final class DimOverlay: @unchecked Sendable {
     public init() {}
 
     deinit {
-        for (_, window) in windows {
-            Task { @MainActor in
-                window.close()
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                for (_, window) in windows { window.close() }
+            }
+        } else {
+            DispatchQueue.main.sync { [windows] in
+                MainActor.assumeIsolated {
+                    for (_, window) in windows { window.close() }
+                }
             }
         }
     }
