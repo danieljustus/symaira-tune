@@ -206,10 +206,10 @@ public final class MCPServer {
             payload = ApplyResult(applied: true)
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
-            payload = ["applied": false]
+            payload = ApplyResult(applied: false)
         case "set_charge_limit":
             try controller.applyChargeLimit(percent: requireInt(arguments["percent"], name: "percent"))
-            payload = ["applied": false]
+            payload = ApplyResult(applied: false)
         default:
             throw TuneError.usage("Unknown tool '\(name)'.")
         }
@@ -217,7 +217,6 @@ public final class MCPServer {
         let structured = try encodeToJSONObject(payload)
         return [
             "content": [["type": "text", "text": jsonString(structured)]],
-            "structuredContent": structured,
             "isError": false,
         ]
     }
