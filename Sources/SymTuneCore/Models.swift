@@ -81,6 +81,24 @@ public struct DisplaysReport: Codable, Sendable {
     public let notes: [String]
 }
 
+public struct BrightnessReadback: Codable, Sendable {
+    public let brightness: Double
+    public let notes: [String]
+
+    public init(brightness: Double, notes: [String] = []) {
+        self.brightness = brightness
+        self.notes = notes
+    }
+}
+
+public struct ApplyResult: Codable, Sendable {
+    public let applied: Bool
+
+    public init(applied: Bool) {
+        self.applied = applied
+    }
+}
+
 // MARK: - Capabilities (doctor)
 
 public struct Capability: Codable, Sendable {

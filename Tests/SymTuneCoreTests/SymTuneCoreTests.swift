@@ -32,15 +32,19 @@ final class CapabilityTests: XCTestCase {
         XCTAssertEqual(report.version, TuneVersion.current)
         XCTAssertFalse(report.capabilities.isEmpty)
 
-        // Fan/charge must be advertised as Pro tier and unavailable in v0.1.
         let fan = report.capabilities.first { $0.id == "fan.control" }
         XCTAssertEqual(fan?.tier, "pro")
         XCTAssertEqual(fan?.available, false)
 
-        // Keep-awake is a core capability that is available.
         let awake = report.capabilities.first { $0.id == "power.keepAwake" }
         XCTAssertEqual(awake?.tier, "core")
         XCTAssertEqual(awake?.available, true)
+
+        let brightness = report.capabilities.first { $0.id == "display.brightness.set" }
+        XCTAssertEqual(brightness?.available, true)
+
+        let warmth = report.capabilities.first { $0.id == "display.warmth.set" }
+        XCTAssertEqual(warmth?.available, true)
     }
 }
 
@@ -64,6 +68,14 @@ final class WriteSurfaceTests: XCTestCase {
         XCTAssertThrowsError(try TuneController().applyFan(fraction: 0.5)) { error in
             guard case TuneError.unsupported = error else {
                 return XCTFail("expected .unsupported, got \(error)")
+            }
+        }
+    }
+
+    func testBrightnessClampsThroughSafetyPolicy() {
+        XCTAssertThrowsError(try TuneController().applyBuiltinBrightness(2.0)) { error in
+            guard case TuneError.failed = error else {
+                return XCTFail("expected .failed from DisplayService, got \(error)")
             }
         }
     }

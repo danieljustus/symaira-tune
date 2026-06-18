@@ -73,6 +73,13 @@ public final class MCPServer {
             "properties": ["value": ["type": "number"]],
             "required": ["value"],
         ]
+        let warmthInput: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "value": ["type": "number", "minimum": 0, "maximum": 1],
+            ],
+            "required": ["value"],
+        ]
         return [
             tool("get_capabilities", "Report tool version, host info, and which tuning capabilities are available.", [:]),
             tool("get_sensors", "Read thermal pressure and (when available) temperatures and fan RPM.", [:]),
@@ -86,7 +93,11 @@ public final class MCPServer {
                 ],
                 "required": ["enabled"],
             ]),
+            tool("get_brightness", "Read the built-in display brightness (0.0–1.0).", [:]),
+            tool("set_brightness", "Set built-in display brightness (0.0–1.0).", value),
             tool("set_extended_brightness", "Set extended/EDR brightness multiplier (1.0–1.6). Planned — returns an error in v0.1.", value),
+            tool("set_warmth", "Set color temperature warmth (0.0=neutral, 1.0=max warm). Uses gamma LUT.", warmthInput),
+            tool("reset_warmth", "Reset color temperature warmth to neutral (identity gamma).", [:]),
             tool("set_fan", "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper.", [
                 "type": "object",
                 "properties": ["fraction": ["type": "number"]],
@@ -126,9 +137,21 @@ public final class MCPServer {
             payload = controller.displaysReport()
         case "keep_awake":
             payload = try handleKeepAwake(arguments)
+        case "get_brightness":
+            let brightness = try controller.getBuiltinBrightness()
+            payload = BrightnessReadback(brightness: brightness)
+        case "set_brightness":
+            try controller.applyBuiltinBrightness(requireDouble(arguments["value"], name: "value"))
+            payload = ["applied": true]
         case "set_extended_brightness":
             try controller.applyExtendedBrightness(requireDouble(arguments["value"], name: "value"))
             payload = ["applied": false] // unreachable; apply throws in v0.1
+        case "set_warmth":
+            try controller.applyWarmth(requireDouble(arguments["value"], name: "value"))
+            payload = ["applied": true]
+        case "reset_warmth":
+            try controller.resetWarmth()
+            payload = ["applied": true]
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
             payload = ["applied": false]

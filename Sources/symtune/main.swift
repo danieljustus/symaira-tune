@@ -22,9 +22,12 @@ POWER
                          screen on.
 
 WRITE COMMANDS (planned / Pro — see docs/roadmap.md)
-  brightness set <0.0-1.0>     Built-in display brightness          (planned v0.2)
+  brightness get                Read built-in display brightness (0.0–1.0)
+  brightness set <0.0-1.0>     Built-in display brightness          (v0.2)
   extbright set <1.0-1.6>      Extended/EDR brightness multiplier   (planned v0.2)
   dim set <0.15-1.0>           Software dim overlay                 (planned v0.2)
+  warmth set <0.0-1.0>         Color temperature warmth (gamma)     (v0.2)
+  warmth reset                 Reset warmth to neutral              (v0.2)
   fan set <0.0-1.0>            Fan speed fraction                   (Pro: needs helper)
   battery-limit set <50-100>   Hold charge at target percent        (Pro: needs helper)
 
@@ -123,11 +126,24 @@ func runMain() -> Int32 {
         case "awake":
             try runAwake(rest, controller: controller)
         case "brightness":
-            try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
+            if rest.first == "get" || rest.isEmpty {
+                let brightness = try controller.getBuiltinBrightness()
+                try emitJSON(BrightnessReadback(brightness: brightness))
+            } else {
+                try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
+            }
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
         case "dim":
             try controller.applyDim(try parseValue(rest, command: "dim"))
+        case "warmth":
+            if rest.first == "reset" {
+                try controller.resetWarmth()
+                try emitJSON(ApplyResult(applied: true))
+            } else {
+                try controller.applyWarmth(try parseValue(rest, command: "warmth"))
+                try emitJSON(ApplyResult(applied: true))
+            }
         case "fan":
             try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
         case "battery-limit":

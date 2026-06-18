@@ -51,6 +51,10 @@ public final class TuneController: Sendable {
                        detail: "Extended/EDR brightness apply — app-backed, planned v0.2."),
             Capability(id: "display.dim.set", available: false, tier: "core",
                        detail: "Sub-minimum software dim overlay — app-backed, planned v0.2."),
+            Capability(id: "display.brightness.set", available: true, tier: "core",
+                       detail: "Built-in display brightness get/set via DisplayServices/IOKit."),
+            Capability(id: "display.warmth.set", available: true, tier: "core",
+                       detail: "Color temperature warmth via CGSetDisplayTransferByTable gamma LUT."),
             Capability(id: "power.keepAwake", available: true, tier: "core",
                        detail: "Prevent idle sleep via IOKit power assertion."),
             Capability(id: "fan.control", available: false, tier: "pro",
@@ -91,17 +95,15 @@ public final class TuneController: Sendable {
         power.end(token)
     }
 
-    // MARK: - Write surface (planned)
-    //
-    // Each method clamps via SafetyPolicy first, then reports honestly that the
-    // apply path is not wired yet. This keeps the agent/CLI surface stable while
-    // the real implementations land (see docs/roadmap.md).
+    // MARK: - Write surface (v0.2 core)
+
+    public func getBuiltinBrightness() throws -> Double {
+        try displays.getBuiltinBrightness()
+    }
 
     public func applyBuiltinBrightness(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.brightnessMin, config.brightnessMax)
-        throw TuneError.notImplemented(
-            "built-in brightness apply not wired in v0.1 (requested \(value), safe value \(clamped))."
-        )
+        try displays.setBuiltinBrightness(Float(clamped))
     }
 
     public func applyExtendedBrightness(_ value: Double) throws {
@@ -116,6 +118,15 @@ public final class TuneController: Sendable {
         throw TuneError.notImplemented(
             "software dim overlay is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
         )
+    }
+
+    public func applyWarmth(_ value: Double) throws {
+        let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)
+        try displays.applyWarmth(Float(clamped))
+    }
+
+    public func resetWarmth() throws {
+        try displays.resetWarmth()
     }
 
     public func applyFan(fraction: Double) throws {
