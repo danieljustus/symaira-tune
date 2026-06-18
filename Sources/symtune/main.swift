@@ -119,7 +119,7 @@ func runProfile(_ args: [String], controller: TuneController) throws {
             throw TuneError.usage("profile save: expected a name.")
         }
         let brightness = try? controller.getBuiltinBrightness()
-        let profile = TuneProfile(
+        let profile = try TuneProfile(
             name: name,
             brightness: brightness,
             dim: controller.getDimLevel()

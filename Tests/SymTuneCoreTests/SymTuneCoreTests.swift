@@ -189,6 +189,50 @@ final class UpdateCheckOptOutTests: XCTestCase {
     }
 }
 
+// MARK: - Profile Name Validation
+
+final class ProfileNameValidationTests: XCTestCase {
+    func testValidNames() {
+        XCTAssertTrue(TuneProfile.isValidProfileName("default"))
+        XCTAssertTrue(TuneProfile.isValidProfileName("my-profile"))
+        XCTAssertTrue(TuneProfile.isValidProfileName("profile_123"))
+        XCTAssertTrue(TuneProfile.isValidProfileName("A"))
+    }
+
+    func testRejectsEmptyName() {
+        XCTAssertFalse(TuneProfile.isValidProfileName(""))
+    }
+
+    func testRejectsPathTraversal() {
+        XCTAssertFalse(TuneProfile.isValidProfileName("../etc/passwd"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo/../../../bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("a..b"))
+    }
+
+    func testRejectsNullByte() {
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo\0bar"))
+    }
+
+    func testRejectsInvalidCharacters() {
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo.bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo@bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo:bar"))
+    }
+
+    func testInitRejectsInvalidName() {
+        XCTAssertThrowsError(try TuneProfile(name: "../etc/passwd")) { error in
+            guard case TuneError.usage = error else {
+                return XCTFail("expected .usage, got \(error)")
+            }
+        }
+    }
+
+    func testInitAcceptsValidName() {
+        XCTAssertNoThrow(try TuneProfile(name: "my-profile"))
+    }
+}
+
 // MARK: - SMC Param Block
 
 final class SMCParamBlockTests: XCTestCase {
