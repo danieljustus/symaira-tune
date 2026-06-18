@@ -1,8 +1,8 @@
 @preconcurrency import AppKit
 
 public final class DimOverlay: @unchecked Sendable {
-    private var windows: [CGDirectDisplayID: NSWindow] = [:]
-    private var currentOpacity: Float = 1.0
+    nonisolated(unsafe) private var windows: [CGDirectDisplayID: NSWindow] = [:]
+    nonisolated(unsafe) private var currentOpacity: Float = 1.0
 
     public init() {}
 

@@ -21,7 +21,10 @@ public struct TuneProfile: Codable, Sendable, Identifiable, Hashable {
         awake: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
-    ) {
+    ) throws {
+        guard TuneProfile.isValidProfileName(name) else {
+            throw TuneError.usage("Invalid profile name: '\(name)'. Profile names may only contain letters, digits, hyphens, and underscores.")
+        }
         self.name = name
         self.brightness = brightness
         self.dim = dim
@@ -29,6 +32,14 @@ public struct TuneProfile: Codable, Sendable, Identifiable, Hashable {
         self.awake = awake
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    /// Validates a profile name: rejects `/`, `..`, null bytes, and characters outside `[a-zA-Z0-9_-]`.
+    public static func isValidProfileName(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        guard !name.contains("/") && !name.contains("..") && !name.contains("\0") else { return false }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+        return name.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 }
 

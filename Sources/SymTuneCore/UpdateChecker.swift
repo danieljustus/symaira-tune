@@ -112,16 +112,11 @@ public enum UpdateChecker {
             return true
         }
 
-        for line in content.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-            let parts = trimmed.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2,
-                  parts[0].trimmingCharacters(in: .whitespaces) == configKey
-            else { continue }
-
-            let value = parts[1].trimmingCharacters(in: .whitespaces).lowercased()
-            return value == "true" || value == "1"
+        let table = TOMLParser().parse(content)
+        if let val = table["general", configKey]?.boolValue { return val }
+        if let val = table["general", configKey]?.intValue { return val == 1 }
+        if let val = table["general", configKey]?.stringValue {
+            return val.lowercased() == "true" || val == "1"
         }
 
         return true

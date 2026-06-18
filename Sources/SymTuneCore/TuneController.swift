@@ -11,11 +11,12 @@ public final class TuneController: Sendable {
     private let dimOverlay = DimOverlay()
     private let profiles: ProfileService
     public let config: TuneConfig
-    private let restoreTracker = OverrideTracker()
+    private let restoreTracker: OverrideTracker
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
         self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
+        self.restoreTracker = OverrideTracker(displayService: displays)
         restoreTracker.registerSignalHandlers()
     }
 
@@ -136,6 +137,10 @@ public final class TuneController: Sendable {
 
     public func getDimLevel() -> Double {
         Double(dimOverlay.dimLevel)
+    }
+
+    public func getWarmthLevel() -> Double {
+        Double(restoreTracker.currentWarmth)
     }
 
     public func applyWarmth(_ value: Double) throws {

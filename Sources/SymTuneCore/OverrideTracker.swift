@@ -7,8 +7,16 @@ import IOKit
 final class OverrideTracker: @unchecked Sendable {
     private var originalBrightness: Float?
     private var originalWarmth: Float?
+    private var appliedWarmth: Float = 0
     private var hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
+    private var displayService: DisplayService?
+
+    var currentWarmth: Float { appliedWarmth }
+
+    init(displayService: DisplayService? = nil) {
+        self.displayService = displayService
+    }
 
     func registerSignalHandlers() {
         let signals: [Int32] = [SIGINT, SIGTERM]
@@ -32,6 +40,7 @@ final class OverrideTracker: @unchecked Sendable {
     }
 
     func saveWarmth(_ value: Float) {
+        appliedWarmth = value
         if originalWarmth == nil {
             originalWarmth = value
             hasOverrides = true
@@ -46,15 +55,47 @@ final class OverrideTracker: @unchecked Sendable {
         }
 
         if originalWarmth != nil {
-            if let displayID = builtinDisplayID() {
-                CGDisplayRestoreColorSyncSettings()
-                _ = displayID
-            }
+            CGDisplayRestoreColorSyncSettings()
         }
 
         originalBrightness = nil
         originalWarmth = nil
         hasOverrides = false
+    }
+
+    private func restoreBrightness(_ value: Float) {
+        if let displayService {
+            try? displayService.setBuiltinBrightness(value)
+            return
+        }
+
+        guard let displayID = builtinDisplayID() else { return }
+
+        var iter: io_iterator_t = 0
+        let matching = IOServiceMatching("IODisplayConnect")
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter) == KERN_SUCCESS else { return }
+        defer { IOObjectRelease(iter) }
+
+        let cgVendor = CGDisplayVendorNumber(displayID)
+        let cgProduct = CGDisplayModelNumber(displayID)
+
+        var service = IOIteratorNext(iter)
+        while service != 0 {
+            defer { IOObjectRelease(service) }
+            let info = IODisplayCreateInfoDictionary(service, UInt32(kIODisplayOnlyPreferredName)).takeRetainedValue() as? [String: Any]
+            guard let vendorID = info?["DisplayVendorID"] as? UInt32,
+                  let productID = info?["DisplayProductID"] as? UInt32 else {
+                service = IOIteratorNext(iter)
+                continue
+            }
+            guard vendorID == cgVendor, productID == cgProduct else {
+                service = IOIteratorNext(iter)
+                continue
+            }
+            let key = "brightness" as CFString
+            IODisplaySetFloatParameter(service, 0, key, value)
+            return
+        }
     }
 
     private func builtinDisplayID() -> CGDirectDisplayID? {
@@ -65,26 +106,6 @@ final class OverrideTracker: @unchecked Sendable {
             }
         }
         return nil
-    }
-
-    private func restoreBrightness(_ value: Float) {
-        var iter: io_iterator_t = 0
-        let matching = IOServiceMatching("IODisplayConnect")
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter) == KERN_SUCCESS else { return }
-        defer { IOObjectRelease(iter) }
-
-        var service = IOIteratorNext(iter)
-        while service != 0 {
-            defer { IOObjectRelease(service) }
-            let info = IODisplayCreateInfoDictionary(service, UInt32(kIODisplayOnlyPreferredName)).takeRetainedValue() as? [String: Any]
-            guard info?["DisplayVendorID"] != nil else {
-                service = IOIteratorNext(iter)
-                continue
-            }
-            let key = "brightness" as CFString
-            IODisplaySetFloatParameter(service, 0, key, value)
-            service = IOIteratorNext(iter)
-        }
     }
 
     deinit {

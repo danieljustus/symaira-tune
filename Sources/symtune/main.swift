@@ -119,10 +119,11 @@ func runProfile(_ args: [String], controller: TuneController) throws {
             throw TuneError.usage("profile save: expected a name.")
         }
         let brightness = try? controller.getBuiltinBrightness()
-        let profile = TuneProfile(
+        let profile = try TuneProfile(
             name: name,
             brightness: brightness,
-            dim: controller.getDimLevel()
+            dim: controller.getDimLevel(),
+            warmth: controller.getWarmthLevel()
         )
         try controller.saveProfile(profile)
         try emitJSON(ProfileSaved(saved: name))
@@ -135,7 +136,7 @@ func runProfile(_ args: [String], controller: TuneController) throws {
         try emitJSON(ApplyResult(applied: true))
     case "list":
         let profiles = controller.listProfiles()
-        try emitJSON(profiles)
+        try emitJSON(ProfileList(profiles: profiles))
     case "delete":
         guard let name = rest.first else {
             throw TuneError.usage("profile delete: expected a name.")
@@ -177,6 +178,7 @@ func runMain() -> Int32 {
                 try emitJSON(BrightnessReadback(brightness: brightness))
             } else {
                 try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
+                try emitJSON(ApplyResult(applied: true))
             }
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))

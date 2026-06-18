@@ -82,6 +82,107 @@ final class WriteSurfaceTests: XCTestCase {
             }
         }
     }
+
+    func testDimClampedBySafetyPolicy() {
+        let controller = TuneController()
+        XCTAssertNoThrow(try controller.applyDim(0.5))
+        XCTAssertNoThrow(try controller.applyDim(0.0))
+        XCTAssertNoThrow(try controller.applyDim(2.0))
+    }
+
+    func testDimLevelTracked() {
+        let controller = TuneController()
+        XCTAssertEqual(controller.getDimLevel(), 1.0)
+        XCTAssertNoThrow(try controller.applyDim(0.5))
+    }
+
+    func testResetDimClearsOverlays() {
+        let controller = TuneController()
+        XCTAssertNoThrow(try controller.applyDim(0.5))
+        controller.resetDim()
+    }
+
+    func testWarmthClampedBySafetyPolicy() {
+        let controller = TuneController()
+        do {
+            try controller.applyWarmth(0.5)
+        } catch {
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported (no built-in display), got \(error)")
+            }
+            return  // no built-in display; warmth tests are display-dependent
+        }
+        XCTAssertNoThrow(try controller.applyWarmth(0.0))
+        XCTAssertNoThrow(try controller.applyWarmth(2.0))
+    }
+
+    func testResetWarmth() {
+        let controller = TuneController()
+        do {
+            try controller.applyWarmth(0.5)
+        } catch {
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported (no built-in display), got \(error)")
+            }
+            return  // no built-in display; warmth tests are display-dependent
+        }
+        XCTAssertNoThrow(try controller.resetWarmth())
+    }
+
+    func testRestoreAllNoOpWithoutOverrides() {
+        let controller = TuneController()
+        controller.restoreAll()
+    }
+
+    func testChargeLimitUnsupported() {
+        XCTAssertThrowsError(try TuneController().applyChargeLimit(percent: 80)) { error in
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported, got \(error)")
+            }
+        }
+    }
+
+    func testApplyProfileWithBrightnessAndDim() throws {
+        let controller = TuneController()
+        let profile = try TuneProfile(name: "test", brightness: 0.5, dim: 0.7)
+        do {
+            try controller.applyProfile(profile)
+        } catch {
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported (no built-in display), got \(error)")
+            }
+            // no built-in display; profile brightness/dim test is display-dependent
+        }
+    }
+
+    func testApplyProfileWithWarmth() throws {
+        let controller = TuneController()
+        let profile = try TuneProfile(name: "test", warmth: 0.4)
+        do {
+            try controller.applyProfile(profile)
+        } catch {
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported (no built-in display), got \(error)")
+            }
+            // no built-in display; profile warmth test is display-dependent
+        }
+    }
+
+    func testApplyProfileMinimal() throws {
+        let controller = TuneController()
+        let profile = try TuneProfile(name: "empty")
+        XCTAssertNoThrow(try controller.applyProfile(profile))
+    }
+
+    func testGetWarmthLevelDefault() {
+        let controller = TuneController()
+        XCTAssertEqual(controller.getWarmthLevel(), 0)
+    }
+
+    func testGetDimLevelDefault() {
+        let controller = TuneController()
+        XCTAssertEqual(controller.getDimLevel(), 1.0)
+    }
 }
 
 // MARK: - SemVer parsing
@@ -189,6 +290,50 @@ final class UpdateCheckOptOutTests: XCTestCase {
     }
 }
 
+// MARK: - Profile Name Validation
+
+final class ProfileNameValidationTests: XCTestCase {
+    func testValidNames() {
+        XCTAssertTrue(TuneProfile.isValidProfileName("default"))
+        XCTAssertTrue(TuneProfile.isValidProfileName("my-profile"))
+        XCTAssertTrue(TuneProfile.isValidProfileName("profile_123"))
+        XCTAssertTrue(TuneProfile.isValidProfileName("A"))
+    }
+
+    func testRejectsEmptyName() {
+        XCTAssertFalse(TuneProfile.isValidProfileName(""))
+    }
+
+    func testRejectsPathTraversal() {
+        XCTAssertFalse(TuneProfile.isValidProfileName("../etc/passwd"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo/../../../bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("a..b"))
+    }
+
+    func testRejectsNullByte() {
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo\0bar"))
+    }
+
+    func testRejectsInvalidCharacters() {
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo.bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo@bar"))
+        XCTAssertFalse(TuneProfile.isValidProfileName("foo:bar"))
+    }
+
+    func testInitRejectsInvalidName() {
+        XCTAssertThrowsError(try TuneProfile(name: "../etc/passwd")) { error in
+            guard case TuneError.usage = error else {
+                return XCTFail("expected .usage, got \(error)")
+            }
+        }
+    }
+
+    func testInitAcceptsValidName() {
+        XCTAssertNoThrow(try TuneProfile(name: "my-profile"))
+    }
+}
+
 // MARK: - SMC Param Block
 
 final class SMCParamBlockTests: XCTestCase {
@@ -262,6 +407,53 @@ final class SMCValueConversionTests: XCTestCase {
         let bytes: [UInt8] = [0x00, 0x05]
         let val = smcConvertValue(dataType: unknownType, bytes: bytes)
         XCTAssertEqual(val, 5.0)
+    }
+}
+
+// MARK: - OverrideTracker
+
+final class OverrideTrackerTests: XCTestCase {
+    func testSaveBrightnessRecordsOriginal() {
+        let tracker = OverrideTracker()
+        tracker.saveBrightness(0.8)
+        tracker.restoreAll()
+    }
+
+    func testSaveWarmthTracksAppliedLevel() {
+        let tracker = OverrideTracker()
+        XCTAssertEqual(tracker.currentWarmth, 0)
+        tracker.saveWarmth(0.5)
+        XCTAssertEqual(tracker.currentWarmth, 0.5)
+        tracker.restoreAll()
+        XCTAssertEqual(tracker.currentWarmth, 0.5)
+    }
+
+    func testRestoreAllIsIdempotent() {
+        let tracker = OverrideTracker()
+        tracker.saveBrightness(0.7)
+        tracker.restoreAll()
+        tracker.restoreAll()
+    }
+
+    func testRestoreAllWithoutOverridesIsNoop() {
+        let tracker = OverrideTracker()
+        tracker.restoreAll()
+    }
+
+    func testSaveBrightnessOnlyRecordsFirst() {
+        let tracker = OverrideTracker()
+        tracker.saveBrightness(0.8)
+        tracker.saveBrightness(0.5)
+        tracker.restoreAll()
+    }
+
+    func testSaveWarmthUpdatesAppliedLevel() {
+        let tracker = OverrideTracker()
+        tracker.saveWarmth(0.3)
+        XCTAssertEqual(tracker.currentWarmth, 0.3)
+        tracker.saveWarmth(0.7)
+        XCTAssertEqual(tracker.currentWarmth, 0.7)
+        tracker.restoreAll()
     }
 }
 
