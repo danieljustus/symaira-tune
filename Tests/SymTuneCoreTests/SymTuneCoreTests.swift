@@ -309,6 +309,53 @@ final class SMCValueConversionTests: XCTestCase {
     }
 }
 
+// MARK: - OverrideTracker
+
+final class OverrideTrackerTests: XCTestCase {
+    func testSaveBrightnessRecordsOriginal() {
+        let tracker = OverrideTracker()
+        tracker.saveBrightness(0.8)
+        tracker.restoreAll()
+    }
+
+    func testSaveWarmthTracksAppliedLevel() {
+        let tracker = OverrideTracker()
+        XCTAssertEqual(tracker.currentWarmth, 0)
+        tracker.saveWarmth(0.5)
+        XCTAssertEqual(tracker.currentWarmth, 0.5)
+        tracker.restoreAll()
+        XCTAssertEqual(tracker.currentWarmth, 0.5)
+    }
+
+    func testRestoreAllIsIdempotent() {
+        let tracker = OverrideTracker()
+        tracker.saveBrightness(0.7)
+        tracker.restoreAll()
+        tracker.restoreAll()
+    }
+
+    func testRestoreAllWithoutOverridesIsNoop() {
+        let tracker = OverrideTracker()
+        tracker.restoreAll()
+    }
+
+    func testSaveBrightnessOnlyRecordsFirst() {
+        let tracker = OverrideTracker()
+        tracker.saveBrightness(0.8)
+        tracker.saveBrightness(0.5)
+        tracker.restoreAll()
+    }
+
+    func testSaveWarmthUpdatesAppliedLevel() {
+        let tracker = OverrideTracker()
+        tracker.saveWarmth(0.3)
+        XCTAssertEqual(tracker.currentWarmth, 0.3)
+        tracker.saveWarmth(0.7)
+        XCTAssertEqual(tracker.currentWarmth, 0.7)
+        tracker.restoreAll()
+    }
+}
+
 // MARK: - Sensor Report (SMC integration)
 
 final class SensorReportTests: XCTestCase {
