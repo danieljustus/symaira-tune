@@ -32,8 +32,5 @@ let package = Package(
             dependencies: ["SymTuneCore"]
         ),
     ],
-    // v0.1 ships in Swift 5 language mode. Tightening to Swift 6 strict
-    // concurrency (AppKit MainActor isolation in DisplayService et al.) is a
-    // tracked roadmap item — see docs/roadmap.md.
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

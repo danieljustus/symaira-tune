@@ -3,13 +3,16 @@ import Foundation
 /// Facade over the individual services. Both the CLI and the MCP server talk to
 /// the controller only — they never touch services directly. This is also where
 /// the safety policy and (future) restore-on-exit bookkeeping live.
-public final class TuneController {
+public final class TuneController: Sendable {
     private let sensors = SensorService()
     private let battery = BatteryService()
     private let displays = DisplayService()
     private let power = PowerService()
+    public let config: TuneConfig
 
-    public init() {}
+    public init(config: TuneConfig = TuneConfig()) {
+        self.config = config
+    }
 
     // MARK: - Reads
 
@@ -36,8 +39,10 @@ public final class TuneController {
         let caps: [Capability] = [
             Capability(id: "sensors.thermalPressure", available: true, tier: "core",
                        detail: "Coarse thermal pressure from ProcessInfo (nominal…critical)."),
-            Capability(id: "sensors.smc", available: false, tier: "core",
-                       detail: "Detailed die temps & fan RPM via SMC — planned v0.2."),
+            Capability(id: "sensors.smc", available: sensors.smcAvailable, tier: "core",
+                       detail: sensors.smcAvailable
+                           ? "Detailed die temps & fan RPM via AppleSMC IOKit (unprivileged)."
+                           : "SMC connection unavailable — detailed sensors not accessible."),
             Capability(id: "battery.read", available: batteryPresent, tier: "core",
                        detail: batteryPresent ? "AppleSmartBattery health readout." : "No battery present."),
             Capability(id: "display.edr.read", available: edrCapable, tier: "core",
@@ -93,35 +98,35 @@ public final class TuneController {
     // the real implementations land (see docs/roadmap.md).
 
     public func applyBuiltinBrightness(_ value: Double) throws {
-        let clamped = SafetyPolicy.clamp(value, SafetyPolicy.brightnessMin, SafetyPolicy.brightnessMax)
+        let clamped = SafetyPolicy.clamp(value, config.brightnessMin, config.brightnessMax)
         throw TuneError.notImplemented(
             "built-in brightness apply not wired in v0.1 (requested \(value), safe value \(clamped))."
         )
     }
 
     public func applyExtendedBrightness(_ value: Double) throws {
-        let clamped = SafetyPolicy.clamp(value, SafetyPolicy.extendedBrightnessMin, SafetyPolicy.extendedBrightnessMax)
+        let clamped = SafetyPolicy.clamp(value, config.extendedBrightnessMin, config.extendedBrightnessMax)
         throw TuneError.notImplemented(
             "extended/EDR brightness is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
         )
     }
 
     public func applyDim(_ value: Double) throws {
-        let clamped = SafetyPolicy.clamp(value, SafetyPolicy.dimMin, SafetyPolicy.dimMax)
+        let clamped = SafetyPolicy.clamp(value, config.dimMin, config.dimMax)
         throw TuneError.notImplemented(
             "software dim overlay is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
         )
     }
 
     public func applyFan(fraction: Double) throws {
-        _ = SafetyPolicy.clamp(fraction, SafetyPolicy.fanFractionMin, SafetyPolicy.fanFractionMax)
+        _ = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
         throw TuneError.unsupported(
             "fan control requires the privileged SMC helper (Pro tier), not present in v0.1."
         )
     }
 
     public func applyChargeLimit(percent: Int) throws {
-        _ = SafetyPolicy.clamp(percent, SafetyPolicy.chargeLimitMin, SafetyPolicy.chargeLimitMax)
+        _ = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
         throw TuneError.unsupported(
             "charge limit requires the privileged SMC helper (Pro tier), not present in v0.1."
         )

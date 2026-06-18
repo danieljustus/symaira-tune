@@ -2,7 +2,7 @@ import Foundation
 
 /// Domain error type for symtune. Carries a human-readable message and maps to
 /// a typed `ExitCode` so the CLI exit status is meaningful for scripts/agents.
-public enum TuneError: Error, CustomStringConvertible {
+public enum TuneError: Error, Sendable, CustomStringConvertible {
     /// Bad command or flag usage.
     case usage(String)
     /// Invalid configuration file/value.

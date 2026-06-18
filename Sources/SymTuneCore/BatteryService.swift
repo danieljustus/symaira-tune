@@ -7,7 +7,7 @@ import IOKit
 ///
 /// Raw `AppleSmartBattery` keys vary slightly across Mac models; values are
 /// reported best-effort with an explanatory note.
-public struct BatteryService {
+public struct BatteryService: Sendable {
     public init() {}
 
     public func read() -> BatteryReport {

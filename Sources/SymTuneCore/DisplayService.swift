@@ -1,4 +1,4 @@
-import AppKit
+@preconcurrency import AppKit
 
 /// Enumerates displays and reports EDR (Extended Dynamic Range) headroom, the
 /// signal that drives extended/"brighter-than-100%" brightness on built-in XDR
@@ -7,7 +7,7 @@ import AppKit
 /// v0.1 is read-only. Actually *applying* extended brightness needs an on-screen
 /// EDR layer (a windowed/menu-bar app context), so the apply path is stubbed in
 /// `TuneController` and lands with the app target in v0.2.
-public struct DisplayService {
+public struct DisplayService: Sendable {
     public init() {}
 
     public func list() -> DisplaysReport {

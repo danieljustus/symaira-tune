@@ -12,7 +12,7 @@ import Foundation
 /// The controller is additionally responsible for *restore-on-exit*: any value
 /// it overrides during a session is reset to the system default when the
 /// process terminates normally.
-public enum SafetyPolicy {
+public enum SafetyPolicy: Sendable {
     // MARK: Extended / EDR brightness (multiplier over the 100% SDR reference).
     public static let extendedBrightnessMin = 1.0
     public static let extendedBrightnessMax = 1.6

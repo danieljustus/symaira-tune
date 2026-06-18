@@ -134,6 +134,17 @@ func runMain() -> Int32 {
             try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
         case "version", "--version", "-v":
             emit("symtune \(TuneVersion.current)")
+            let semaphore = DispatchSemaphore(value: 0)
+            Task.detached {
+                if let info = await UpdateChecker.checkForUpdate(),
+                   info.updateAvailable,
+                   let url = info.downloadURL
+                {
+                    emit("A new version (\(info.latestVersion)) is available. Download: \(url)")
+                }
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 5)
         case "help", "--help", "-h":
             emit(usage)
         default:

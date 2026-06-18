@@ -1,0 +1,182 @@
+import Foundation
+
+/// Lightweight update checker that compares the current version against the
+/// latest GitHub release. Non-blocking and silent when up-to-date or offline.
+/// No third-party dependencies — uses URLSession only.
+public enum UpdateChecker {
+
+    // MARK: - Public types
+
+    public struct SemVer: Comparable, CustomStringConvertible {
+        public let major: Int
+        public let minor: Int
+        public let patch: Int
+        public let prerelease: String?
+
+        public init(major: Int, minor: Int, patch: Int, prerelease: String? = nil) {
+            self.major = major
+            self.minor = minor
+            self.patch = patch
+            self.prerelease = prerelease
+        }
+
+        /// Parse a tag like `v0.1.0` or `v0.2.0-beta.1`. Returns `nil` on invalid input.
+        public static func parse(_ tag: String) -> SemVer? {
+            let trimmed = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            let parts = trimmed.split(separator: "-", maxSplits: 1)
+            guard let versionPart = parts.first else { return nil }
+
+            let numbers = versionPart.split(separator: ".")
+            guard numbers.count == 3,
+                  let major = Int(numbers[0]),
+                  let minor = Int(numbers[1]),
+                  let patch = Int(numbers[2]),
+                  major >= 0, minor >= 0, patch >= 0
+            else { return nil }
+
+            let prerelease = parts.count > 1 ? String(parts[1]) : nil
+            return SemVer(major: major, minor: minor, patch: patch, prerelease: prerelease)
+        }
+
+        public var description: String {
+            let base = "\(major).\(minor).\(patch)"
+            if let pre = prerelease { return "\(base)-\(pre)" }
+            return base
+        }
+
+        // Pre-release sorts before release (0.2.0-beta.1 < 0.2.0).
+        // Pre-release tags compare lexicographically when numeric parts match.
+        public static func < (lhs: SemVer, rhs: SemVer) -> Bool {
+            if lhs.major != rhs.major { return lhs.major < rhs.major }
+            if lhs.minor != rhs.minor { return lhs.minor < rhs.minor }
+            if lhs.patch != rhs.patch { return lhs.patch < rhs.patch }
+            switch (lhs.prerelease, rhs.prerelease) {
+            case (nil, nil): return false
+            case (_, nil): return true
+            case (nil, _): return false
+            case (let l?, let r?): return l < r
+            }
+        }
+
+        public static func == (lhs: SemVer, rhs: SemVer) -> Bool {
+            lhs.major == rhs.major
+                && lhs.minor == rhs.minor
+                && lhs.patch == rhs.patch
+                && lhs.prerelease == rhs.prerelease
+        }
+    }
+
+    public struct UpdateInfo {
+        public let updateAvailable: Bool
+        public let latestVersion: String
+        public let downloadURL: String?
+    }
+
+    // MARK: - Configuration
+
+    private static let repoOwner = "danieljustus"
+    private static let repoName = "symaira-tune"
+    private static let releaseURL = "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest"
+    private static let timeoutInterval: TimeInterval = 5
+    private static let envOptOutKey = "SYMTUNE_CHECK_UPDATES"
+    private static let configKey = "check_updates"
+
+    // MARK: - Session cache
+    //
+    // Protected by sequential access within the single async call path.
+    // `nonisolated(unsafe)` suppresses the concurrency check; the cache
+    // is only read/written from `checkForUpdate` which serializes via
+    // the `cacheFetched` flag.
+
+    nonisolated(unsafe) private static var cachedResult: UpdateInfo?
+    nonisolated(unsafe) private static var cacheFetched = false
+
+    static func resetCache() {
+        cachedResult = nil
+        cacheFetched = false
+    }
+
+    // MARK: - Public API
+
+    /// Returns `false` if opted out via env or config, `true` otherwise.
+    public static func isUpdateCheckEnabled(
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        configPaths: ConfigPaths = ConfigPaths()
+    ) -> Bool {
+        if let value = env[envOptOutKey]?.lowercased() {
+            return value == "1" || value == "true"
+        }
+
+        let configFile = configPaths.configFile
+        guard let content = try? String(contentsOf: configFile, encoding: .utf8) else {
+            return true
+        }
+
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
+            let parts = trimmed.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == configKey
+            else { continue }
+
+            let value = parts[1].trimmingCharacters(in: .whitespaces).lowercased()
+            return value == "true" || value == "1"
+        }
+
+        return true
+    }
+
+    /// Fetch latest release info. Returns `nil` when opted out. Cached per process.
+    public static func checkForUpdate(
+        currentVersion: String = TuneVersion.current,
+        session: URLSession = .shared
+    ) async -> UpdateInfo? {
+        guard isUpdateCheckEnabled() else { return nil }
+
+        if cacheFetched { return cachedResult }
+        defer { cacheFetched = true }
+
+        guard let url = URL(string: releaseURL) else { return nil }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeoutInterval
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200
+            else {
+                cachedResult = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+                return cachedResult
+            }
+
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tagName = json["tag_name"] as? String,
+                  let latestVersion = SemVer.parse(tagName)
+            else {
+                cachedResult = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+                return cachedResult
+            }
+
+            guard let currentSemVer = SemVer.parse("v\(currentVersion)") else {
+                cachedResult = UpdateInfo(updateAvailable: false, latestVersion: tagName, downloadURL: nil)
+                return cachedResult
+            }
+
+            let downloadURL = (json["html_url"] as? String)
+            let updateAvailable = latestVersion > currentSemVer
+
+            cachedResult = UpdateInfo(
+                updateAvailable: updateAvailable,
+                latestVersion: tagName,
+                downloadURL: downloadURL
+            )
+            return cachedResult
+        } catch {
+            cachedResult = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+            return cachedResult
+        }
+    }
+}
