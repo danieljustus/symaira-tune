@@ -7,8 +7,11 @@ import IOKit
 final class OverrideTracker: @unchecked Sendable {
     private var originalBrightness: Float?
     private var originalWarmth: Float?
+    private var appliedWarmth: Float = 0
     private var hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
+
+    var currentWarmth: Float { appliedWarmth }
 
     func registerSignalHandlers() {
         let signals: [Int32] = [SIGINT, SIGTERM]
@@ -32,6 +35,7 @@ final class OverrideTracker: @unchecked Sendable {
     }
 
     func saveWarmth(_ value: Float) {
+        appliedWarmth = value
         if originalWarmth == nil {
             originalWarmth = value
             hasOverrides = true

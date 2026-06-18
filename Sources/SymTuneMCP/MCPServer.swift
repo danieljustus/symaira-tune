@@ -185,7 +185,7 @@ public final class MCPServer {
                 throw TuneError.usage("save_profile requires a name.")
             }
             let brightness = try? controller.getBuiltinBrightness()
-            let profile = try TuneProfile(name: name, brightness: brightness, dim: controller.getDimLevel())
+            let profile = try TuneProfile(name: name, brightness: brightness, dim: controller.getDimLevel(), warmth: controller.getWarmthLevel())
             try controller.saveProfile(profile)
             payload = ProfileSaved(saved: name)
         case "load_profile":

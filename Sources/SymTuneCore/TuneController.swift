@@ -138,6 +138,10 @@ public final class TuneController: Sendable {
         Double(dimOverlay.dimLevel)
     }
 
+    public func getWarmthLevel() -> Double {
+        Double(restoreTracker.currentWarmth)
+    }
+
     public func applyWarmth(_ value: Double) throws {
         restoreTracker.saveWarmth(0)
         let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)

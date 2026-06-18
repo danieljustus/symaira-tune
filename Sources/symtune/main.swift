@@ -122,7 +122,8 @@ func runProfile(_ args: [String], controller: TuneController) throws {
         let profile = try TuneProfile(
             name: name,
             brightness: brightness,
-            dim: controller.getDimLevel()
+            dim: controller.getDimLevel(),
+            warmth: controller.getWarmthLevel()
         )
         try controller.saveProfile(profile)
         try emitJSON(ProfileSaved(saved: name))
