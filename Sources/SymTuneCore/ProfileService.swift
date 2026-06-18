@@ -1,0 +1,131 @@
+import Foundation
+
+/// A named tuning profile containing brightness, dim, and warmth settings.
+/// Persisted as JSON under the data directory.
+public struct TuneProfile: Codable, Sendable, Identifiable, Hashable {
+    public let name: String
+    public var brightness: Double?
+    public var dim: Double?
+    public var warmth: Double?
+    public var awake: Bool?
+    public let createdAt: Date
+    public var updatedAt: Date
+
+    public var id: String { name }
+
+    public init(
+        name: String,
+        brightness: Double? = nil,
+        dim: Double? = nil,
+        warmth: Double? = nil,
+        awake: Bool? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.name = name
+        self.brightness = brightness
+        self.dim = dim
+        self.warmth = warmth
+        self.awake = awake
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+/// A rule that maps a condition to a profile name.
+public struct TuneRule: Codable, Sendable, Identifiable, Hashable {
+    public let id: String
+    public let condition: Condition
+    public let profileName: String
+    public let enabled: Bool
+
+    public enum Condition: String, Codable, Sendable {
+        case onBattery
+        case onAC
+        case thermalSerious
+        case thermalCritical
+    }
+
+    public init(id: String = UUID().uuidString, condition: Condition, profileName: String, enabled: Bool = true) {
+        self.id = id
+        self.condition = condition
+        self.profileName = profileName
+        self.enabled = enabled
+    }
+}
+
+/// Manages named tuning profiles and simple rules, persisted under the data directory.
+public final class ProfileService: @unchecked Sendable {
+    private let dataDir: URL
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
+    public init(dataDir: URL) {
+        self.dataDir = dataDir
+        self.encoder = JSONEncoder()
+        self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        self.decoder = JSONDecoder()
+
+        try? FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+    }
+
+    // MARK: - Profiles
+
+    public func saveProfile(_ profile: TuneProfile) throws {
+        let file = dataDir.appendingPathComponent("profile-\(profile.name).json")
+        let data = try encoder.encode(profile)
+        try data.write(to: file, options: .atomic)
+    }
+
+    public func loadProfile(name: String) throws -> TuneProfile {
+        let file = dataDir.appendingPathComponent("profile-\(name).json")
+        let data = try Data(contentsOf: file)
+        return try decoder.decode(TuneProfile.self, from: data)
+    }
+
+    public func listProfiles() -> [TuneProfile] {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: dataDir, includingPropertiesForKeys: nil) else { return [] }
+        return files
+            .filter { $0.lastPathComponent.hasPrefix("profile-") && $0.pathExtension == "json" }
+            .compactMap { try? Data(contentsOf: $0) }
+            .compactMap { try? decoder.decode(TuneProfile.self, from: $0) }
+            .sorted { $0.name < $1.name }
+    }
+
+    public func deleteProfile(name: String) throws {
+        let file = dataDir.appendingPathComponent("profile-\(name).json")
+        if fm.fileExists(atPath: file.path) {
+            try fm.removeItem(at: file)
+        }
+    }
+
+    private var fm: FileManager { .default }
+
+    // MARK: - Rules
+
+    public func saveRules(_ rules: [TuneRule]) throws {
+        let file = dataDir.appendingPathComponent("rules.json")
+        let data = try encoder.encode(rules)
+        try data.write(to: file, options: .atomic)
+    }
+
+    public func loadRules() -> [TuneRule] {
+        let file = dataDir.appendingPathComponent("rules.json")
+        guard let data = try? Data(contentsOf: file) else { return [] }
+        return (try? decoder.decode([TuneRule].self, from: data)) ?? []
+    }
+
+    public func addRule(_ rule: TuneRule) throws {
+        var rules = loadRules()
+        rules.removeAll { $0.id == rule.id }
+        rules.append(rule)
+        try saveRules(rules)
+    }
+
+    public func removeRule(id: String) throws {
+        var rules = loadRules()
+        rules.removeAll { $0.id == id }
+        try saveRules(rules)
+    }
+}

@@ -8,10 +8,20 @@ public final class TuneController: Sendable {
     private let battery = BatteryService()
     private let displays = DisplayService()
     private let power = PowerService()
+    private let dimOverlay = DimOverlay()
+    private let profiles: ProfileService
     public let config: TuneConfig
+    private let restoreTracker = OverrideTracker()
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
+        self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
+        restoreTracker.registerSignalHandlers()
+    }
+
+    deinit {
+        restoreTracker.restoreAll()
+        dimOverlay.removeAllOverlays()
     }
 
     // MARK: - Reads
@@ -49,8 +59,12 @@ public final class TuneController: Sendable {
                        detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
             Capability(id: "display.brightness.extended.set", available: false, tier: "core",
                        detail: "Extended/EDR brightness apply — app-backed, planned v0.2."),
-            Capability(id: "display.dim.set", available: false, tier: "core",
-                       detail: "Sub-minimum software dim overlay — app-backed, planned v0.2."),
+            Capability(id: "display.dim.set", available: true, tier: "core",
+                       detail: "Sub-minimum software dim overlay via transparent NSWindow."),
+            Capability(id: "display.brightness.set", available: true, tier: "core",
+                       detail: "Built-in display brightness get/set via DisplayServices/IOKit."),
+            Capability(id: "display.warmth.set", available: true, tier: "core",
+                       detail: "Color temperature warmth via CGSetDisplayTransferByTable gamma LUT."),
             Capability(id: "power.keepAwake", available: true, tier: "core",
                        detail: "Prevent idle sleep via IOKit power assertion."),
             Capability(id: "fan.control", available: false, tier: "pro",
@@ -91,17 +105,17 @@ public final class TuneController: Sendable {
         power.end(token)
     }
 
-    // MARK: - Write surface (planned)
-    //
-    // Each method clamps via SafetyPolicy first, then reports honestly that the
-    // apply path is not wired yet. This keeps the agent/CLI surface stable while
-    // the real implementations land (see docs/roadmap.md).
+    // MARK: - Write surface (v0.2 core)
+
+    public func getBuiltinBrightness() throws -> Double {
+        try displays.getBuiltinBrightness()
+    }
 
     public func applyBuiltinBrightness(_ value: Double) throws {
+        let original = try? displays.getBuiltinBrightness()
+        if let original { restoreTracker.saveBrightness(Float(original)) }
         let clamped = SafetyPolicy.clamp(value, config.brightnessMin, config.brightnessMax)
-        throw TuneError.notImplemented(
-            "built-in brightness apply not wired in v0.1 (requested \(value), safe value \(clamped))."
-        )
+        try displays.setBuiltinBrightness(Float(clamped))
     }
 
     public func applyExtendedBrightness(_ value: Double) throws {
@@ -113,9 +127,77 @@ public final class TuneController: Sendable {
 
     public func applyDim(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.dimMin, config.dimMax)
-        throw TuneError.notImplemented(
-            "software dim overlay is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
-        )
+        dimOverlay.applyDim(Float(clamped))
+    }
+
+    public func resetDim() {
+        dimOverlay.removeAllOverlays()
+    }
+
+    public func getDimLevel() -> Double {
+        Double(dimOverlay.dimLevel)
+    }
+
+    public func applyWarmth(_ value: Double) throws {
+        restoreTracker.saveWarmth(0)
+        let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)
+        try displays.applyWarmth(Float(clamped))
+    }
+
+    public func resetWarmth() throws {
+        try displays.resetWarmth()
+    }
+
+    public func restoreAll() {
+        restoreTracker.restoreAll()
+    }
+
+    // MARK: - Profiles
+
+    public func saveProfile(_ profile: TuneProfile) throws {
+        try profiles.saveProfile(profile)
+    }
+
+    public func loadProfile(name: String) throws -> TuneProfile {
+        try profiles.loadProfile(name: name)
+    }
+
+    public func listProfiles() -> [TuneProfile] {
+        profiles.listProfiles()
+    }
+
+    public func deleteProfile(name: String) throws {
+        try profiles.deleteProfile(name: name)
+    }
+
+    public func applyProfile(_ profile: TuneProfile) throws {
+        if let brightness = profile.brightness {
+            try applyBuiltinBrightness(brightness)
+        }
+        if let dim = profile.dim {
+            try applyDim(dim)
+        }
+        if let warmth = profile.warmth {
+            try applyWarmth(warmth)
+        }
+    }
+
+    // MARK: - Rules
+
+    public func saveRules(_ rules: [TuneRule]) throws {
+        try profiles.saveRules(rules)
+    }
+
+    public func loadRules() -> [TuneRule] {
+        profiles.loadRules()
+    }
+
+    public func addRule(_ rule: TuneRule) throws {
+        try profiles.addRule(rule)
+    }
+
+    public func removeRule(id: String) throws {
+        try profiles.removeRule(id: id)
     }
 
     public func applyFan(fraction: Double) throws {

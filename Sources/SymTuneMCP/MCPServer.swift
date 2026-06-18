@@ -73,6 +73,13 @@ public final class MCPServer {
             "properties": ["value": ["type": "number"]],
             "required": ["value"],
         ]
+        let warmthInput: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "value": ["type": "number", "minimum": 0, "maximum": 1],
+            ],
+            "required": ["value"],
+        ]
         return [
             tool("get_capabilities", "Report tool version, host info, and which tuning capabilities are available.", [:]),
             tool("get_sensors", "Read thermal pressure and (when available) temperatures and fan RPM.", [:]),
@@ -86,7 +93,30 @@ public final class MCPServer {
                 ],
                 "required": ["enabled"],
             ]),
+            tool("get_brightness", "Read the built-in display brightness (0.0–1.0).", [:]),
+            tool("set_brightness", "Set built-in display brightness (0.0–1.0).", value),
             tool("set_extended_brightness", "Set extended/EDR brightness multiplier (1.0–1.6). Planned — returns an error in v0.1.", value),
+            tool("set_warmth", "Set color temperature warmth (0.0=neutral, 1.0=max warm). Uses gamma LUT.", warmthInput),
+            tool("reset_warmth", "Reset color temperature warmth to neutral (identity gamma).", [:]),
+            tool("set_dim", "Set software dim overlay (0.15=max dim, 1.0=no dim).", warmthInput),
+            tool("reset_dim", "Remove all dim overlays.", [:]),
+            tool("restore", "Restore all overrides to system defaults.", [:]),
+            tool("save_profile", "Save current settings as a named profile.", [
+                "type": "object",
+                "properties": ["name": ["type": "string"]],
+                "required": ["name"],
+            ]),
+            tool("load_profile", "Apply a saved profile by name.", [
+                "type": "object",
+                "properties": ["name": ["type": "string"]],
+                "required": ["name"],
+            ]),
+            tool("list_profiles", "List all saved profiles.", [:]),
+            tool("delete_profile", "Delete a saved profile by name.", [
+                "type": "object",
+                "properties": ["name": ["type": "string"]],
+                "required": ["name"],
+            ]),
             tool("set_fan", "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper.", [
                 "type": "object",
                 "properties": ["fraction": ["type": "number"]],
@@ -126,9 +156,54 @@ public final class MCPServer {
             payload = controller.displaysReport()
         case "keep_awake":
             payload = try handleKeepAwake(arguments)
+        case "get_brightness":
+            let brightness = try controller.getBuiltinBrightness()
+            payload = BrightnessReadback(brightness: brightness)
+        case "set_brightness":
+            try controller.applyBuiltinBrightness(requireDouble(arguments["value"], name: "value"))
+            payload = ApplyResult(applied: true)
         case "set_extended_brightness":
             try controller.applyExtendedBrightness(requireDouble(arguments["value"], name: "value"))
-            payload = ["applied": false] // unreachable; apply throws in v0.1
+            payload = ApplyResult(applied: false)
+        case "set_warmth":
+            try controller.applyWarmth(requireDouble(arguments["value"], name: "value"))
+            payload = ApplyResult(applied: true)
+        case "reset_warmth":
+            try controller.resetWarmth()
+            payload = ApplyResult(applied: true)
+        case "set_dim":
+            try controller.applyDim(requireDouble(arguments["value"], name: "value"))
+            payload = ApplyResult(applied: true)
+        case "reset_dim":
+            controller.resetDim()
+            payload = ApplyResult(applied: true)
+        case "restore":
+            controller.restoreAll()
+            payload = ApplyResult(applied: true)
+        case "save_profile":
+            guard let name = arguments["name"] as? String else {
+                throw TuneError.usage("save_profile requires a name.")
+            }
+            let brightness = try? controller.getBuiltinBrightness()
+            let profile = TuneProfile(name: name, brightness: brightness, dim: controller.getDimLevel())
+            try controller.saveProfile(profile)
+            payload = ProfileSaved(saved: name)
+        case "load_profile":
+            guard let name = arguments["name"] as? String else {
+                throw TuneError.usage("load_profile requires a name.")
+            }
+            let profile = try controller.loadProfile(name: name)
+            try controller.applyProfile(profile)
+            payload = ApplyResult(applied: true)
+        case "list_profiles":
+            let profiles = controller.listProfiles()
+            payload = ProfileList(profiles: profiles)
+        case "delete_profile":
+            guard let name = arguments["name"] as? String else {
+                throw TuneError.usage("delete_profile requires a name.")
+            }
+            try controller.deleteProfile(name: name)
+            payload = ApplyResult(applied: true)
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
             payload = ["applied": false]
