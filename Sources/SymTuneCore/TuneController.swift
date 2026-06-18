@@ -9,6 +9,7 @@ public final class TuneController: Sendable {
     private let displays = DisplayService()
     private let power = PowerService()
     private let dimOverlay = DimOverlay()
+    private let edrOverlay = EDROverlayService()
     private let profiles: ProfileService
     public let config: TuneConfig
     private let restoreTracker: OverrideTracker
@@ -16,13 +17,14 @@ public final class TuneController: Sendable {
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
         self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
-        self.restoreTracker = OverrideTracker(displayService: displays)
+        self.restoreTracker = OverrideTracker(displayService: displays, edrOverlay: edrOverlay)
         restoreTracker.registerSignalHandlers()
     }
 
     deinit {
         restoreTracker.restoreAll()
         dimOverlay.removeAllOverlays()
+        edrOverlay.removeAllOverlays()
     }
 
     // MARK: - Reads
@@ -58,8 +60,10 @@ public final class TuneController: Sendable {
                        detail: batteryPresent ? "AppleSmartBattery health readout." : "No battery present."),
             Capability(id: "display.edr.read", available: edrCapable, tier: "core",
                        detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
-            Capability(id: "display.brightness.extended.set", available: false, tier: "core",
-                       detail: "Extended/EDR brightness apply — app-backed, planned v0.2."),
+            Capability(id: "display.brightness.extended.set", available: edrCapable, tier: "core",
+                       detail: edrCapable
+                           ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
+                           : "No EDR-capable display detected — extended brightness unavailable."),
             Capability(id: "display.dim.set", available: true, tier: "core",
                        detail: "Sub-minimum software dim overlay via transparent NSWindow."),
             Capability(id: "display.brightness.set", available: true, tier: "core",
@@ -121,9 +125,9 @@ public final class TuneController: Sendable {
 
     public func applyExtendedBrightness(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.extendedBrightnessMin, config.extendedBrightnessMax)
-        throw TuneError.notImplemented(
-            "extended/EDR brightness is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
-        )
+        // Save original for restore-on-exit (first override only).
+        restoreTracker.saveEDRBrightness(clamped)
+        try edrOverlay.applyExtendedBrightness(clamped)
     }
 
     public func applyDim(_ value: Double) throws {

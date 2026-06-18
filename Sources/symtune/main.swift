@@ -182,6 +182,7 @@ func runMain() -> Int32 {
             }
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
+            try emitJSON(ApplyResult(applied: true))
         case "dim":
             if rest.first == "reset" {
                 controller.resetDim()

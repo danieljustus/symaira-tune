@@ -9,9 +9,11 @@ final class OverrideTracker: @unchecked Sendable {
     private var _originalBrightness: Float?
     private var _originalWarmth: Float?
     private var _appliedWarmth: Float = 0
+    private var _originalEDRBrightness: Double?
     private var _hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
     private var displayService: DisplayService?
+    private var edrOverlay: EDROverlayService?
 
     var currentWarmth: Float {
         lock.lock()
@@ -19,8 +21,9 @@ final class OverrideTracker: @unchecked Sendable {
         return _appliedWarmth
     }
 
-    init(displayService: DisplayService? = nil) {
+    init(displayService: DisplayService? = nil, edrOverlay: EDROverlayService? = nil) {
         self.displayService = displayService
+        self.edrOverlay = edrOverlay
     }
 
     func registerSignalHandlers() {
@@ -56,6 +59,15 @@ final class OverrideTracker: @unchecked Sendable {
         }
     }
 
+    func saveEDRBrightness(_ value: Double) {
+        lock.lock()
+        defer { lock.unlock() }
+        if _originalEDRBrightness == nil {
+            _originalEDRBrightness = value
+            _hasOverrides = true
+        }
+    }
+
     func restoreAll() {
         lock.lock()
         let hasOverrides = _hasOverrides
@@ -63,6 +75,7 @@ final class OverrideTracker: @unchecked Sendable {
         let warmth = _originalWarmth
         _originalBrightness = nil
         _originalWarmth = nil
+        _originalEDRBrightness = nil
         _hasOverrides = false
         lock.unlock()
 
@@ -75,6 +88,8 @@ final class OverrideTracker: @unchecked Sendable {
         if warmth != nil {
             CGDisplayRestoreColorSyncSettings()
         }
+
+        edrOverlay?.removeAllOverlays()
     }
 
     private func restoreBrightness(_ value: Float) {
