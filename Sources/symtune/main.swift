@@ -28,6 +28,8 @@ WRITE COMMANDS (planned / Pro — see docs/roadmap.md)
   dim set <0.15-1.0>           Software dim overlay                 (planned v0.2)
   warmth set <0.0-1.0>         Color temperature warmth (gamma)     (v0.2)
   warmth reset                 Reset warmth to neutral              (v0.2)
+  dim set <0.15-1.0>           Software dim overlay                 (v0.2)
+  dim reset                    Remove all dim overlays              (v0.2)
   fan set <0.0-1.0>            Fan speed fraction                   (Pro: needs helper)
   battery-limit set <50-100>   Hold charge at target percent        (Pro: needs helper)
 
@@ -135,7 +137,13 @@ func runMain() -> Int32 {
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
         case "dim":
-            try controller.applyDim(try parseValue(rest, command: "dim"))
+            if rest.first == "reset" {
+                controller.resetDim()
+                try emitJSON(ApplyResult(applied: true))
+            } else {
+                try controller.applyDim(try parseValue(rest, command: "dim"))
+                try emitJSON(ApplyResult(applied: true))
+            }
         case "warmth":
             if rest.first == "reset" {
                 try controller.resetWarmth()

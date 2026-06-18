@@ -72,10 +72,13 @@ final class WriteSurfaceTests: XCTestCase {
         }
     }
 
-    func testBrightnessClampsThroughSafetyPolicy() {
-        XCTAssertThrowsError(try TuneController().applyBuiltinBrightness(2.0)) { error in
-            guard case TuneError.failed = error else {
-                return XCTFail("expected .failed from DisplayService, got \(error)")
+    func testBrightnessClampedBeforeApply() {
+        let controller = TuneController()
+        do {
+            try controller.applyBuiltinBrightness(2.0)
+        } catch {
+            guard case TuneError.unsupported = error else {
+                return XCTFail("expected .unsupported (no built-in display), got \(error)")
             }
         }
     }

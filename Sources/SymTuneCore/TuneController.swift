@@ -8,6 +8,7 @@ public final class TuneController: Sendable {
     private let battery = BatteryService()
     private let displays = DisplayService()
     private let power = PowerService()
+    private let dimOverlay = DimOverlay()
     public let config: TuneConfig
 
     public init(config: TuneConfig = TuneConfig()) {
@@ -49,8 +50,8 @@ public final class TuneController: Sendable {
                        detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
             Capability(id: "display.brightness.extended.set", available: false, tier: "core",
                        detail: "Extended/EDR brightness apply — app-backed, planned v0.2."),
-            Capability(id: "display.dim.set", available: false, tier: "core",
-                       detail: "Sub-minimum software dim overlay — app-backed, planned v0.2."),
+            Capability(id: "display.dim.set", available: true, tier: "core",
+                       detail: "Sub-minimum software dim overlay via transparent NSWindow."),
             Capability(id: "display.brightness.set", available: true, tier: "core",
                        detail: "Built-in display brightness get/set via DisplayServices/IOKit."),
             Capability(id: "display.warmth.set", available: true, tier: "core",
@@ -115,9 +116,15 @@ public final class TuneController: Sendable {
 
     public func applyDim(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.dimMin, config.dimMax)
-        throw TuneError.notImplemented(
-            "software dim overlay is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
-        )
+        dimOverlay.applyDim(Float(clamped))
+    }
+
+    public func resetDim() {
+        dimOverlay.removeAllOverlays()
+    }
+
+    public func getDimLevel() -> Double {
+        Double(dimOverlay.dimLevel)
     }
 
     public func applyWarmth(_ value: Double) throws {

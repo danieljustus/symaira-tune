@@ -98,6 +98,8 @@ public final class MCPServer {
             tool("set_extended_brightness", "Set extended/EDR brightness multiplier (1.0–1.6). Planned — returns an error in v0.1.", value),
             tool("set_warmth", "Set color temperature warmth (0.0=neutral, 1.0=max warm). Uses gamma LUT.", warmthInput),
             tool("reset_warmth", "Reset color temperature warmth to neutral (identity gamma).", [:]),
+            tool("set_dim", "Set software dim overlay (0.15=max dim, 1.0=no dim).", warmthInput),
+            tool("reset_dim", "Remove all dim overlays.", [:]),
             tool("set_fan", "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper.", [
                 "type": "object",
                 "properties": ["fraction": ["type": "number"]],
@@ -142,16 +144,22 @@ public final class MCPServer {
             payload = BrightnessReadback(brightness: brightness)
         case "set_brightness":
             try controller.applyBuiltinBrightness(requireDouble(arguments["value"], name: "value"))
-            payload = ["applied": true]
+            payload = ApplyResult(applied: true)
         case "set_extended_brightness":
             try controller.applyExtendedBrightness(requireDouble(arguments["value"], name: "value"))
-            payload = ["applied": false] // unreachable; apply throws in v0.1
+            payload = ApplyResult(applied: false)
         case "set_warmth":
             try controller.applyWarmth(requireDouble(arguments["value"], name: "value"))
-            payload = ["applied": true]
+            payload = ApplyResult(applied: true)
         case "reset_warmth":
             try controller.resetWarmth()
-            payload = ["applied": true]
+            payload = ApplyResult(applied: true)
+        case "set_dim":
+            try controller.applyDim(requireDouble(arguments["value"], name: "value"))
+            payload = ApplyResult(applied: true)
+        case "reset_dim":
+            controller.resetDim()
+            payload = ApplyResult(applied: true)
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
             payload = ["applied": false]
