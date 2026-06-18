@@ -100,6 +100,7 @@ public final class MCPServer {
             tool("reset_warmth", "Reset color temperature warmth to neutral (identity gamma).", [:]),
             tool("set_dim", "Set software dim overlay (0.15=max dim, 1.0=no dim).", warmthInput),
             tool("reset_dim", "Remove all dim overlays.", [:]),
+            tool("restore", "Restore all overrides to system defaults.", [:]),
             tool("set_fan", "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper.", [
                 "type": "object",
                 "properties": ["fraction": ["type": "number"]],
@@ -159,6 +160,9 @@ public final class MCPServer {
             payload = ApplyResult(applied: true)
         case "reset_dim":
             controller.resetDim()
+            payload = ApplyResult(applied: true)
+        case "restore":
+            controller.restoreAll()
             payload = ApplyResult(applied: true)
         case "set_fan":
             try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))

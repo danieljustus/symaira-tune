@@ -25,11 +25,11 @@ WRITE COMMANDS (planned / Pro — see docs/roadmap.md)
   brightness get                Read built-in display brightness (0.0–1.0)
   brightness set <0.0-1.0>     Built-in display brightness          (v0.2)
   extbright set <1.0-1.6>      Extended/EDR brightness multiplier   (planned v0.2)
-  dim set <0.15-1.0>           Software dim overlay                 (planned v0.2)
-  warmth set <0.0-1.0>         Color temperature warmth (gamma)     (v0.2)
-  warmth reset                 Reset warmth to neutral              (v0.2)
   dim set <0.15-1.0>           Software dim overlay                 (v0.2)
   dim reset                    Remove all dim overlays              (v0.2)
+  warmth set <0.0-1.0>         Color temperature warmth (gamma)     (v0.2)
+  warmth reset                 Reset warmth to neutral              (v0.2)
+  restore                      Restore all overrides to defaults    (v0.2)
   fan set <0.0-1.0>            Fan speed fraction                   (Pro: needs helper)
   battery-limit set <50-100>   Hold charge at target percent        (Pro: needs helper)
 
@@ -152,6 +152,9 @@ func runMain() -> Int32 {
                 try controller.applyWarmth(try parseValue(rest, command: "warmth"))
                 try emitJSON(ApplyResult(applied: true))
             }
+        case "restore":
+            controller.restoreAll()
+            try emitJSON(ApplyResult(applied: true))
         case "fan":
             try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
         case "battery-limit":

@@ -10,9 +10,16 @@ public final class TuneController: Sendable {
     private let power = PowerService()
     private let dimOverlay = DimOverlay()
     public let config: TuneConfig
+    private let restoreTracker = OverrideTracker()
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
+        restoreTracker.registerSignalHandlers()
+    }
+
+    deinit {
+        restoreTracker.restoreAll()
+        dimOverlay.removeAllOverlays()
     }
 
     // MARK: - Reads
@@ -103,6 +110,8 @@ public final class TuneController: Sendable {
     }
 
     public func applyBuiltinBrightness(_ value: Double) throws {
+        let original = try? displays.getBuiltinBrightness()
+        if let original { restoreTracker.saveBrightness(Float(original)) }
         let clamped = SafetyPolicy.clamp(value, config.brightnessMin, config.brightnessMax)
         try displays.setBuiltinBrightness(Float(clamped))
     }
@@ -128,12 +137,17 @@ public final class TuneController: Sendable {
     }
 
     public func applyWarmth(_ value: Double) throws {
+        restoreTracker.saveWarmth(0)
         let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)
         try displays.applyWarmth(Float(clamped))
     }
 
     public func resetWarmth() throws {
         try displays.resetWarmth()
+    }
+
+    public func restoreAll() {
+        restoreTracker.restoreAll()
     }
 
     public func applyFan(fraction: Double) throws {
