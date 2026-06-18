@@ -142,8 +142,10 @@ public struct DisplayService: Sendable {
 
     // MARK: - IOKit fallback
 
-    /// Read brightness via IOKit `IODisplayGetFloatParameter`.
-    private func iokitGetBrightness(displayID: CGDirectDisplayID) throws -> Double {
+    private func withIODisplay<T>(
+        matching displayID: CGDirectDisplayID,
+        _ body: (io_service_t) throws -> T
+    ) throws -> T {
         var iter: io_iterator_t = 0
         let matching = IOServiceMatching("IODisplayConnect")
         let result = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter)
@@ -152,44 +154,8 @@ public struct DisplayService: Sendable {
         }
         defer { IOObjectRelease(iter) }
 
-        var service = IOIteratorNext(iter)
-        while service != 0 {
-            defer { IOObjectRelease(service) }
-
-            let status = IODisplayCreateInfoDictionary(service, UInt32(kIODisplayOnlyPreferredName)).takeRetainedValue() as? [String: Any]
-            guard let vendorID = status?["DisplayVendorID"] as? UInt32,
-                  let productID = status?["DisplayProductID"] as? UInt32 else {
-                service = IOIteratorNext(iter)
-                continue
-            }
-
-            let cgVendor = CGDisplayVendorNumber(displayID)
-            let cgProduct = CGDisplayModelNumber(displayID)
-            guard vendorID == cgVendor, productID == cgProduct else {
-                service = IOIteratorNext(iter)
-                continue
-            }
-
-            var brightness: Float = 0
-            let key = "brightness" as CFString
-            let status2 = IODisplayGetFloatParameter(service, 0, key, &brightness)
-            if status2 == KERN_SUCCESS {
-                return Double(brightness)
-            }
-            service = IOIteratorNext(iter)
-        }
-
-        throw TuneError.failed("Could not read brightness via IOKit for display \(displayID).")
-    }
-
-    private func iokitSetBrightness(displayID: CGDirectDisplayID, value: Float) throws {
-        var iter: io_iterator_t = 0
-        let matching = IOServiceMatching("IODisplayConnect")
-        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter)
-        guard result == KERN_SUCCESS else {
-            throw TuneError.failed("IOServiceGetMatchingServices failed: \(result)")
-        }
-        defer { IOObjectRelease(iter) }
+        let cgVendor = CGDisplayVendorNumber(displayID)
+        let cgProduct = CGDisplayModelNumber(displayID)
 
         var service = IOIteratorNext(iter)
         while service != 0 {
@@ -201,20 +167,36 @@ public struct DisplayService: Sendable {
                 service = IOIteratorNext(iter)
                 continue
             }
-
-            let cgVendor = CGDisplayVendorNumber(displayID)
-            let cgProduct = CGDisplayModelNumber(displayID)
             guard vendorID == cgVendor, productID == cgProduct else {
                 service = IOIteratorNext(iter)
                 continue
             }
 
-            let key = "brightness" as CFString
-            let status = IODisplaySetFloatParameter(service, 0, key, value)
-            if status == KERN_SUCCESS { return }
-            service = IOIteratorNext(iter)
+            return try body(service)
         }
 
-        throw TuneError.failed("Could not set brightness via IOKit for display \(displayID).")
+        throw TuneError.failed("Could not find IOKit display for \(displayID).")
+    }
+
+    private func iokitGetBrightness(displayID: CGDirectDisplayID) throws -> Double {
+        try withIODisplay(matching: displayID) { service -> Double in
+            var brightness: Float = 0
+            let key = "brightness" as CFString
+            let status = IODisplayGetFloatParameter(service, 0, key, &brightness)
+            guard status == KERN_SUCCESS else {
+                throw TuneError.failed("IODisplayGetFloatParameter failed: \(status)")
+            }
+            return Double(brightness)
+        }
+    }
+
+    private func iokitSetBrightness(displayID: CGDirectDisplayID, value: Float) throws {
+        try withIODisplay(matching: displayID) { service in
+            let key = "brightness" as CFString
+            let status = IODisplaySetFloatParameter(service, 0, key, value)
+            guard status == KERN_SUCCESS else {
+                throw TuneError.failed("IODisplaySetFloatParameter failed: \(status)")
+            }
+        }
     }
 }
