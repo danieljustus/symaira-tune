@@ -95,7 +95,7 @@ public final class MCPServer {
             ]),
             tool("get_brightness", "Read the built-in display brightness (0.0–1.0).", [:]),
             tool("set_brightness", "Set built-in display brightness (0.0–1.0).", value),
-            tool("set_extended_brightness", "Set extended/EDR brightness multiplier (1.0–1.6). Planned — returns an error in v0.1.", value),
+            tool("set_extended_brightness", "Set extended/EDR brightness multiplier (1.0–1.6) via on-screen EDR layer.", value),
             tool("set_warmth", "Set color temperature warmth (0.0=neutral, 1.0=max warm). Uses gamma LUT.", warmthInput),
             tool("reset_warmth", "Reset color temperature warmth to neutral (identity gamma).", [:]),
             tool("set_dim", "Set software dim overlay (0.15=max dim, 1.0=no dim).", warmthInput),
@@ -164,7 +164,7 @@ public final class MCPServer {
             payload = ApplyResult(applied: true)
         case "set_extended_brightness":
             try controller.applyExtendedBrightness(requireDouble(arguments["value"], name: "value"))
-            payload = ApplyResult(applied: false)
+            payload = ApplyResult(applied: true)
         case "set_warmth":
             try controller.applyWarmth(requireDouble(arguments["value"], name: "value"))
             payload = ApplyResult(applied: true)

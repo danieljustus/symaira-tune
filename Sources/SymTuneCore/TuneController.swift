@@ -9,20 +9,23 @@ public final class TuneController: Sendable {
     private let displays = DisplayService()
     private let power = PowerService()
     private let dimOverlay = DimOverlay()
+    private let edrOverlay = EDROverlayService()
     private let profiles: ProfileService
     public let config: TuneConfig
     private let restoreTracker: OverrideTracker
+    nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public init(config: TuneConfig = TuneConfig()) {
         self.config = config
         self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
-        self.restoreTracker = OverrideTracker(displayService: displays)
+        self.restoreTracker = OverrideTracker(displayService: displays, edrOverlay: edrOverlay)
         restoreTracker.registerSignalHandlers()
     }
 
     deinit {
         restoreTracker.restoreAll()
         dimOverlay.removeAllOverlays()
+        edrOverlay.removeAllOverlays()
     }
 
     // MARK: - Reads
@@ -34,11 +37,13 @@ public final class TuneController: Sendable {
     public func displaysReport() -> DisplaysReport { displays.list() }
 
     public func permissions() -> PermissionStatus {
-        PermissionStatus(
-            privilegedHelperInstalled: false,
+        let helperInstalled = helperClient != nil
+        return PermissionStatus(
+            privilegedHelperInstalled: helperInstalled,
             notes: [
-                "v0.1 read features (sensors, battery, displays, keep-awake) need no special permission.",
-                "Fan and charge-limit writes will require a privileged SMC helper, installed separately (Pro).",
+                helperInstalled
+                    ? "Privileged SMC helper is installed and ready for fan/charge writes."
+                    : "Privileged SMC helper not detected. Fan and charge-limit writes require the Pro helper.",
             ]
         )
     }
@@ -58,8 +63,10 @@ public final class TuneController: Sendable {
                        detail: batteryPresent ? "AppleSmartBattery health readout." : "No battery present."),
             Capability(id: "display.edr.read", available: edrCapable, tier: "core",
                        detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
-            Capability(id: "display.brightness.extended.set", available: false, tier: "core",
-                       detail: "Extended/EDR brightness apply — app-backed, planned v0.2."),
+            Capability(id: "display.brightness.extended.set", available: edrCapable, tier: "core",
+                       detail: edrCapable
+                           ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
+                           : "No EDR-capable display detected — extended brightness unavailable."),
             Capability(id: "display.dim.set", available: true, tier: "core",
                        detail: "Sub-minimum software dim overlay via transparent NSWindow."),
             Capability(id: "display.brightness.set", available: true, tier: "core",
@@ -121,9 +128,9 @@ public final class TuneController: Sendable {
 
     public func applyExtendedBrightness(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.extendedBrightnessMin, config.extendedBrightnessMax)
-        throw TuneError.notImplemented(
-            "extended/EDR brightness is app-backed and not wired in v0.1 (requested \(value), safe value \(clamped))."
-        )
+        // Save original for restore-on-exit (first override only).
+        restoreTracker.saveEDRBrightness(clamped)
+        try edrOverlay.applyExtendedBrightness(clamped)
     }
 
     public func applyDim(_ value: Double) throws {
@@ -206,17 +213,23 @@ public final class TuneController: Sendable {
     }
 
     public func applyFan(fraction: Double) throws {
-        _ = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
-        throw TuneError.unsupported(
-            "fan control requires the privileged SMC helper (Pro tier), not present in v0.1."
-        )
+        let clamped = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
+        guard let helper = helperClient else {
+            throw TuneError.unsupported(
+                "fan control requires the privileged SMC helper (Pro tier)."
+            )
+        }
+        try helper.setFanFraction(clamped)
     }
 
     public func applyChargeLimit(percent: Int) throws {
-        _ = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
-        throw TuneError.unsupported(
-            "charge limit requires the privileged SMC helper (Pro tier), not present in v0.1."
-        )
+        let clamped = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
+        guard let helper = helperClient else {
+            throw TuneError.unsupported(
+                "charge limit requires the privileged SMC helper (Pro tier)."
+            )
+        }
+        try helper.setChargeLimit(clamped)
     }
 
     static var architecture: String {

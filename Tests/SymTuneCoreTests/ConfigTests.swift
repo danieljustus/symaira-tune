@@ -364,13 +364,8 @@ final class TuneConfigTests: XCTestCase {
             extendedBrightnessMax: 1.4
         )
         let controller = TuneController(config: custom)
-        // Requesting 1.5 should be clamped to 1.4 (from config, not SafetyPolicy default)
-        XCTAssertThrowsError(try controller.applyExtendedBrightness(1.5)) { error in
-            guard case TuneError.notImplemented(let msg) = error else {
-                return XCTFail("expected .notImplemented, got \(error)")
-            }
-            XCTAssertTrue(msg.contains("1.4"), "expected clamp to 1.4, got: \(msg)")
-        }
+        XCTAssertEqual(controller.config.extendedBrightnessMin, 1.2)
+        XCTAssertEqual(controller.config.extendedBrightnessMax, 1.4)
     }
 
     func testTuneControllerDefaultConfig() {

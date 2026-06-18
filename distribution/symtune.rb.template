@@ -1,0 +1,17 @@
+cask "symtune" do
+  version "0.2.0"
+  sha256 "PLACEHOLDER_SHA256"
+
+  url "https://github.com/danieljustus/symaira-tune/releases/download/v#{version}/symtune-#{version}.dmg"
+  name "symtune"
+  desc "Tune your Mac — thermals, brightness, power — from the CLI and for AI agents"
+  homepage "https://github.com/danieljustus/symaira-tune"
+
+  artifact "symtune", target: "/usr/local/bin/symtune"
+
+  zap trash: [
+    "~/.config/symtune",
+    "~/.cache/symtune",
+    "~/.local/share/symtune",
+  ]
+end

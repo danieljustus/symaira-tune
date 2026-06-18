@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binary
+        run: |
+          swift build -c release
+          mkdir -p build
+          cp .build/release/symtune build/
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "symtune" \
+            -srcfolder build \
+            -ov -format UDZO \
+            "symtune-${{ steps.version.outputs.VERSION }}.dmg"
+
+      - name: Sign DMG (Developer ID)
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -n "$DEVELOPER_ID_APPLICATION" ]; then
+            # Create temporary keychain
+            KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            echo "$DEVELOPER_ID_APPLICATION" | base64 --decode > $RUNNER_TEMP/certificate.p12
+            security import $RUNNER_TEMP/certificate.p12 \
+              -k "$KEYCHAIN_PATH" -P "" -T /usr/bin/codesign
+            security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+            codesign --force --sign "Developer ID Application" \
+              "symtune-${{ steps.version.outputs.VERSION }}.dmg"
+            rm -f $RUNNER_TEMP/certificate.p12
+            security delete-keychain "$KEYCHAIN_PATH"
+          else
+            echo "No signing certificate — skipping codesign."
+          fi
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ -n "$APPLE_ID" ]; then
+            xcrun notarytool submit \
+              "symtune-${{ steps.version.outputs.VERSION }}.dmg" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --wait
+            xcrun stapler staple "symtune-${{ steps.version.outputs.VERSION }}.dmg"
+          else
+            echo "No Apple ID — skipping notarization."
+          fi
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          NOTES=$(cat <<'NOTES_EOF'
+          ## Installation
+
+          ### Direct download
+          Download the DMG from the assets below, open it, and move `symtune` to `/usr/local/bin/`.
+
+          ### Homebrew
+          ```bash
+          brew install danieljustus/tap/symtune
+          ```
+          NOTES_EOF
+          )
+          echo "NOTES<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            symtune-${{ steps.version.outputs.VERSION }}.dmg
+          body: ${{ steps.notes.outputs.NOTES }}
+          draft: false
+          prerelease: false
+
+      - name: Publish Homebrew cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
+            DMG_SHA=$(shasum -a 256 "symtune-${{ steps.version.outputs.VERSION }}.dmg" | awk '{print $1}')
+            DMG_SIZE=$(stat -f%z "symtune-${{ steps.version.outputs.VERSION }}.dmg")
+
+            CASK_CONTENT=$(cat <<CASK_EOF
+            cask "symtune" do
+              version "${{ steps.version.outputs.VERSION }}"
+              sha256 "${DMG_SHA}"
+
+              url "https://github.com/danieljustus/symaira-tune/releases/download/v#{version}/symtune-#{version}.dmg"
+              name "symtune"
+              desc "Tune your Mac — thermals, brightness, power — from the CLI and for AI agents"
+              homepage "https://github.com/danieljustus/symaira-tune"
+
+              artifact "symtune", target: "/usr/local/bin/symtune"
+
+              zap trash: [
+                "~/.config/symtune",
+                "~/.cache/symtune",
+                "~/.local/share/symtune",
+              ]
+            end
+            CASK_EOF
+            )
+
+            # Commit cask to homebrew-tap repo
+            TAP_DIR=$(mktemp -d)
+            git clone --depth 1 \
+              "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/danieljustus/homebrew-tap.git" \
+              "$TAP_DIR"
+            echo "$CASK_CONTENT" > "$TAP_DIR/Casks/symtune.rb"
+            cd "$TAP_DIR"
+            git add Casks/symtune.rb
+            git diff --cached --quiet || \
+              git commit -m "Update symtune to ${{ steps.version.outputs.VERSION }}" && \
+              git push
+            rm -rf "$TAP_DIR"
+          else
+            echo "No HOMEBREW_TAP_TOKEN — skipping cask publish."
+          fi

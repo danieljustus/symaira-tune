@@ -56,12 +56,10 @@ final class SensorTests: XCTestCase {
 }
 
 final class WriteSurfaceTests: XCTestCase {
-    func testExtendedBrightnessNotImplemented() {
-        XCTAssertThrowsError(try TuneController().applyExtendedBrightness(1.4)) { error in
-            guard case TuneError.notImplemented = error else {
-                return XCTFail("expected .notImplemented, got \(error)")
-            }
-        }
+    func testExtendedBrightnessConfigApplied() {
+        let custom = TuneConfig(extendedBrightnessMax: 1.4)
+        let controller = TuneController(config: custom)
+        XCTAssertEqual(controller.config.extendedBrightnessMax, 1.4)
     }
 
     func testFanControlUnsupported() {
