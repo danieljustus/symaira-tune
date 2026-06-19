@@ -10,12 +10,12 @@ what's available on your machine.
 | Feature | Apple Silicon (M1+) | Intel Mac | Notes |
 |---|---|---|---|
 | `sensors.thermalPressure` | All | All | Coarse thermal level from `ProcessInfo` (nominal...critical). No special permissions needed. |
-| `sensors.smc` | Planned v0.2 | Planned v0.2 | Detailed die temperatures and fan RPM via AppleSMC IOKit. Read-only, unprivileged. Planned for both architectures, but SMC keys differ (see below). |
+| `sensors.smc` | v0.1 | v0.1 | Detailed die temperatures and fan RPM via AppleSMC IOKit. Read-only, unprivileged. Implemented for both architectures, but SMC keys differ (see below). |
 | `battery.read` | Notebooks only | Notebooks only | `AppleSmartBattery` health readout from IORegistry. Works the same on both architectures. |
 | `display.edr.read` | XDR/EDR displays only | XDR/EDR displays only | Per-display EDR headroom detection. Requires an HDR-capable panel (e.g. Liquid Retina XDR). |
-| `display.brightness.extended.set` | Planned v0.2 (EDR displays) | Planned v0.2 (EDR displays) | Extended (>100%) brightness via on-screen EDR layer. Clamped 1.0-1.6 by `SafetyPolicy`. App-backed, lands with the menu-bar target in v0.2. |
-| `display.dim.set` | All displays | All displays | Sub-minimum software dim overlay. Clamped >= 0.15 by `SafetyPolicy`. App-backed, lands in v0.2. |
-| `display.brightness.set` | Built-in displays (limitations) | Built-in displays | Hardware brightness get/set for the built-in panel. On Apple Silicon, the control path differs from Intel (CoreDisplay vs DisplayServices). Planned v0.2. |
+| `display.brightness.extended.set` | v0.1 (EDR displays) | v0.1 (EDR displays) | Extended (>100%) brightness via on-screen EDR layer. Clamped 1.0-1.6 by `SafetyPolicy`. CLI works today; the menu-bar UI is the v0.2 target. |
+| `display.dim.set` | All displays | All displays | Sub-minimum software dim overlay. Clamped >= 0.15 by `SafetyPolicy`. Ships in v0.1 (CLI; menu-bar UI in v0.2). |
+| `display.brightness.set` | Built-in displays (limitations) | Built-in displays | Hardware brightness get/set for the built-in panel. On Apple Silicon, the control path differs from Intel (CoreDisplay vs DisplayServices). Ships in v0.1. |
 | `power.keepAwake` | All | All | Prevent idle sleep via IOKit power assertion. Works on every Mac. Ships in v0.1. |
 | `fan.control` | Macs with fans | Macs with fans | **Pro tier**. Requires a privileged SMC helper. Not available on fanless models (MacBook Air). |
 | `battery.chargeLimit` | Apple Silicon notebooks | Some Intel notebooks | **Pro tier**. Requires a privileged SMC helper. The IOKit/SMC keys differ between architectures. |
@@ -48,7 +48,7 @@ the key namespace for temperature sensors is not identical.
 - **Apple Silicon**: The system-on-chip integrates CPU, GPU, Neural Engine,
   and memory controller on one die. The SMC key names differ, and the set of
   exposed sensors is not a superset of the Intel keys. The `SMCService` in
-  symtune (v0.2) abstracts this behind a unified API, but `doctor` reports
+  symtune (v0.1) abstracts this behind a unified API, but `doctor` reports
   the raw key differences for diagnostic use.
 
 Both architectures expose fan RPM keys when a fan is present: `F0Ac` on Intel,
@@ -85,7 +85,7 @@ target.
 - **Built-in display**: On Intel Macs, brightness is read and written through
   `DisplayServices` or CoreDisplay private APIs. On Apple Silicon, the same
   goal is achieved through CoreDisplay, but some internal function names and
-  behaviours differ. symtune's `DisplayService` (v0.2) handles both paths.
+  behaviours differ. symtune's `DisplayService` (v0.1) handles both paths.
 - **External monitors**: DDC/CI brightness control is being evaluated for the
   Pro tier. It works over IOKit I2C on both architectures.
 - **EDR/extended brightness**: Uses an AppKit on-screen EDR layer. This is an
@@ -150,10 +150,10 @@ of 1.0 means no extended range is available on that display.
 ### Extended brightness requirements
 
 - The display must be EDR-capable (`potential_edr_headroom > 1.0`).
-- Extended brightness (`display.brightness.extended.set`) requires an on-screen
-  EDR layer, which means symtune must be running as a GUI application
-  (menu-bar / app target, planned v0.2). A bare CLI process cannot apply
-  extended brightness.
+- Extended brightness (`display.brightness.extended.set`) uses an on-screen
+  EDR layer. Ships in v0.1 — the CLI runs in a GUI session by default on
+  macOS and applies the layer via `EDROverlayService` (see
+  `Sources/SymTuneCore/EDROverlayService.swift`).
 - The multiplier is clamped to 1.0-1.6 by `SafetyPolicy`. Values above 1.0
   push the display brighter than 100% SDR; 1.6 is the ceiling.
 - `display.dim.set` (the software dim overlay) works on *any* display, EDR or
