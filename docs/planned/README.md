@@ -6,6 +6,18 @@ integrated when the corresponding features are ready.
 
 ## Files
 
+### SymairaTune/ (AppDelegate.swift, StatusBarController.swift, Info.plist)
+Menu-bar application for `symaira-tune`. A status-bar-only `LSUIElement` app
+(no dock icon) that surfaces sensor/battery/display reports in a dropdown
+menu. The `xcodegen` `project.yml` and generated `SymairaTune.xcodeproj` are
+the canonical build path for this target — it is not wired into `Package.swift`
+because SPM does not produce a real macOS `.app` bundle.
+
+**Planned for:** v0.2 menu-bar app per `docs/roadmap.md`. The
+`StatusBarController` is functional but uses a fragile menu-swap pattern and
+lacks `do/catch` around `TuneController` calls — those refinements land with
+the v0.2 wiring.
+
 ### DDCService.swift
 DDC/CI (Display Data Channel Command Interface) service for controlling
 external monitor brightness, contrast, and input selection. Requires I2C
@@ -28,7 +40,9 @@ with built-in presets (quiet, balanced, aggressive).
 ## Integration Path
 
 When ready to integrate:
-1. Move files back to `Sources/SymTuneCore/`
+1. Move files back to `Sources/SymTuneCore/` (or to `Sources/SymairaTune/` for
+   the menu-bar app, paired with a new executable target in `Package.swift`
+   *or* a properly built `.app` bundle from the existing `project.yml`).
 2. Wire into `TuneController` with stub/unsupported behavior (matching the
    pattern of `applyFan`/`applyChargeLimit`)
 3. Update capabilities report to reflect available features
