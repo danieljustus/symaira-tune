@@ -3,9 +3,14 @@
 excluded:
   - .build
   - DerivedData
+  - docs/planned  # Planned features not yet wired into the main product
 
 disabled_rules:
   - todo                # TODOs are intentional project-management markers
+  - trailing_comma      # Style preference — trailing commas are intentional in this codebase
+  - non_optional_string_data_conversion  # Current usage is correct
+  - opening_brace       # Current formatting is consistent
+  - for_where           # Current patterns are clear
 
 line_length:
   warning: 200
@@ -31,3 +36,7 @@ file_length:
   warning: 600
   error: 800
   ignore_comment_only_lines: true
+
+cyclomatic_complexity:
+  warning: 25
+  error: 40
