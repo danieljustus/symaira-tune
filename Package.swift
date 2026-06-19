@@ -32,5 +32,5 @@ let package = Package(
             dependencies: ["SymTuneCore"]
         ),
     ],
-    swiftLanguageModes: [.v6]
+    swiftLanguageModes: [.v5]
 )
