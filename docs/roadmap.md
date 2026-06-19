@@ -2,33 +2,30 @@
 
 Source of truth for what's built vs planned. Capability IDs match `doctor`.
 
-## v0.1 — scaffold (current)
+## v0.1 — core reads + writes (current)
 
-Buildable, tested, runnable. Reads + MCP work; writes are honest stubs.
+Buildable, tested, runnable. Reads, writes, MCP, and profiles work today. Fan
+and battery-charge writes need the Pro privileged helper.
 
 - [x] SPM package, three targets, CI, docs, safety policy.
 - [x] `sensors.thermalPressure` — coarse thermal level from `ProcessInfo`.
+- [x] `sensors.smc` — AppleSMC IOKit bridge for die temps + fan RPM (unprivileged).
 - [x] `battery.read` — `AppleSmartBattery` health (charge %, cycles, capacity).
 - [x] `display.edr.read` — per-display EDR headroom.
+- [x] `display.brightness.set` — built-in brightness get/set.
+- [x] `display.brightness.extended.set` — EDR/extended brightness, clamped 1.0–1.6.
+- [x] `display.dim.set` — sub-minimum software dim overlay, clamped ≥ 0.15.
+- [x] `display.warmth.set` — color temperature warmth (gamma) beyond Night Shift.
 - [x] `power.keepAwake` — IOKit power assertion (CLI `awake`, MCP `keep_awake`).
+- [x] Profiles (save/load/list/delete) and simple rule engine.
+- [x] Restore-on-exit for all applied display overrides.
+- [x] Wire `config.toml` (`SYMTUNE_*` overrides) via `ConfigPaths`.
+- [x] Update checker (GitHub releases).
 - [x] MCP server over stdio.
 
-## v0.2 — core writes (no privileged helper)
+## v0.2 — app / menu-bar target
 
-The genuinely useful, low-risk, fast-to-ship layer.
-
-- [ ] `sensors.smc` — AppleSMC IOKit bridge for die temps + fan RPM (read-only,
-      unprivileged). Powers a real `sensors` output and a menu-bar readout.
 - [ ] App/menu-bar target (xcodegen `project.yml`) — needed for on-screen EDR.
-- [ ] `display.brightness.extended.set` — EDR/extended brightness (BrightIntosh
-      approach: on-screen EDR layer). Clamped 1.0–1.6.
-- [ ] `display.dim.set` — sub-minimum software dim overlay. Clamped ≥ 0.15.
-- [ ] `display.brightness.set` — built-in brightness get/set.
-- [ ] Color temperature / warmth (gamma) beyond Night Shift.
-- [ ] Per-display profiles, hotkeys, simple rule engine
-      (e.g. "on battery → cap brightness; on AC + hot → fan curve aggressive").
-- [ ] Wire `config.toml` (`SYMTUNE_*` overrides) via `ConfigPaths`.
-- [ ] Restore-on-exit for all applied display overrides.
 
 ## Pro — privileged SMC helper (separate repo, paid)
 
@@ -46,5 +43,4 @@ See `commercial-boundary.md`.
       main friction is AppKit MainActor isolation in `DisplayService`).
 - [ ] GoReleaser-equivalent release flow: notarized DMG + Homebrew cask in
       `../homebrew-tap` (mirror `symaira-terminal`).
-- [ ] Update checker (GitHub releases), mirroring the ecosystem convention.
 - [ ] Hardware-matrix notes: Apple Silicon vs Intel SMC keys, fanless MacBook Air.

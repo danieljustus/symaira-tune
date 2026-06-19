@@ -24,14 +24,15 @@ The only target with logic or IOKit access.
 
 - `TuneController` — facade. CLI and MCP talk to this and nothing else. Holds the
   services, applies `SafetyPolicy`, and owns restore-on-exit bookkeeping.
-- `SensorService` — thermal pressure now (`ProcessInfo.thermalState`); detailed
-  temps/fan RPM via `SMCService` later.
-- `SMCService` — **stub** today. Future AppleSMC IOKit bridge for sensor reads
-  (unprivileged) and, via the Pro helper, fan writes (privileged).
+- `SensorService` — thermal pressure (`ProcessInfo.thermalState`) and, when
+  available, detailed temps/fan RPM via `SMCService`.
+- `SMCService` — AppleSMC IOKit bridge for sensor reads (die temps, fan RPM;
+  unprivileged) and, via the Pro helper, fan writes (privileged).
 - `BatteryService` — reads `AppleSmartBattery` from the IORegistry (unprivileged;
   Intel + Apple Silicon notebooks).
-- `DisplayService` — enumerates `NSScreen`s and reports EDR headroom (the signal
-  that drives extended/>100% brightness). Read-only in v0.1.
+- `DisplayService` — enumerates `NSScreen`s, reports EDR headroom (the signal
+  that drives extended/>100% brightness), gets/sets built-in display brightness,
+  applies gamma-based color temperature warmth, and resets gamma to neutral.
 - `PowerService` — IOKit power assertions (keep-awake), the `caffeinate` analog.
 - `SafetyPolicy` — clamping ranges and the thermal-protection guarantee.
 - `Models` / `Errors` / `ExitCode` / `Config` / `Version` — DTOs and conventions.
@@ -57,12 +58,12 @@ gated → `.unsupported`.
 
 ## Why some writes need an app or a helper
 
-- **Extended/EDR brightness** and **sub-minimum dimming** require an on-screen
-  EDR layer / overlay window, i.e. a GUI/menu-bar app context — not a bare CLI.
-  These land with the app target (v0.2).
+- **Extended/EDR brightness**, **sub-minimum dimming**, **built-in brightness**,
+  and **color temperature warmth** use on-screen EDR layers, overlay windows, and
+  gamma LUTs. These work from the CLI today — no app target needed.
 - **Fan control** and **charge limiting** require SMC *writes*, which need a
   privileged helper (`SMAppService`/`SMJobBless`) with a Developer ID. SMC
-  *reads* are unprivileged and can ship in the core (v0.2).
+  *reads* are unprivileged and ship in the core.
 
 ## Distribution
 
