@@ -154,7 +154,7 @@ func runMain() -> Int32 {
         return ExitCode.ok.rawValue
     }
     let rest = Array(CommandLine.arguments.dropFirst(2))
-    let controller = TuneController()
+    let controller = TuneController(config: ConfigPaths().loadConfig())
 
     do {
         switch command {

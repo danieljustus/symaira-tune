@@ -15,7 +15,7 @@ public struct DisplayService: Sendable {
     public func list() -> DisplaysReport {
         var infos: [DisplayInfo] = []
         for screen in NSScreen.screens {
-            let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+            let displayID = DisplayHelpers.screenDisplayID(screen) ?? 0
             let potential = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
             let isBuiltin = displayID != 0 ? (CGDisplayIsBuiltin(displayID) != 0) : nil
 
@@ -107,13 +107,7 @@ public struct DisplayService: Sendable {
     // MARK: - Private helpers
 
     private func builtinDisplayID() throws -> CGDirectDisplayID {
-        for screen in NSScreen.screens {
-            let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            if displayID != 0, CGDisplayIsBuiltin(displayID) != 0 {
-                return CGDirectDisplayID(displayID)
-            }
-        }
-        throw TuneError.unsupported("No built-in display detected.")
+        try DisplayHelpers.builtinDisplayID()
     }
 
     // MARK: - DisplayServices framework loading

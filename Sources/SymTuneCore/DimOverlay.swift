@@ -50,10 +50,9 @@ public final class DimOverlay: @unchecked Sendable {
             let overlayAlpha = CGFloat(1.0 - opacity)
 
             for screen in NSScreen.screens {
-                let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-                guard displayID != 0 else { continue }
+                guard let displayID = DisplayHelpers.screenDisplayID(screen) else { continue }
 
-                if let existing = windows[CGDirectDisplayID(displayID)] {
+                if let existing = windows[displayID] {
                     existing.alphaValue = overlayAlpha
                     return
                 }
@@ -72,7 +71,7 @@ public final class DimOverlay: @unchecked Sendable {
                 window.ignoresMouseEvents = true
                 window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
                 window.isReleasedWhenClosed = false
-                windows[CGDirectDisplayID(displayID)] = window
+                windows[displayID] = window
                 window.orderFront(nil)
             }
         }
