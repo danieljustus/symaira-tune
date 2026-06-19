@@ -12,6 +12,8 @@ concurrency:
 jobs:
   lint:
     runs-on: macos-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - name: Select Xcode
@@ -25,6 +27,8 @@ jobs:
 
   build-test:
     runs-on: macos-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - name: Select Xcode
