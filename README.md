@@ -14,7 +14,7 @@ Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
 > **Status: v0.1 — core reads + writes.** Built-in brightness, extended/EDR
 > brightness, software dim, color temperature warmth, profile management, and
 > rule engine work today. Fan control and battery charge limiting need the Pro
-> privileged helper. Not distributed yet.
+> privileged helper. Install via Homebrew (`brew install danieljustus/tap/symtune`) or the DMG in the release assets.
 
 ## Why not the Mac App Store?
 

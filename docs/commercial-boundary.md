@@ -10,7 +10,7 @@ Everything that is unprivileged or app-local:
 - Read state: thermal pressure, battery health, display/EDR info.
 - Keep-awake (power assertions).
 - Display tuning that needs only an app context (not the SMC):
-  extended/EDR brightness, software dim overlay, built-in brightness (v0.2).
+  extended/EDR brightness, software dim overlay, built-in brightness (v0.1).
 - The full CLI surface and the MCP server.
 
 No billing, tenant, account, or cloud code lives here.

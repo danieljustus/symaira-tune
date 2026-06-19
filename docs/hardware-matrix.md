@@ -179,9 +179,9 @@ need root or any entitlement beyond the standard AppKit sandbox exemption.
 
 | Feature | Requirement |
 |---|---|
-| `display.dim.set` | GUI process (menu-bar app, v0.2). No elevated privileges. |
-| `display.brightness.extended.set` | GUI process (menu-bar app, v0.2). No elevated privileges. |
-| `display.brightness.set` | GUI process (v0.2). May need accessibility permissions on some macOS versions. |
+| `display.dim.set` | GUI session, no elevated privileges (v0.1). |
+| `display.brightness.extended.set` | GUI session, no elevated privileges (v0.1). |
+| `display.brightness.set` | GUI session (v0.1). May need accessibility permissions on some macOS versions. |
 | `fan.control` | **Pro tier**. Privileged helper (`SMAppService`/`SMJobBless`) with Developer ID and notarization. |
 | `battery.chargeLimit` | **Pro tier**. Privileged helper (`SMAppService`/`SMJobBless`) with Developer ID and notarization. |
 | DDC/CI external brightness | **Pro tier**. Being evaluated. May follow the same helper path. |
