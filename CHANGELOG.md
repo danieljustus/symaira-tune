@@ -6,28 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.1.0] — scaffold
-
-Initial project scaffold. Buildable, tested, and runnable; read features and the
-MCP server are functional, write features are stubbed honestly.
+## [0.1.0] — initial release
 
 ### Added
-- SPM package with three targets: `SymTuneCore`, `SymTuneMCP`, `symtune`.
-- CLI: `doctor`, `sensors`, `battery`, `displays`, `permissions`, `awake`,
-  `serve`, `version`, `help`.
-- Working reads: thermal pressure (`ProcessInfo`), battery health
-  (`AppleSmartBattery` via IORegistry), display EDR headroom (`NSScreen`),
-  keep-awake (IOKit power assertions).
-- MCP server over stdio (JSON-RPC 2.0, Content-Length framing): `get_capabilities`,
-  `get_sensors`, `get_battery`, `list_displays`, `keep_awake`, plus planned
-  `set_extended_brightness` / `set_fan` / `set_charge_limit`.
-- `SafetyPolicy` (clamping + thermal-protection guarantees) and typed
-  `ExitCode` / `TuneError`.
-- XDG path conventions (`ConfigPaths`), snake_case JSON output.
-- Docs (README, AGENTS, architecture, roadmap, commercial-boundary), MIT license,
-  SwiftLint config, Makefile, CI workflow.
+- Built-in display brightness get/set (`#20`).
+- `config.toml` configuration file with `SYMTUNE_*` environment variable
+  overrides (`#19`).
+- Extended/EDR brightness, software dim overlay, warmth, restore-on-exit,
+  profiles, and SMC sensor reads (`#49`). Fan curves, charge limiting, and
+  DDC/CI are Pro-tier features (privileged helper required).
+- Documentation sync for v0.1 feature set (`#65`).
 
-### Not yet implemented (see docs/roadmap.md)
-- SMC sensor reads (detailed temps / fan RPM).
-- Extended/EDR brightness, software dim overlay, built-in brightness apply.
-- Pro: privileged SMC helper for fan curves and battery charge limiting.
+### Fixed
+- OverrideTracker signal handler: use `_exit()` instead of `exit()` to avoid
+  re-entrant cleanup (`#48`).
+- Orphan `SymairaTune` target moved to `docs/planned/` (`#66`).
+
+### Security
+- Profile name path traversal and 13 additional findings (`#35`).
+- Security and correctness bugs from code review (`#63`).
+- Restricted `GITHUB_TOKEN` permissions in CI workflows (`#67`).
