@@ -44,7 +44,7 @@ public final class DimOverlay: @unchecked Sendable {
 
                 if let existing = windows[displayID] {
                     existing.alphaValue = overlayAlpha
-                    return
+                    continue
                 }
 
                 let window = NSWindow(
