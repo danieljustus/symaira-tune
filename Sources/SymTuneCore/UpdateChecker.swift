@@ -83,15 +83,32 @@ public enum UpdateChecker {
 
     // MARK: - Session cache
 
-    private static let cacheQueue = DispatchQueue(label: "com.symaira-tune.update-checker.cache")
-    nonisolated(unsafe) private static var cachedResult: UpdateInfo?
-    nonisolated(unsafe) private static var cacheFetched = false
+    /// Thread-safe cache for the most recent update check result.
+    /// Isolating the cache on an actor removes the need for `nonisolated(unsafe)`
+    /// statics and satisfies Swift 6 strict-concurrency checking.
+    private actor Cache {
+        private var result: UpdateInfo?
+        private var fetched = false
 
-    static func resetCache() {
-        cacheQueue.sync {
-            cachedResult = nil
-            cacheFetched = false
+        func get() -> UpdateInfo? {
+            fetched ? result : nil
         }
+
+        func set(_ value: UpdateInfo) {
+            result = value
+            fetched = true
+        }
+
+        func reset() {
+            result = nil
+            fetched = false
+        }
+    }
+
+    private static let cache = Cache()
+
+    static func resetCache() async {
+        await cache.reset()
     }
 
     // MARK: - Public API
@@ -120,6 +137,13 @@ public enum UpdateChecker {
         return true
     }
 
+    private enum UpdateCheckError: Error {
+        case skipped
+        case badResponse
+        case invalidPayload
+        case invalidCurrentVersion(latestTag: String)
+    }
+
     /// Fetch latest release info. Returns `nil` when opted out. Cached per process.
     public static func checkForUpdate(
         currentVersion: String = TuneVersion.current,
@@ -127,62 +151,57 @@ public enum UpdateChecker {
     ) async -> UpdateInfo? {
         guard isUpdateCheckEnabled() else { return nil }
 
-        let cached = cacheQueue.sync { () -> UpdateInfo? in
-            if cacheFetched { return cachedResult }
-            return nil
-        }
-        if let cached { return cached }
+        if let cached = await cache.get() { return cached }
 
-        defer {
-            cacheQueue.sync { cacheFetched = true }
-        }
-
-        guard let url = URL(string: releaseURL) else { return nil }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = timeoutInterval
-        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-        request.setValue("symtune/\(TuneVersion.current)", forHTTPHeaderField: "User-Agent")
-
+        let result: UpdateInfo
         do {
+            guard let url = URL(string: releaseURL) else {
+                throw UpdateCheckError.skipped
+            }
+
+            var request = URLRequest(url: url)
+            request.timeoutInterval = timeoutInterval
+            request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+            request.setValue("symtune/\(TuneVersion.current)", forHTTPHeaderField: "User-Agent")
+
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200
             else {
-                let result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
-                cacheQueue.sync { cachedResult = result }
-                return result
+                throw UpdateCheckError.badResponse
             }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tagName = json["tag_name"] as? String,
                   let latestVersion = SemVer.parse(tagName)
             else {
-                let result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
-                cacheQueue.sync { cachedResult = result }
-                return result
+                throw UpdateCheckError.invalidPayload
             }
 
             guard let currentSemVer = SemVer.parse("v\(currentVersion)") else {
-                let result = UpdateInfo(updateAvailable: false, latestVersion: tagName, downloadURL: nil)
-                cacheQueue.sync { cachedResult = result }
-                return result
+                throw UpdateCheckError.invalidCurrentVersion(latestTag: tagName)
             }
 
             let downloadURL = (json["html_url"] as? String)
             let updateAvailable = latestVersion > currentSemVer
 
-            let result = UpdateInfo(
+            result = UpdateInfo(
                 updateAvailable: updateAvailable,
                 latestVersion: tagName,
                 downloadURL: downloadURL
             )
-            cacheQueue.sync { cachedResult = result }
-            return result
+        } catch let error as UpdateCheckError {
+            switch error {
+            case .invalidCurrentVersion(let latestTag):
+                result = UpdateInfo(updateAvailable: false, latestVersion: latestTag, downloadURL: nil)
+            default:
+                result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
+            }
         } catch {
-            let result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
-            cacheQueue.sync { cachedResult = result }
-            return result
+            result = UpdateInfo(updateAvailable: false, latestVersion: currentVersion, downloadURL: nil)
         }
+
+        await cache.set(result)
+        return result
     }
 }
