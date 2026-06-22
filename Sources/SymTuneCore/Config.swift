@@ -155,6 +155,21 @@ public struct TuneConfig: Equatable, Sendable {
                 "SYMTUNE_DEFAULT_PROFILE", "default")
         )
 
+        // Clamp user-defined bounds to the non-negotiable SafetyPolicy hard limits.
+        config = TuneConfig(
+            extendedBrightnessMin: max(config.extendedBrightnessMin, SafetyPolicy.extendedBrightnessMin),
+            extendedBrightnessMax: min(config.extendedBrightnessMax, SafetyPolicy.extendedBrightnessMax),
+            dimMin: max(config.dimMin, SafetyPolicy.dimMin),
+            dimMax: min(config.dimMax, SafetyPolicy.dimMax),
+            brightnessMin: max(config.brightnessMin, SafetyPolicy.brightnessMin),
+            brightnessMax: min(config.brightnessMax, SafetyPolicy.brightnessMax),
+            fanFractionMin: max(config.fanFractionMin, SafetyPolicy.fanFractionMin),
+            fanFractionMax: min(config.fanFractionMax, SafetyPolicy.fanFractionMax),
+            chargeLimitMin: max(config.chargeLimitMin, SafetyPolicy.chargeLimitMin),
+            chargeLimitMax: min(config.chargeLimitMax, SafetyPolicy.chargeLimitMax),
+            defaultProfile: config.defaultProfile
+        )
+
         // Validate min < max for each range; fall back to defaults on inversion.
         let rangesValid =
             config.extendedBrightnessMin < config.extendedBrightnessMax

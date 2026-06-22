@@ -410,4 +410,51 @@ final class TuneConfigTests: XCTestCase {
         XCTAssertEqual(config.dimMin, SafetyPolicy.dimMin)
         XCTAssertEqual(config.dimMax, SafetyPolicy.dimMax)
     }
+
+    // MARK: - SafetyPolicy clamping
+
+    func testDimMinClampedToSafetyPolicy() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_DIM_MIN": "0.0"]
+        )
+        XCTAssertEqual(config.dimMin, SafetyPolicy.dimMin)
+        XCTAssertGreaterThan(config.dimMin, 0.0)
+    }
+
+    func testFanMaxClampedToSafetyPolicy() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_FAN_MAX": "2.0"]
+        )
+        XCTAssertEqual(config.fanFractionMax, SafetyPolicy.fanFractionMax)
+    }
+
+    func testChargeMaxClampedToSafetyPolicy() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_CHARGE_MAX": "150"]
+        )
+        XCTAssertEqual(config.chargeLimitMax, SafetyPolicy.chargeLimitMax)
+    }
+
+    func testExtendedBrightnessMaxClampedToSafetyPolicy() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_EXTBRIGHT_MAX": "2.0"]
+        )
+        XCTAssertEqual(config.extendedBrightnessMax, SafetyPolicy.extendedBrightnessMax)
+    }
+
+    func testSafetyPolicyClampPreservesValidCustomRange() {
+        let config = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: [
+                "SYMTUNE_DIM_MIN": "0.2",
+                "SYMTUNE_DIM_MAX": "0.9",
+            ]
+        )
+        XCTAssertEqual(config.dimMin, 0.2, accuracy: 0.001)
+        XCTAssertEqual(config.dimMax, 0.9, accuracy: 0.001)
+    }
 }

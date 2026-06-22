@@ -40,7 +40,7 @@ WRITE COMMANDS (planned / Pro — see docs/roadmap.md)
 AGENTS
   serve                  Run the MCP server over stdio.
 
-  version | help
+  version [--check-for-updates] | help
 """
 
 func emitJSON<T: Encodable>(_ value: T) throws {
@@ -58,6 +58,22 @@ func emit(_ line: String) {
 
 func emitErr(_ line: String) {
     FileHandle.standardError.write(Data((line + "\n").utf8))
+}
+
+func runVersion(checkForUpdates: Bool) {
+    emit("symtune \(TuneVersion.current)")
+    guard checkForUpdates else { return }
+    let semaphore = DispatchSemaphore(value: 0)
+    Task.detached {
+        if let info = await UpdateChecker.checkForUpdate(),
+           info.updateAvailable,
+           let url = info.downloadURL
+        {
+            emit("A new version (\(info.latestVersion)) is available. Download: \(url)")
+        }
+        semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 5)
 }
 
 /// Pull the first parseable Double out of the remaining args (accepts an
@@ -209,18 +225,7 @@ func runMain() -> Int32 {
         case "battery-limit":
             try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
         case "version", "--version", "-v":
-            emit("symtune \(TuneVersion.current)")
-            let semaphore = DispatchSemaphore(value: 0)
-            Task.detached {
-                if let info = await UpdateChecker.checkForUpdate(),
-                   info.updateAvailable,
-                   let url = info.downloadURL
-                {
-                    emit("A new version (\(info.latestVersion)) is available. Download: \(url)")
-                }
-                semaphore.signal()
-            }
-            _ = semaphore.wait(timeout: .now() + 5)
+            runVersion(checkForUpdates: rest.contains("--check-for-updates"))
         case "help", "--help", "-h":
             emit(usage)
         default:

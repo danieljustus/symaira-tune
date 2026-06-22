@@ -7,17 +7,7 @@ public final class DimOverlay: @unchecked Sendable {
     public init() {}
 
     deinit {
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                for (_, window) in windows { window.close() }
-            }
-        } else {
-            DispatchQueue.main.sync { [windows] in
-                MainActor.assumeIsolated {
-                    for (_, window) in windows { window.close() }
-                }
-            }
-        }
+        removeAllOverlays()
     }
 
     public func applyDim(_ opacity: Float) {
@@ -54,7 +44,7 @@ public final class DimOverlay: @unchecked Sendable {
 
                 if let existing = windows[displayID] {
                     existing.alphaValue = overlayAlpha
-                    return
+                    continue
                 }
 
                 let window = NSWindow(
