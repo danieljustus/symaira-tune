@@ -4,9 +4,9 @@
 /// signal that drives extended/"brighter-than-100%" brightness on built-in XDR
 /// and other HDR-capable panels.
 ///
-/// v0.1 is read-only. Actually *applying* extended brightness needs an on-screen
-/// EDR layer (a windowed/menu-bar app context), so the apply path is stubbed in
-/// `TuneController` and lands with the app target in v0.2.
+/// v0.1 provides both reads and writes: extended brightness is applied via an
+/// on-screen EDR layer in `EDROverlayService`, invoked from `TuneController`.
+/// v0.2 will add menu-bar persistence and deeper app-target integration.
 public struct DisplayService: Sendable {
     public init() {}
 
