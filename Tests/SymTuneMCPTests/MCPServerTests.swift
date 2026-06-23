@@ -79,3 +79,54 @@ final class MCPServerToolSchemaTests: XCTestCase {
         XCTAssertEqual(maximum, SafetyPolicy.chargeLimitMax)
     }
 }
+
+// MARK: - MCPTransport bounds
+
+final class MCPTransportBoundsTests: XCTestCase {
+
+    func testRejectsOversizedPayload() throws {
+        let pipe = Pipe()
+        let header = "Content-Length: 9000000\r\n\r\n"
+        pipe.fileHandleForWriting.write(header.data(using: .utf8)!)
+        pipe.fileHandleForWriting.closeFile()
+
+        let transport = MCPTransport(input: pipe.fileHandleForReading, output: .nullDevice)
+        XCTAssertThrowsError(try transport.readMessage()) { error in
+            guard case TuneError.failed(let message) = error else {
+                return XCTFail("Expected .failed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("exceeds maximum allowed"), "Unexpected message: \(message)")
+        }
+    }
+
+    func testRejectsHeaderWithoutTerminator() throws {
+        let pipe = Pipe()
+        let longHeader = String(repeating: "X-Header: value\r\n", count: 500)
+        pipe.fileHandleForWriting.write(longHeader.data(using: .utf8)!)
+        pipe.fileHandleForWriting.closeFile()
+
+        let transport = MCPTransport(input: pipe.fileHandleForReading, output: .nullDevice)
+        XCTAssertThrowsError(try transport.readMessage()) { error in
+            guard case TuneError.failed(let message) = error else {
+                return XCTFail("Expected .failed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("without terminator"), "Unexpected message: \(message)")
+        }
+    }
+
+    func testAcceptsPayloadAtLimit() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("symtune-mcp-test-\(UUID().uuidString).txt")
+        let bodySize = 1024
+        let body = String(repeating: "{", count: bodySize)
+        let header = "Content-Length: \(body.count)\r\n\r\n"
+        let payload = header + body
+        try payload.write(to: tmp, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let input = try FileHandle(forReadingFrom: tmp)
+        let transport = MCPTransport(input: input, output: .nullDevice)
+        let data = try transport.readMessage()
+        XCTAssertEqual(data?.count, body.count)
+    }
+}
