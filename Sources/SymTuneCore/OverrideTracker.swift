@@ -74,7 +74,7 @@ final class OverrideTracker: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard _originalEDRHeadroom == nil else { return }
-        guard let builtin = try? DisplayHelpers.builtinDisplayIDOrNil() else { return }
+        guard let builtin = DisplayHelpers.builtinDisplayIDOrNil() else { return }
         _originalEDRHeadroom = service.systemEDRHeadroom(for: builtin)
         if _originalEDRHeadroom != nil {
             _hasOverrides = true
@@ -107,7 +107,7 @@ final class OverrideTracker: @unchecked Sendable {
         // Restore original EDR headroom before removing the overlay so the display
         // returns to its pre-symtune level rather than falling back to SDR.
         if let edrHeadroom,
-           let builtin = DisplayHelpers.builtinDisplayIDOrNil() {
+           DisplayHelpers.builtinDisplayIDOrNil() != nil {
             try? edrOverlay?.applyExtendedBrightness(edrHeadroom)
         }
         edrOverlay?.removeAllOverlays()
