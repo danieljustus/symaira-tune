@@ -41,6 +41,8 @@ AGENTS
   serve                  Run the MCP server over stdio.
 
   version [--check-for-updates] | help
+
+  --check-for-updates    Check GitHub for a newer version (non-blocking, writes notices to stderr).
 """
 
 func emitJSON<T: Encodable>(_ value: T) throws {
@@ -63,17 +65,16 @@ func emitErr(_ line: String) {
 func runVersion(checkForUpdates: Bool) {
     emit("symtune \(TuneVersion.current)")
     guard checkForUpdates else { return }
-    let semaphore = DispatchSemaphore(value: 0)
+    // Fire-and-forget update check: never block the CLI, emit notices to stderr
+    // so scripts parsing stdout still get clean version output.
     Task.detached {
         if let info = await UpdateChecker.checkForUpdate(),
            info.updateAvailable,
            let url = info.downloadURL
         {
-            emit("A new version (\(info.latestVersion)) is available. Download: \(url)")
+            emitErr("A new version (\(info.latestVersion)) is available. Download: \(url)")
         }
-        semaphore.signal()
     }
-    _ = semaphore.wait(timeout: .now() + 5)
 }
 
 /// Pull the first parseable Double out of the remaining args (accepts an
@@ -164,6 +165,16 @@ func runProfile(_ args: [String], controller: TuneController) throws {
     }
 }
 
+private func runBrightness(_ rest: [String], controller: TuneController) throws {
+    if rest.first == "get" || rest.isEmpty {
+        let brightness = try controller.getBuiltinBrightness()
+        try emitJSON(BrightnessReadback(brightness: brightness))
+    } else {
+        try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
+        try emitJSON(ApplyResult(applied: true))
+    }
+}
+
 func runMain() -> Int32 {
     guard let command = CommandLine.arguments.dropFirst().first else {
         emit(usage)
@@ -189,13 +200,7 @@ func runMain() -> Int32 {
         case "awake":
             try runAwake(rest, controller: controller)
         case "brightness":
-            if rest.first == "get" || rest.isEmpty {
-                let brightness = try controller.getBuiltinBrightness()
-                try emitJSON(BrightnessReadback(brightness: brightness))
-            } else {
-                try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
-                try emitJSON(ApplyResult(applied: true))
-            }
+            try runBrightness(rest, controller: controller)
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
             try emitJSON(ApplyResult(applied: true))
@@ -238,8 +243,43 @@ func runMain() -> Int32 {
         emitErr("symtune: \(error.description)")
         return error.exitCode
     } catch {
-        emitErr("symtune: \(error.localizedDescription)")
+        let report: ErrorReport
+        if FileHandle.standardOutput.isTty {
+            report = ErrorReport(
+                error: "\(type(of: error))",
+                message: String(reflecting: error),
+                localized: error.localizedDescription
+            )
+        } else {
+            report = ErrorReport(
+                error: "\(type(of: error))",
+                message: String(reflecting: error),
+                localized: error.localizedDescription
+            )
+        }
+        if let json = try? JSONEncoder().encode(report),
+           let string = String(data: json, encoding: .utf8) {
+            emitErr("symtune: \(string)")
+        } else {
+            emitErr("symtune: \(String(reflecting: error))")
+        }
         return ExitCode.error.rawValue
+    }
+}
+
+struct ErrorReport: Codable {
+    let error: String
+    let message: String
+    let localized: String
+}
+
+extension FileHandle {
+    fileprivate var isTty: Bool {
+        isStandardOutput() && isatty(fileno(stdout)) == 1
+    }
+
+    fileprivate func isStandardOutput() -> Bool {
+        self === FileHandle.standardOutput
     }
 }
 

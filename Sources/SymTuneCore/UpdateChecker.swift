@@ -77,7 +77,7 @@ public enum UpdateChecker {
     private static let repoOwner = "danieljustus"
     private static let repoName = "symaira-tune"
     private static let releaseURL = "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest"
-    private static let timeoutInterval: TimeInterval = 5
+    private static let timeoutInterval: TimeInterval = 1
     private static let envOptOutKey = "SYMTUNE_CHECK_UPDATES"
     private static let configKey = "check_updates"
 
