@@ -25,7 +25,12 @@ struct MCPTransport {
 
     /// Read the next framed JSON-RPC message. Returns `nil` at clean EOF.
     func readMessage() throws -> Data? {
-        guard let headerData = try readHeader(), !headerData.isEmpty else { return nil }
+        guard let rawHeader = try readHeader(), !rawHeader.isEmpty else { return nil }
+        guard let terminatorRange = rawHeader.range(of: Data([13, 10, 13, 10])) else {
+            throw TuneError.failed("MCP header terminator not found.")
+        }
+        let headerData = rawHeader[rawHeader.startIndex..<terminatorRange.lowerBound]
+        let trailingBody = rawHeader[terminatorRange.upperBound...]
         guard let headerString = String(data: headerData, encoding: .utf8) else {
             throw TuneError.failed("Failed to decode MCP header.")
         }
@@ -67,8 +72,8 @@ struct MCPTransport {
         throw TuneError.failed("MCP header exceeded \(maxHeaderSize) bytes without terminator.")
     }
 
-    private func readBytes(count: Int) throws -> Data {
-        var data = Data()
+    private func readBytes(count: Int, initial: Data = Data()) throws -> Data {
+        var data = initial
         while data.count < count {
             guard let chunk = try input.read(upToCount: count - data.count), !chunk.isEmpty else {
                 throw TuneError.failed("Unexpected end of input while reading MCP payload.")
