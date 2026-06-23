@@ -7,7 +7,6 @@ public struct TuneProfile: Codable, Sendable, Identifiable, Hashable {
     public var brightness: Double?
     public var dim: Double?
     public var warmth: Double?
-    public var awake: Bool?
     public var version: String?
     public let createdAt: Date
     public var updatedAt: Date
@@ -19,7 +18,6 @@ public struct TuneProfile: Codable, Sendable, Identifiable, Hashable {
         brightness: Double? = nil,
         dim: Double? = nil,
         warmth: Double? = nil,
-        awake: Bool? = nil,
         version: String? = TuneVersion.current,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -31,7 +29,6 @@ public struct TuneProfile: Codable, Sendable, Identifiable, Hashable {
         self.brightness = brightness
         self.dim = dim
         self.warmth = warmth
-        self.awake = awake
         self.version = version
         self.createdAt = createdAt
         self.updatedAt = updatedAt
