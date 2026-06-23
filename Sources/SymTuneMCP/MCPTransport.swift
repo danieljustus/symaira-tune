@@ -7,6 +7,8 @@ struct MCPTransport {
     private let input: FileHandle
     private let output: FileHandle
     private let maxHeaderSize = 8192
+    /// Maximum MCP payload body size (8 MiB). Headers must declare a body no larger than this.
+    private let maxPayloadSize = 8 * 1024 * 1024
 
     init(input: FileHandle = .standardInput, output: FileHandle = .standardOutput) {
         self.input = input
@@ -28,6 +30,9 @@ struct MCPTransport {
         guard let length = Int(value) else {
             throw TuneError.failed("Invalid Content-Length header.")
         }
+        guard length <= maxPayloadSize else {
+            throw TuneError.failed("MCP payload size \(length) exceeds maximum allowed \(maxPayloadSize).")
+        }
         return try readBytes(count: length)
     }
 
@@ -46,7 +51,7 @@ struct MCPTransport {
             let remaining = maxHeaderSize - data.count
             guard remaining > 0, let chunk = try input.read(upToCount: remaining), !chunk.isEmpty else {
                 if data.count >= maxHeaderSize {
-                    FileHandle.standardError.write("[mcp] Header exceeded \(maxHeaderSize) bytes — possible protocol error.\n".data(using: .utf8) ?? Data())
+                    throw TuneError.failed("MCP header exceeded \(maxHeaderSize) bytes without terminator.")
                 }
                 return data.isEmpty ? nil : data
             }
