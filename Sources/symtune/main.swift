@@ -165,6 +165,16 @@ func runProfile(_ args: [String], controller: TuneController) throws {
     }
 }
 
+private func runBrightness(_ rest: [String], controller: TuneController) throws {
+    if rest.first == "get" || rest.isEmpty {
+        let brightness = try controller.getBuiltinBrightness()
+        try emitJSON(BrightnessReadback(brightness: brightness))
+    } else {
+        try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
+        try emitJSON(ApplyResult(applied: true))
+    }
+}
+
 func runMain() -> Int32 {
     guard let command = CommandLine.arguments.dropFirst().first else {
         emit(usage)
@@ -190,13 +200,7 @@ func runMain() -> Int32 {
         case "awake":
             try runAwake(rest, controller: controller)
         case "brightness":
-            if rest.first == "get" || rest.isEmpty {
-                let brightness = try controller.getBuiltinBrightness()
-                try emitJSON(BrightnessReadback(brightness: brightness))
-            } else {
-                try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
-                try emitJSON(ApplyResult(applied: true))
-            }
+            try runBrightness(rest, controller: controller)
         case "extbright":
             try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
             try emitJSON(ApplyResult(applied: true))
