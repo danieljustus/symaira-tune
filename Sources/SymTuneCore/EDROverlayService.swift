@@ -141,6 +141,11 @@ private final class EDROverlay: @unchecked Sendable {
     // MARK: - Private
 
     private func setupWindow(screenFrame: NSRect) {
+        // bgra10Unorm is required for EDR on modern macOS; guard the conversion
+        // so an unknown raw value cannot crash the process on a future OS/SDK.
+        guard let pixelFormat = MTLPixelFormat(rawValue: 80) else {
+            fatalError("Unsupported Metal pixel format raw value 80 for EDR overlay.")
+        }
         DispatchQueue.main.sync { [self] in
             MainActor.assumeIsolated {
                 let window = NSWindow(
@@ -153,7 +158,7 @@ private final class EDROverlay: @unchecked Sendable {
                 // Create a CAMetalLayer as the backing layer.
                 let metalLayer = CAMetalLayer()
                 metalLayer.frame = CGRect(origin: .zero, size: screenFrame.size)
-                metalLayer.pixelFormat = MTLPixelFormat(rawValue: 80)!  // bgra10Unorm
+                metalLayer.pixelFormat = pixelFormat
                 metalLayer.wantsExtendedDynamicRangeContent = true
                 metalLayer.contentsFormat = .RGBA16Float
                 metalLayer.contentsScale = window.backingScaleFactor
