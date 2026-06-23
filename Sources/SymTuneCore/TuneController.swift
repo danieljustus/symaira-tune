@@ -128,7 +128,9 @@ public final class TuneController: Sendable {
 
     public func applyExtendedBrightness(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.extendedBrightnessMin, config.extendedBrightnessMax)
-        // Save original for restore-on-exit (first override only).
+        // Capture the original system headroom before the first override so restore-on-exit
+        // can return the display to its pre-symtune EDR level instead of SDR (1.0).
+        restoreTracker.saveOriginalEDRHeadroom(edrOverlay)
         restoreTracker.saveEDRBrightness(clamped)
         try edrOverlay.applyExtendedBrightness(clamped)
     }

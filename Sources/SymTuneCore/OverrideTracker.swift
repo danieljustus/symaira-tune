@@ -10,6 +10,7 @@ final class OverrideTracker: @unchecked Sendable {
     private var _originalWarmth: Float?
     private var _appliedWarmth: Float = 0
     private var _originalEDRBrightness: Double?
+    private var _originalEDRHeadroom: Double?
     private var _hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
     private var displayService: DisplayService?
@@ -68,14 +69,28 @@ final class OverrideTracker: @unchecked Sendable {
         }
     }
 
+    /// Capture the system's current EDR headroom before the first override so it can be restored on exit.
+    func saveOriginalEDRHeadroom(_ service: EDROverlayService) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard _originalEDRHeadroom == nil else { return }
+        guard let builtin = try? DisplayHelpers.builtinDisplayIDOrNil() else { return }
+        _originalEDRHeadroom = service.systemEDRHeadroom(for: builtin)
+        if _originalEDRHeadroom != nil {
+            _hasOverrides = true
+        }
+    }
+
     func restoreAll() {
         lock.lock()
         let hasOverrides = _hasOverrides
         let brightness = _originalBrightness
         let warmth = _originalWarmth
+        let edrHeadroom = _originalEDRHeadroom
         _originalBrightness = nil
         _originalWarmth = nil
         _originalEDRBrightness = nil
+        _originalEDRHeadroom = nil
         _hasOverrides = false
         lock.unlock()
 
@@ -89,6 +104,12 @@ final class OverrideTracker: @unchecked Sendable {
             CGDisplayRestoreColorSyncSettings()
         }
 
+        // Restore original EDR headroom before removing the overlay so the display
+        // returns to its pre-symtune level rather than falling back to SDR.
+        if let edrHeadroom,
+           let builtin = DisplayHelpers.builtinDisplayIDOrNil() {
+            try? edrOverlay?.applyExtendedBrightness(edrHeadroom)
+        }
         edrOverlay?.removeAllOverlays()
     }
 
