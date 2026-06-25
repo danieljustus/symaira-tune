@@ -36,7 +36,7 @@ jobs:
         with:
           xcode-version: '26.0'
       - name: Cache SwiftPM build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .build
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
