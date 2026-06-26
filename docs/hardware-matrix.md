@@ -22,7 +22,7 @@ what's available on your machine.
 
 ### Tier and status legend
 
-- **Core tier**. Ships in the MIT-licensed binary. No extra installation.
+- **Core tier**. Ships in the Apache-2.0 licensed binary. No extra installation.
 - **Pro tier**. Requires a signed, notarized privileged helper installed separately.
 - **v0.1**. Available now.
 - **v0.2**. Planned for the next release cycle (app target needed for display
@@ -191,7 +191,7 @@ need root or any entitlement beyond the standard AppKit sandbox exemption.
 The privileged helper is a separate, signed, notarized tool installed via
 `SMAppService`. It runs as a Launch Daemon with the `com.apple.security.smc`
 and `com.apple.security.iokit-user-client-class` entitlements. The helper is
-never bundled in the MIT binary. symtune communicates with it over XPC.
+never bundled in the Apache-2.0 binary. symtune communicates with it over XPC.
 
 `symtune permissions` reports whether the helper is installed and its current
 status.

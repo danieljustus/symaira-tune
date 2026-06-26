@@ -51,7 +51,7 @@ The only target with logic or IOKit access.
 
 ## Capability tiers
 
-Every capability is tagged `core` (this MIT binary) or `pro` (needs the
+Every capability is tagged `core` (this Apache-2.0 binary) or `pro` (needs the
 privileged SMC helper). `doctor` reports `available` + `tier` per capability so
 callers never guess. Honesty rule: unbuilt → `.notImplemented`; hardware/tier
 gated → `.unsupported`.

@@ -2,7 +2,7 @@
 
 Native macOS tuning tool (Swift 6 toolchain, AppKit/IOKit). CLI **and** MCP
 server: read the Mac's thermal/power/display state, and (incrementally) tune
-brightness, fans, and battery charging. Public repo, MIT-licensed. Part of the
+brightness, fans, and battery charging. Public repo, Apache-2.0 licensed. Part of the
 Symaira family — see `../AGENTS.md` / `../ECOSYSTEM.md` for cross-repo
 conventions and `docs/commercial-boundary.md` for the public/pro boundary.
 

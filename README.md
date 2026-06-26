@@ -9,7 +9,7 @@ software dimming, fan curves, and battery charge limits. Everything is exposed
 the machine — e.g. "this render is running hot, ramp the fans and dim the screen."
 
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
-(MIT core + optional Pro tier).
+(Apache-2.0 core + optional Pro tier).
 
 > **Status: v0.1 — core reads + writes.** Built-in brightness, extended/EDR
 > brightness, software dim, color temperature warmth, profile management, and
@@ -104,10 +104,10 @@ thermal protection; overridden values are restored when the process exits. See
 
 - [docs/architecture.md](docs/architecture.md) — components & data flow
 - [docs/roadmap.md](docs/roadmap.md) — built vs planned, by version/tier
-- [docs/commercial-boundary.md](docs/commercial-boundary.md) — MIT core vs Pro helper
+- [docs/commercial-boundary.md](docs/commercial-boundary.md) — Apache-2.0 core vs Pro helper
 - [AGENTS.md](AGENTS.md) — contributor/agent guidance
 
 ## License
 
-MIT © 2026 Daniel Justus. Inspired by Macs Fan Control and BrightIntosh (no code
+Apache-2.0 © 2026 Daniel Justus. Inspired by Macs Fan Control and BrightIntosh (no code
 from either).

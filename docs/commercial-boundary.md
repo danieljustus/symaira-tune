@@ -1,9 +1,9 @@
 # Commercial Boundary — Core vs Pro
 
-`symaira-tune` follows the ecosystem pattern: an open **MIT core** plus an
+`symaira-tune` follows the ecosystem pattern: an open **Apache-2.0 core** plus an
 optional **Pro** layer for the capabilities that need privileged hardware access.
 
-## Core (this repo, MIT)
+## Core (this repo, Apache-2.0)
 
 Everything that is unprivileged or app-local:
 

@@ -120,7 +120,7 @@ public struct ProfileList: Codable, Sendable {
 public struct Capability: Codable, Sendable {
     public let id: String
     public let available: Bool
-    /// `core` (MIT, this binary) or `pro` (needs the privileged helper).
+    /// `core` (Apache-2.0, this binary) or `pro` (needs the privileged helper).
     public let tier: String
     public let detail: String
 }
