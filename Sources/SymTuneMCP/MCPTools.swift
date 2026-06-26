@@ -3,7 +3,7 @@ import SymTuneCore
 
 // MARK: - Read-only capability / sensor tools
 
-struct CapabilitiesTool: MCPTool {
+struct CapabilitiesTool: MCPTool, @unchecked Sendable {
     let name = "get_capabilities"
     let description = "Report tool version, host info, and which tuning capabilities are available."
     let inputSchema: [String: Any] = [:]
@@ -13,7 +13,7 @@ struct CapabilitiesTool: MCPTool {
     }
 }
 
-struct SensorsTool: MCPTool {
+struct SensorsTool: MCPTool, @unchecked Sendable {
     let name = "get_sensors"
     let description = "Read thermal pressure and (when available) temperatures and fan RPM."
     let inputSchema: [String: Any] = [:]
@@ -23,7 +23,7 @@ struct SensorsTool: MCPTool {
     }
 }
 
-struct BatteryTool: MCPTool {
+struct BatteryTool: MCPTool, @unchecked Sendable {
     let name = "get_battery"
     let description = "Read battery health: charge %, cycle count, capacity, condition."
     let inputSchema: [String: Any] = [:]
@@ -33,7 +33,7 @@ struct BatteryTool: MCPTool {
     }
 }
 
-struct ListDisplaysTool: MCPTool {
+struct ListDisplaysTool: MCPTool, @unchecked Sendable {
     let name = "list_displays"
     let description = "List displays with EDR headroom (extended-brightness capability)."
     let inputSchema: [String: Any] = [:]
@@ -50,7 +50,7 @@ struct KeepAwakeState: Encodable {
     let preventDisplaySleep: Bool
 }
 
-struct KeepAwakeTool: MCPTool {
+struct KeepAwakeTool: MCPTool, @unchecked Sendable {
     let name = "keep_awake"
     let description = "Prevent the Mac from idle-sleeping while the server runs."
     let inputSchema: [String: Any] = [
@@ -82,7 +82,7 @@ struct KeepAwakeTool: MCPTool {
 
 // MARK: - Brightness / warmth / dim tools
 
-struct GetBrightnessTool: MCPTool {
+struct GetBrightnessTool: MCPTool, @unchecked Sendable {
     let name = "get_brightness"
     let description = "Read the built-in display brightness (0.0–1.0)."
     let inputSchema: [String: Any] = [:]
@@ -92,7 +92,7 @@ struct GetBrightnessTool: MCPTool {
     }
 }
 
-struct SetBrightnessTool: MCPTool {
+struct SetBrightnessTool: MCPTool, @unchecked Sendable {
     let name = "set_brightness"
     let description = "Set built-in display brightness (0.0–1.0)."
     let inputSchema: [String: Any] = numberProperty(name: "value", minimum: 0.0, maximum: 1.0)
@@ -103,7 +103,7 @@ struct SetBrightnessTool: MCPTool {
     }
 }
 
-struct SetExtendedBrightnessTool: MCPTool {
+struct SetExtendedBrightnessTool: MCPTool, @unchecked Sendable {
     let name = "set_extended_brightness"
     let description = "Set extended/EDR brightness multiplier (1.0–1.6) via on-screen EDR layer."
     let inputSchema: [String: Any] = numberProperty(
@@ -118,7 +118,7 @@ struct SetExtendedBrightnessTool: MCPTool {
     }
 }
 
-struct SetWarmthTool: MCPTool {
+struct SetWarmthTool: MCPTool, @unchecked Sendable {
     let name = "set_warmth"
     let description = "Set color temperature warmth (0.0=neutral, 1.0=max warm). Uses gamma LUT."
     let inputSchema: [String: Any] = numberProperty(name: "value", minimum: 0.0, maximum: 1.0)
@@ -129,7 +129,7 @@ struct SetWarmthTool: MCPTool {
     }
 }
 
-struct ResetWarmthTool: MCPTool {
+struct ResetWarmthTool: MCPTool, @unchecked Sendable {
     let name = "reset_warmth"
     let description = "Reset color temperature warmth to neutral (identity gamma)."
     let inputSchema: [String: Any] = [:]
@@ -140,7 +140,7 @@ struct ResetWarmthTool: MCPTool {
     }
 }
 
-struct SetDimTool: MCPTool {
+struct SetDimTool: MCPTool, @unchecked Sendable {
     let name = "set_dim"
     let description = "Set software dim overlay (0.15=max dim, 1.0=no dim)."
     let inputSchema: [String: Any] = numberProperty(
@@ -155,7 +155,7 @@ struct SetDimTool: MCPTool {
     }
 }
 
-struct ResetDimTool: MCPTool {
+struct ResetDimTool: MCPTool, @unchecked Sendable {
     let name = "reset_dim"
     let description = "Remove all dim overlays."
     let inputSchema: [String: Any] = [:]
@@ -166,7 +166,7 @@ struct ResetDimTool: MCPTool {
     }
 }
 
-struct RestoreTool: MCPTool {
+struct RestoreTool: MCPTool, @unchecked Sendable {
     let name = "restore"
     let description = "Restore all overrides to system defaults."
     let inputSchema: [String: Any] = [:]
@@ -179,7 +179,7 @@ struct RestoreTool: MCPTool {
 
 // MARK: - Profile tools
 
-struct SaveProfileTool: MCPTool {
+struct SaveProfileTool: MCPTool, @unchecked Sendable {
     let name = "save_profile"
     let description = "Save current settings as a named profile."
     let inputSchema: [String: Any] = [
@@ -204,7 +204,7 @@ struct SaveProfileTool: MCPTool {
     }
 }
 
-struct LoadProfileTool: MCPTool {
+struct LoadProfileTool: MCPTool, @unchecked Sendable {
     let name = "load_profile"
     let description = "Apply a saved profile by name."
     let inputSchema: [String: Any] = [
@@ -223,7 +223,7 @@ struct LoadProfileTool: MCPTool {
     }
 }
 
-struct ListProfilesTool: MCPTool {
+struct ListProfilesTool: MCPTool, @unchecked Sendable {
     let name = "list_profiles"
     let description = "List all saved profiles."
     let inputSchema: [String: Any] = [:]
@@ -233,7 +233,7 @@ struct ListProfilesTool: MCPTool {
     }
 }
 
-struct DeleteProfileTool: MCPTool {
+struct DeleteProfileTool: MCPTool, @unchecked Sendable {
     let name = "delete_profile"
     let description = "Delete a saved profile by name."
     let inputSchema: [String: Any] = [
@@ -253,7 +253,7 @@ struct DeleteProfileTool: MCPTool {
 
 // MARK: - Pro tools (require privileged helper)
 
-struct SetFanTool: MCPTool {
+struct SetFanTool: MCPTool, @unchecked Sendable {
     let name = "set_fan"
     let description = "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper."
     let inputSchema: [String: Any] = [
@@ -270,7 +270,7 @@ struct SetFanTool: MCPTool {
     }
 }
 
-struct SetChargeLimitTool: MCPTool {
+struct SetChargeLimitTool: MCPTool, @unchecked Sendable {
     let name = "set_charge_limit"
     let description = "Hold battery charge at a target percent (50–100). Pro — requires the privileged helper."
     let inputSchema: [String: Any] = [

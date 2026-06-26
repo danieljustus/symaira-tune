@@ -36,5 +36,5 @@ let package = Package(
             dependencies: ["SymTuneMCP"]
         ),
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )
