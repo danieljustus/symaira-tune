@@ -147,7 +147,7 @@ public enum UpdateChecker {
     /// Fetch latest release info. Returns `nil` when opted out. Cached per process.
     public static func checkForUpdate(
         currentVersion: String = TuneVersion.current,
-        session: URLSession = .shared
+        networkService: NetworkServiceProtocol = URLSessionNetworkService()
     ) async -> UpdateInfo? {
         guard isUpdateCheckEnabled() else { return nil }
 
@@ -159,12 +159,7 @@ public enum UpdateChecker {
                 throw UpdateCheckError.skipped
             }
 
-            var request = URLRequest(url: url)
-            request.timeoutInterval = timeoutInterval
-            request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-            request.setValue("symtune/\(TuneVersion.current)", forHTTPHeaderField: "User-Agent")
-
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await networkService.fetchData(from: url)
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200
             else {
