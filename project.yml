@@ -15,13 +15,13 @@ targets:
     type: application
     platform: macOS
     sources:
-      - docs/planned/SymairaTune
+      - path: Sources/SymTuneApp
     dependencies:
       - package: SymTuneCore
         product: SymTuneCore
     settings:
       base:
-        INFOPLIST_FILE: docs/planned/SymairaTune/Info.plist
+        INFOPLIST_FILE: Sources/SymTuneApp/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.symaira.tune
         CODE_SIGN_STYLE: Automatic
         MACOSX_DEPLOYMENT_TARGET: "14.0"
