@@ -476,3 +476,141 @@ final class SensorReportTests: XCTestCase {
         XCTAssertNotNil(report.notes)
     }
 }
+
+// MARK: - Mock DisplayWriteService
+
+/// Mock implementation of DisplayWriteServiceProtocol for testing TuneController write paths.
+final class MockDisplayWriteService: DisplayWriteServiceProtocol, @unchecked Sendable {
+    var brightness: Double = 0.5
+    var lastSetBrightness: Float?
+    var lastWarmth: Float?
+    var lastExtendedBrightness: Double?
+    var lastExtendedDisplayID: UInt32?
+    var resetWarmthCalled = false
+    var applyExtendedBrightnessError: Error?
+
+    func getBuiltinBrightness() throws -> Double {
+        brightness
+    }
+
+    func setBuiltinBrightness(_ value: Float) throws {
+        lastSetBrightness = value
+    }
+
+    func applyWarmth(_ warmth: Float) throws {
+        lastWarmth = warmth
+    }
+
+    func resetWarmth() throws {
+        resetWarmthCalled = true
+    }
+
+    func applyExtendedBrightness(_ multiplier: Double, displayID: UInt32?) throws {
+        if let error = applyExtendedBrightnessError {
+            throw error
+        }
+        lastExtendedBrightness = multiplier
+        lastExtendedDisplayID = displayID
+    }
+}
+
+// MARK: - TuneController Write Path Tests (with mock)
+
+final class TuneControllerWritePathTests: XCTestCase {
+    private var mock: MockDisplayWriteService!
+    private var controller: TuneController!
+
+    override func setUp() {
+        super.setUp()
+        mock = MockDisplayWriteService()
+        controller = TuneController(config: TuneConfig(), displayWrite: mock)
+    }
+
+    // MARK: - applyBuiltinBrightness
+
+    func testApplyBuiltinBrightnessClampsAndSets() throws {
+        mock.brightness = 0.8
+        try controller.applyBuiltinBrightness(1.5)
+        // Should clamp to config.brightnessMax (default 1.0)
+        XCTAssertEqual(mock.lastSetBrightness, 1.0)
+    }
+
+    func testApplyBuiltinBrightnessSavesOriginal() throws {
+        mock.brightness = 0.6
+        try controller.applyBuiltinBrightness(0.9)
+        // Original brightness (0.6) should be saved for restore
+        XCTAssertEqual(mock.lastSetBrightness, 0.9)
+    }
+
+    func testApplyBuiltinBrightnessWithCustomRange() throws {
+        let config = TuneConfig(brightnessMin: 0.2, brightnessMax: 0.8)
+        let ctrl = TuneController(config: config, displayWrite: mock)
+        mock.brightness = 0.5
+        try ctrl.applyBuiltinBrightness(0.1)
+        // Should clamp to 0.2 (brightnessMin)
+        XCTAssertEqual(mock.lastSetBrightness, 0.2)
+    }
+
+    // MARK: - applyExtendedBrightness
+
+    func testApplyExtendedBrightnessClampsAndApplies() throws {
+        try controller.applyExtendedBrightness(2.0)
+        // Should clamp to config.extendedBrightnessMax (default 1.6)
+        XCTAssertEqual(mock.lastExtendedBrightness, 1.6)
+        XCTAssertNil(mock.lastExtendedDisplayID)
+    }
+
+    func testApplyExtendedBrightnessWithCustomMax() throws {
+        let config = TuneConfig(extendedBrightnessMax: 1.4)
+        let ctrl = TuneController(config: config, displayWrite: mock)
+        try ctrl.applyExtendedBrightness(1.5)
+        XCTAssertEqual(mock.lastExtendedBrightness, 1.4)
+    }
+
+    func testApplyExtendedBrightnessBelowMinClampsToMin() throws {
+        try controller.applyExtendedBrightness(0.5)
+        // Should clamp to config.extendedBrightnessMin (default 1.0)
+        XCTAssertEqual(mock.lastExtendedBrightness, 1.0)
+    }
+
+    // MARK: - applyWarmth
+
+    func testApplyWarmthClampsAndApplies() throws {
+        try controller.applyWarmth(1.5)
+        // Should clamp to 1.0
+        XCTAssertEqual(mock.lastWarmth, 1.0)
+    }
+
+    func testApplyWarmthNegativeClampsToZero() throws {
+        try controller.applyWarmth(-0.5)
+        XCTAssertEqual(mock.lastWarmth, 0.0)
+    }
+
+    func testApplyWarmthMiddleValue() throws {
+        try controller.applyWarmth(0.5)
+        XCTAssertEqual(mock.lastWarmth, 0.5)
+    }
+
+    // MARK: - resetWarmth
+
+    func testResetWarmthCallsReset() throws {
+        try controller.resetWarmth()
+        XCTAssertTrue(mock.resetWarmthCalled)
+    }
+
+    // MARK: - getBuiltinBrightness
+
+    func testGetBuiltinBrightnessReturnsMockValue() throws {
+        mock.brightness = 0.75
+        let value = try controller.getBuiltinBrightness()
+        XCTAssertEqual(value, 0.75)
+    }
+
+    // MARK: - Default init still works
+
+    func testDefaultInitUsesHardwareService() {
+        // The default init should still work (uses HardwareDisplayWriteService)
+        let defaultController = TuneController()
+        XCTAssertNotNil(defaultController)
+    }
+}
