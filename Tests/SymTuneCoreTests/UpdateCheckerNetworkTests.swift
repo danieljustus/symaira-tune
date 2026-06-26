@@ -39,7 +39,7 @@ final class UpdateCheckerNetworkTests: XCTestCase {
         )!
     }
 
-    private func makeReleaseJSON(tagName: String, htmlURL: String? = nil) -> Data {
+    private func makeReleaseJSON(tagName: String, htmlURL: String? = nil) -> Data? {
         var json: [String: Any] = ["tag_name": tagName]
         if let htmlURL { json["html_url"] = htmlURL }
         return try? JSONSerialization.data(withJSONObject: json)
