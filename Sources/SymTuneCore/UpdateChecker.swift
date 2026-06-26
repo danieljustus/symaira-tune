@@ -7,7 +7,7 @@ public enum UpdateChecker {
 
     // MARK: - Public types
 
-    public struct SemVer: Comparable, CustomStringConvertible {
+    public struct SemVer: Comparable, CustomStringConvertible, Sendable {
         public let major: Int
         public let minor: Int
         public let patch: Int
@@ -66,7 +66,7 @@ public enum UpdateChecker {
         }
     }
 
-    public struct UpdateInfo {
+    public struct UpdateInfo: Sendable {
         public let updateAvailable: Bool
         public let latestVersion: String
         public let downloadURL: String?

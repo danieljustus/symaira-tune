@@ -2,7 +2,8 @@ import Foundation
 import SymTuneCore
 
 /// A single MCP tool: schema metadata plus an invocation handler.
-protocol MCPTool {
+/// Concrete tools are immutable structs — safe to share across concurrency domains.
+protocol MCPTool: Sendable {
     var name: String { get }
     var description: String { get }
     var inputSchema: [String: Any] { get }
