@@ -80,6 +80,129 @@ final class MCPServerToolSchemaTests: XCTestCase {
     }
 }
 
+// MARK: - MCPTool dispatch (tools/call)
+
+final class MCPServerToolCallTests: XCTestCase {
+    private var server: MCPServer!
+
+    override func setUp() {
+        super.setUp()
+        server = MCPServer()
+    }
+
+    private func callTool(_ name: String, arguments: [String: Any] = [:]) throws -> [String: Any] {
+        try server.dispatch(method: "tools/call", params: ["name": name, "arguments": arguments])
+    }
+
+    func testCallToolReturnsContentArray() throws {
+        let result = try callTool("get_capabilities")
+        XCTAssertNotNil(result["content"])
+        XCTAssertNotNil(result["isError"])
+        XCTAssertEqual(result["isError"] as? Bool, false)
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertEqual(content?.count, 1)
+        XCTAssertEqual(content?.first?["type"] as? String, "text")
+    }
+
+    func testCallToolMissingNameThrows() {
+        XCTAssertThrowsError(try server.dispatch(method: "tools/call", params: [:])) { error in
+            guard case TuneError.usage(let msg) = error else {
+                return XCTFail("Expected .usage, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("requires a tool name"))
+        }
+    }
+
+    func testCallToolUnknownToolThrows() {
+        XCTAssertThrowsError(try callTool("nonexistent_tool")) { error in
+            guard case TuneError.usage(let msg) = error else {
+                return XCTFail("Expected .usage, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("Unknown tool"))
+        }
+    }
+
+    func testCallGetCapabilities() throws {
+        let result = try callTool("get_capabilities")
+        let content = result["content"] as? [[String: Any]]
+        let text = content?.first?["text"] as? String
+        XCTAssertNotNil(text)
+        XCTAssertTrue(text!.contains("symtune"))
+    }
+
+    func testCallGetSensors() throws {
+        let result = try callTool("get_sensors")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+    }
+
+    func testCallGetBattery() throws {
+        let result = try callTool("get_battery")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+    }
+
+    func testCallListDisplays() throws {
+        let result = try callTool("list_displays")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+    }
+
+    func testCallSetDim() throws {
+        let result = try callTool("set_dim", arguments: ["value": 0.5])
+        XCTAssertEqual(result["isError"] as? Bool, false)
+    }
+
+    func testCallResetDim() throws {
+        let result = try callTool("reset_dim")
+        XCTAssertEqual(result["isError"] as? Bool, false)
+    }
+
+    func testCallRestore() throws {
+        let result = try callTool("restore")
+        XCTAssertEqual(result["isError"] as? Bool, false)
+    }
+
+    func testCallSetFanUnsupported() {
+        XCTAssertThrowsError(try callTool("set_fan", arguments: ["fraction": 0.5])) { error in
+            guard case TuneError.unsupported(let msg) = error else {
+                return XCTFail("Expected .unsupported, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("helper"))
+        }
+    }
+
+    func testCallSetChargeLimitUnsupported() {
+        XCTAssertThrowsError(try callTool("set_charge_limit", arguments: ["percent": 80])) { error in
+            guard case TuneError.unsupported(let msg) = error else {
+                return XCTFail("Expected .unsupported, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("helper"))
+        }
+    }
+
+    func testDispatchInitialize() throws {
+        let result = try server.dispatch(method: "initialize", params: [:])
+        XCTAssertNotNil(result["protocolVersion"])
+        XCTAssertNotNil(result["capabilities"])
+        XCTAssertNotNil(result["serverInfo"])
+    }
+
+    func testDispatchPing() throws {
+        let result = try server.dispatch(method: "ping", params: [:])
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testDispatchUnknownMethodThrows() {
+        XCTAssertThrowsError(try server.dispatch(method: "unknown/method", params: [:])) { error in
+            guard case TuneError.usage(let msg) = error else {
+                return XCTFail("Expected .usage, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("Method not found"))
+        }
+    }
+}
+
 // MARK: - MCPTransport bounds
 
 final class MCPTransportBoundsTests: XCTestCase {
