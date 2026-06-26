@@ -9,12 +9,11 @@ software dimming, fan curves, and battery charge limits. Everything is exposed
 the machine — e.g. "this render is running hot, ramp the fans and dim the screen."
 
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
-(Apache-2.0 core + optional Pro tier).
+(Apache-2.0 core).
 
 > **Status: v0.1 — core reads + writes.** Built-in brightness, extended/EDR
 > brightness, software dim, color temperature warmth, profile management, and
-> rule engine work today. Fan control and battery charge limiting need the Pro
-> privileged helper. Install via Homebrew (`brew install danieljustus/tap/symtune`) or the DMG in the release assets.
+> rule engine work today. Install via Homebrew (`brew install danieljustus/tap/symtune`) or the DMG in the release assets.
 
 ## Why not the Mac App Store?
 
@@ -52,10 +51,6 @@ symtune profile load <name>           # apply a saved profile
 symtune profile list                  # list saved profiles
 symtune profile delete <name>         # delete a saved profile
 symtune serve                         # run the MCP server over stdio
-
-# Pro (needs privileged helper)
-symtune fan set <0.0-1.0>            # fan speed fraction (Pro: needs helper)
-symtune battery-limit set <50-100>   # hold charge at target percent (Pro: needs helper)
 ```
 
 Example:
@@ -91,21 +86,13 @@ OpenCode, …). Example fragment:
 Tools exposed: `get_capabilities`, `get_sensors`, `get_battery`, `list_displays`,
 `keep_awake`, `get_brightness`, `set_brightness`, `set_extended_brightness`,
 `set_warmth`, `reset_warmth`, `set_dim`, `reset_dim`, `restore`,
-`save_profile`, `load_profile`, `list_profiles`, `delete_profile`, and the
-Pro-tier `set_fan` / `set_charge_limit`.
+`save_profile`, `load_profile`, `list_profiles`, `delete_profile`.
 
 ## Safety
 
 Every write path clamps through `SafetyPolicy` and never disables firmware
 thermal protection; overridden values are restored when the process exits. See
-`NOTICE` and `docs/architecture.md`.
-
-## Documentation
-
-- [docs/architecture.md](docs/architecture.md) — components & data flow
-- [docs/roadmap.md](docs/roadmap.md) — built vs planned, by version/tier
-- [docs/commercial-boundary.md](docs/commercial-boundary.md) — Apache-2.0 core vs Pro helper
-- [AGENTS.md](AGENTS.md) — contributor/agent guidance
+`NOTICE`.
 
 ## License
 

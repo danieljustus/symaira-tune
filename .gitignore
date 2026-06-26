@@ -25,3 +25,6 @@ dist/
 .github/audit/
 .github/review/
 .omo/
+
+# Docs
+docs/
