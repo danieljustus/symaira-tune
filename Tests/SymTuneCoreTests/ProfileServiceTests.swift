@@ -49,7 +49,9 @@ final class ProfileServiceTests: XCTestCase {
     }
 
     func testDeleteNonexistentIsIdempotent() throws {
+        let countBefore = service.listProfiles().count
         try service.deleteProfile(name: "nonexistent")
+        XCTAssertEqual(service.listProfiles().count, countBefore)
     }
 
     func testLoadNonexistentThrows() {

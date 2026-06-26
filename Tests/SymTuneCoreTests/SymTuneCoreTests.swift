@@ -129,7 +129,11 @@ final class WriteSurfaceTests: XCTestCase {
 
     func testRestoreAllNoOpWithoutOverrides() {
         let controller = TuneController()
+        let warmthBefore = controller.getWarmthLevel()
+        let dimBefore = controller.getDimLevel()
         controller.restoreAll()
+        XCTAssertEqual(controller.getWarmthLevel(), warmthBefore)
+        XCTAssertEqual(controller.getDimLevel(), dimBefore)
     }
 
     func testChargeLimitUnsupported() {
