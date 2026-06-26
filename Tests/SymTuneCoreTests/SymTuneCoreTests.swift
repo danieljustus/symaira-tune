@@ -430,3 +430,72 @@ final class TuneControllerWritePathTests: XCTestCase {
         XCTAssertNotNil(defaultController)
     }
 }
+
+// MARK: - TuneController Profile & Rule Tests
+
+final class TuneControllerProfileTests: XCTestCase {
+    private var controller: TuneController!
+
+    override func setUp() {
+        super.setUp()
+        controller = TuneController()
+    }
+
+    // MARK: - Profiles
+
+    func testSaveAndLoadProfile() throws {
+        let profile = try TuneProfile(name: "ctrl-test", brightness: 0.7, dim: 0.5, warmth: 0.3)
+        try controller.saveProfile(profile)
+        let loaded = try controller.loadProfile(name: "ctrl-test")
+        XCTAssertEqual(loaded.name, "ctrl-test")
+        XCTAssertEqual(loaded.brightness, 0.7)
+        XCTAssertEqual(loaded.dim, 0.5)
+        XCTAssertEqual(loaded.warmth, 0.3)
+        // Cleanup
+        try? controller.deleteProfile(name: "ctrl-test")
+    }
+
+    func testListProfiles() throws {
+        let before = controller.listProfiles().count
+        let profile = try TuneProfile(name: "ctrl-list-test", brightness: 0.5)
+        try controller.saveProfile(profile)
+        XCTAssertEqual(controller.listProfiles().count, before + 1)
+        // Cleanup
+        try? controller.deleteProfile(name: "ctrl-list-test")
+    }
+
+    func testDeleteProfile() throws {
+        let profile = try TuneProfile(name: "ctrl-delete-test", brightness: 0.5)
+        try controller.saveProfile(profile)
+        XCTAssertEqual(controller.listProfiles().contains { $0.name == "ctrl-delete-test" }, true)
+        try controller.deleteProfile(name: "ctrl-delete-test")
+        XCTAssertEqual(controller.listProfiles().contains { $0.name == "ctrl-delete-test" }, false)
+    }
+
+    func testLoadNonexistentProfileThrows() {
+        XCTAssertThrowsError(try controller.loadProfile(name: "nonexistent-profile-\(UUID().uuidString)"))
+    }
+
+    // MARK: - Rules
+
+    func testSaveAndLoadRules() throws {
+        let rule = TuneRule(condition: .onBattery, profileName: "low-power")
+        try controller.saveRules([rule])
+        let rules = controller.loadRules()
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(rules[0].condition, .onBattery)
+        XCTAssertEqual(rules[0].profileName, "low-power")
+        // Cleanup
+        try controller.saveRules([])
+    }
+
+    func testAddAndRemoveRule() throws {
+        let rule = TuneRule(id: "ctrl-rule-1", condition: .onAC, profileName: "default")
+        try controller.addRule(rule)
+        let rules = controller.loadRules()
+        XCTAssertTrue(rules.contains { $0.id == "ctrl-rule-1" })
+        try controller.removeRule(id: "ctrl-rule-1")
+        let afterRemove = controller.loadRules()
+        XCTAssertFalse(afterRemove.contains { $0.id == "ctrl-rule-1" })
+    }
+}
