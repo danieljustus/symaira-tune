@@ -499,3 +499,129 @@ final class TuneControllerProfileTests: XCTestCase {
         XCTAssertFalse(afterRemove.contains { $0.id == "ctrl-rule-1" })
     }
 }
+
+final class SMCKeyTests: XCTestCase {
+    func testEncodeDecodeRoundtrip() {
+        let key = "fpe2"
+        let encoded = smcEncodeKey(key)
+        XCTAssertNotEqual(encoded, 0)
+        let decoded = smcDecodeKey(encoded)
+        XCTAssertEqual(decoded, key)
+    }
+
+    func testDecodeKnownKey() {
+        let encoded = smcEncodeKey("sp78")
+        let decoded = smcDecodeKey(encoded)
+        XCTAssertEqual(decoded, "sp78")
+    }
+
+    func testEncodeInvalidLengthReturnsZero() {
+        XCTAssertEqual(smcEncodeKey("ab"), 0)
+        XCTAssertEqual(smcEncodeKey("abcde"), 0)
+        XCTAssertEqual(smcEncodeKey(""), 0)
+    }
+}
+
+final class SMCConvertValueTests: XCTestCase {
+    func testFpe2Conversion() {
+        let dataType = smcEncodeKey("fpe2")
+        let bytes: [UInt8] = [0x01, 0x00]
+        let result = smcConvertValue(dataType: dataType, bytes: bytes)
+        XCTAssertEqual(result, 1.0, accuracy: 0.01)
+    }
+
+    func testFpe2FractionalPart() {
+        let dataType = smcEncodeKey("fpe2")
+        let bytes: [UInt8] = [0x00, 0x80]
+        let result = smcConvertValue(dataType: dataType, bytes: bytes)
+        XCTAssertEqual(result, 0.5, accuracy: 0.01)
+    }
+
+    func testFpe2InsufficientBytesReturnsZero() {
+        let dataType = smcEncodeKey("fpe2")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: [0x01]), 0)
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: []), 0)
+    }
+
+    func testFltConversion() {
+        let dataType = smcEncodeKey("flt ")
+        var val: Float = 42.0
+        let raw = withUnsafePointer(to: &val) { $0.withMemoryRebound(to: UInt32.self, capacity: 1) { $0.pointee } }
+        let bytes: [UInt8] = [
+            UInt8((raw >> 24) & 0xFF),
+            UInt8((raw >> 16) & 0xFF),
+            UInt8((raw >> 8) & 0xFF),
+            UInt8(raw & 0xFF),
+        ]
+        let result = smcConvertValue(dataType: dataType, bytes: bytes)
+        XCTAssertEqual(result, 42.0, accuracy: 0.01)
+    }
+
+    func testFltInsufficientBytesReturnsZero() {
+        let dataType = smcEncodeKey("flt ")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: [0x01, 0x02, 0x03]), 0)
+    }
+
+    func testSp78PositiveValue() {
+        let dataType = smcEncodeKey("sp78")
+        let bytes: [UInt8] = [0x01, 0x00]
+        let result = smcConvertValue(dataType: dataType, bytes: bytes)
+        XCTAssertEqual(result, 1.0, accuracy: 0.01)
+    }
+
+    func testSp78NegativeValue() {
+        let dataType = smcEncodeKey("sp78")
+        let bytes: [UInt8] = [0xFF, 0x00]
+        let result = smcConvertValue(dataType: dataType, bytes: bytes)
+        XCTAssertEqual(result, -1.0, accuracy: 0.01)
+    }
+
+    func testSp78InsufficientBytesReturnsZero() {
+        let dataType = smcEncodeKey("sp78")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: [0x01]), 0)
+    }
+
+    func testUi8Conversion() {
+        let dataType = smcEncodeKey("ui8 ")
+        let result = smcConvertValue(dataType: dataType, bytes: [255])
+        XCTAssertEqual(result, 255.0)
+    }
+
+    func testUi8InsufficientBytesReturnsZero() {
+        let dataType = smcEncodeKey("ui8 ")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: []), 0)
+    }
+
+    func testUi16Conversion() {
+        let dataType = smcEncodeKey("ui16")
+        let result = smcConvertValue(dataType: dataType, bytes: [0x01, 0x00])
+        XCTAssertEqual(result, 256.0)
+    }
+
+    func testUi16InsufficientBytesReturnsZero() {
+        let dataType = smcEncodeKey("ui16")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: [0x01]), 0)
+    }
+
+    func testUi32Conversion() {
+        let dataType = smcEncodeKey("ui32")
+        let result = smcConvertValue(dataType: dataType, bytes: [0x00, 0x01, 0x00, 0x00])
+        XCTAssertEqual(result, 65536.0)
+    }
+
+    func testUi32InsufficientBytesReturnsZero() {
+        let dataType = smcEncodeKey("ui32")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: [0x01, 0x02, 0x03]), 0)
+    }
+
+    func testUnknownTypeInterpretsAsUnsignedInteger() {
+        let dataType = smcEncodeKey("xxxx")
+        let result = smcConvertValue(dataType: dataType, bytes: [0x00, 0x01])
+        XCTAssertEqual(result, 1.0)
+    }
+
+    func testUnknownTypeEmptyBytesReturnsZero() {
+        let dataType = smcEncodeKey("xxxx")
+        XCTAssertEqual(smcConvertValue(dataType: dataType, bytes: []), 0)
+    }
+}
