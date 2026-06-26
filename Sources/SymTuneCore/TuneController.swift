@@ -10,13 +10,21 @@ public final class TuneController: Sendable {
     private let power = PowerService()
     private let dimOverlay = DimOverlay()
     private let edrOverlay = EDROverlayService()
+    private let displayWrite: any DisplayWriteServiceProtocol
     private let profiles: ProfileService
     public let config: TuneConfig
     private let restoreTracker: OverrideTracker
     nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
-    public init(config: TuneConfig = TuneConfig()) {
+    public init(
+        config: TuneConfig = TuneConfig(),
+        displayWrite: (any DisplayWriteServiceProtocol)? = nil
+    ) {
         self.config = config
+        self.displayWrite = displayWrite ?? HardwareDisplayWriteService(
+            displayService: displays,
+            edrOverlay: edrOverlay
+        )
         self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
         self.restoreTracker = OverrideTracker(displayService: displays, edrOverlay: edrOverlay)
         restoreTracker.registerSignalHandlers()
@@ -116,14 +124,14 @@ public final class TuneController: Sendable {
     // MARK: - Write surface (v0.2 core)
 
     public func getBuiltinBrightness() throws -> Double {
-        try displays.getBuiltinBrightness()
+        try displayWrite.getBuiltinBrightness()
     }
 
     public func applyBuiltinBrightness(_ value: Double) throws {
-        let original = try? displays.getBuiltinBrightness()
+        let original = try? displayWrite.getBuiltinBrightness()
         if let original { restoreTracker.saveBrightness(Float(original)) }
         let clamped = SafetyPolicy.clamp(value, config.brightnessMin, config.brightnessMax)
-        try displays.setBuiltinBrightness(Float(clamped))
+        try displayWrite.setBuiltinBrightness(Float(clamped))
     }
 
     public func applyExtendedBrightness(_ value: Double) throws {
@@ -132,7 +140,7 @@ public final class TuneController: Sendable {
         // can return the display to its pre-symtune EDR level instead of SDR (1.0).
         restoreTracker.saveOriginalEDRHeadroom(edrOverlay)
         restoreTracker.saveEDRBrightness(clamped)
-        try edrOverlay.applyExtendedBrightness(clamped)
+        try displayWrite.applyExtendedBrightness(clamped, displayID: nil)
     }
 
     public func applyDim(_ value: Double) throws {
@@ -155,11 +163,11 @@ public final class TuneController: Sendable {
     public func applyWarmth(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)
         restoreTracker.saveWarmth(Float(clamped))
-        try displays.applyWarmth(Float(clamped))
+        try displayWrite.applyWarmth(Float(clamped))
     }
 
     public func resetWarmth() throws {
-        try displays.resetWarmth()
+        try displayWrite.resetWarmth()
     }
 
     public func restoreAll() {
