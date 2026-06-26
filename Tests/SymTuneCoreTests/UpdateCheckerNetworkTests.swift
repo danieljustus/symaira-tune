@@ -42,7 +42,7 @@ final class UpdateCheckerNetworkTests: XCTestCase {
     private func makeReleaseJSON(tagName: String, htmlURL: String? = nil) -> Data {
         var json: [String: Any] = ["tag_name": tagName]
         if let htmlURL { json["html_url"] = htmlURL }
-        return try JSONSerialization.data(withJSONObject: json)
+        return try? JSONSerialization.data(withJSONObject: json)
     }
 
     func testCheckForUpdateReturnsNewerVersion() async {
@@ -109,7 +109,7 @@ final class UpdateCheckerNetworkTests: XCTestCase {
     }
 
     func testCheckForUpdateHandlesMissingTagName() async {
-        mock.responseData = try JSONSerialization.data(withJSONObject: ["name": "release"])
+        mock.responseData = try? JSONSerialization.data(withJSONObject: ["name": "release"])
         mock.response = makeResponse()
 
         let info = await UpdateChecker.checkForUpdate(currentVersion: currentVersion, networkService: mock)
