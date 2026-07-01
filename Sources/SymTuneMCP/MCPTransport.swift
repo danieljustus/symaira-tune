@@ -1,6 +1,13 @@
 import Foundation
 import SymTuneCore
 
+protocol MCPTransportProtocol {
+    func readMessage() throws -> Data?
+    func send(_ payload: [String: Any]) throws
+}
+
+extension MCPTransport: MCPTransportProtocol {}
+
 /// Content-Length framed JSON-RPC transport over a pair of `FileHandle`s.
 /// Defaults to stdio so the MCP server can be driven by a host process.
 struct MCPTransport {
