@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-07-01
+
+### Fixed
+- Hardcoded tool version in `TuneVersion.current` is now synchronized with the release tag; release builds override it via `SYMTUNE_VERSION` so `symtune --version` matches the published release (`#112`).
+
+### Added
+- Release workflow verifies that the built binary reports the same version as the git tag before publishing the DMG (`#112`).
+
 ## [0.1.1] — 2026-06-23
 
 ### Fixed
