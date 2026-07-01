@@ -14,14 +14,18 @@ import SymTuneCore
 /// and the registry by `MCPToolRegistry`.
 public final class MCPServer {
     private let controller: TuneController
-    private let transport: MCPTransport
+    private let transport: MCPTransportProtocol
     private let encoder = JSONEncoder()
     private let registry: MCPToolRegistry
     private var keepAwakeToken: KeepAwakeToken?
 
-    public init(controller: TuneController = TuneController()) {
+    public convenience init(controller: TuneController = TuneController()) {
+        self.init(controller: controller, transport: MCPTransport())
+    }
+
+    init(controller: TuneController = TuneController(), transport: MCPTransportProtocol) {
         self.controller = controller
-        self.transport = MCPTransport()
+        self.transport = transport
         self.registry = MCPToolRegistry(tools: MCPServer.defaultTools)
         encoder.outputFormatting = [.sortedKeys]
         encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -108,7 +112,7 @@ public final class MCPServer {
     }
 
     /// Map `TuneError` variants to JSON-RPC 2.0 error codes.
-    private func jsonRPCCode(for error: TuneError) -> Int {
+    func jsonRPCCode(for error: TuneError) -> Int {
         switch error {
         case .usage:       return -32602  // invalid params
         case .unsupported, .notImplemented: return -32601  // method not found
