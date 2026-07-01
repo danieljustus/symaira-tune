@@ -11,26 +11,21 @@ public struct KeepAwakeToken: Sendable {
 /// Wraps IOKit power-management assertions to prevent idle sleep. Fully
 /// unprivileged — the analog of `/usr/bin/caffeinate`.
 public struct PowerService: Sendable {
-    public init() {}
+    private let source: any PowerAssertionSource
+
+    public init(source: any PowerAssertionSource = HardwarePowerAssertionSource()) {
+        self.source = source
+    }
 
     public func begin(reason: String, preventDisplaySleep: Bool) throws -> KeepAwakeToken {
-        var id: IOPMAssertionID = IOPMAssertionID(0)
-        let type = preventDisplaySleep
-            ? kIOPMAssertionTypePreventUserIdleDisplaySleep
-            : kIOPMAssertionTypePreventUserIdleSystemSleep
-        let result = IOPMAssertionCreateWithName(
-            type as CFString,
-            IOPMAssertionLevel(kIOPMAssertionLevelOn),
-            reason as CFString,
-            &id
-        )
-        guard result == kIOReturnSuccess else {
-            throw TuneError.failed("Failed to create power assertion (IOReturn \(result)).")
-        }
-        return KeepAwakeToken(id: id)
+        let type: PowerAssertionType = preventDisplaySleep
+            ? .preventDisplaySleep
+            : .preventSystemSleep
+        let id = try source.create(type: type, reason: reason)
+        return KeepAwakeToken(id: IOPMAssertionID(id))
     }
 
     public func end(_ token: KeepAwakeToken) {
-        IOPMAssertionRelease(token.id)
+        source.release(UInt32(token.id))
     }
 }

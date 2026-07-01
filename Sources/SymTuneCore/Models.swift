@@ -6,7 +6,7 @@ import Foundation
 
 // MARK: - Sensors
 
-public struct SensorReading: Codable, Sendable {
+public struct SensorReading: Codable, Sendable, Equatable {
     public let key: String
     public let label: String
     public let celsius: Double
@@ -18,7 +18,7 @@ public struct SensorReading: Codable, Sendable {
     }
 }
 
-public struct FanReading: Codable, Sendable {
+public struct FanReading: Codable, Sendable, Equatable {
     public let index: Int
     public let label: String
     public let rpm: Int

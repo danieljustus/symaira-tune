@@ -8,26 +8,26 @@
 /// on-screen EDR layer in `EDROverlayService`, invoked from `TuneController`.
 /// v0.2 will add menu-bar persistence and deeper app-target integration.
 public struct DisplayService: Sendable {
-    public init() {}
+    private let enumeration: any DisplayEnumerationSource
+
+    public init(enumeration: any DisplayEnumerationSource = HardwareDisplayEnumerationSource()) {
+        self.enumeration = enumeration
+    }
 
     // MARK: - Display enumeration
 
     public func list() -> DisplaysReport {
-        var infos: [DisplayInfo] = []
-        for screen in NSScreen.screens {
-            let displayID = DisplayHelpers.screenDisplayID(screen) ?? 0
-            let potential = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
-            let isBuiltin = displayID != 0 ? (CGDisplayIsBuiltin(displayID) != 0) : nil
-
-            infos.append(DisplayInfo(
-                name: screen.localizedName,
-                displayID: displayID,
-                isBuiltin: isBuiltin,
-                maxEDRHeadroom: screen.maximumExtendedDynamicRangeColorComponentValue,
-                potentialEDRHeadroom: potential,
-                edrCapable: potential > 1.0,
-                backingScaleFactor: Double(screen.backingScaleFactor)
-            ))
+        let screens = enumeration.enumerateScreens()
+        let infos = screens.map { screen in
+            DisplayInfo(
+                name: screen.name,
+                displayID: screen.displayID,
+                isBuiltin: screen.isBuiltin,
+                maxEDRHeadroom: screen.maxEDRHeadroom,
+                potentialEDRHeadroom: screen.potentialEDRHeadroom,
+                edrCapable: screen.potentialEDRHeadroom > 1.0,
+                backingScaleFactor: screen.backingScaleFactor
+            )
         }
 
         let notes: [String]
@@ -41,7 +41,7 @@ public struct DisplayService: Sendable {
 
     /// Whether any attached display can provide extended brightness headroom.
     public func anyEDRCapable() -> Bool {
-        NSScreen.screens.contains { $0.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0 }
+        enumeration.enumerateScreens().contains { $0.potentialEDRHeadroom > 1.0 }
     }
 
     // MARK: - Built-in brightness get/set
@@ -107,7 +107,12 @@ public struct DisplayService: Sendable {
     // MARK: - Private helpers
 
     private func builtinDisplayID() throws -> CGDirectDisplayID {
-        try DisplayHelpers.builtinDisplayID()
+        for screen in enumeration.enumerateScreens() {
+            if screen.isBuiltin {
+                return screen.displayID
+            }
+        }
+        throw TuneError.unsupported("No built-in display detected.")
     }
 
     // MARK: - DisplayServices framework loading
