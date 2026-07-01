@@ -8,15 +8,15 @@ final class MCPServerRunTests: XCTestCase {
         MCPServer(transport: transport)
     }
 
-    private func jsonData(_ object: [String: Any]) -> Data {
-        try! JSONSerialization.data(withJSONObject: object)
+    private func jsonData(_ object: [String: Any]) throws -> Data {
+        try JSONSerialization.data(withJSONObject: object)
     }
 
     // MARK: - run() loop
 
     func testRunInitializeReturnsResponse() throws {
         let transport = FakeMCPTransport()
-        transport.messages = [jsonData(["jsonrpc": "2.0", "id": 1, "method": "initialize"])]
+        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 1, "method": "initialize"])]
         let server = makeServer(transport: transport)
         try server.run()
         XCTAssertEqual(transport.sent.count, 1)
@@ -27,7 +27,7 @@ final class MCPServerRunTests: XCTestCase {
 
     func testRunPingReturnsEmptyResult() throws {
         let transport = FakeMCPTransport()
-        transport.messages = [jsonData(["jsonrpc": "2.0", "id": 2, "method": "ping"])]
+        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 2, "method": "ping"])]
         let server = makeServer(transport: transport)
         try server.run()
         XCTAssertEqual(transport.sent.count, 1)
@@ -38,7 +38,7 @@ final class MCPServerRunTests: XCTestCase {
 
     func testRunNotificationIsIgnored() throws {
         let transport = FakeMCPTransport()
-        transport.messages = [jsonData(["jsonrpc": "2.0", "method": "notifications/initialized"])]
+        transport.messages = [try jsonData(["jsonrpc": "2.0", "method": "notifications/initialized"])]
         let server = makeServer(transport: transport)
         try server.run()
         XCTAssertEqual(transport.sent.count, 0)
@@ -46,7 +46,7 @@ final class MCPServerRunTests: XCTestCase {
 
     func testRunUnknownMethodReturnsInvalidParamsError() throws {
         let transport = FakeMCPTransport()
-        transport.messages = [jsonData(["jsonrpc": "2.0", "id": 3, "method": "unknown/method"])]
+        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 3, "method": "unknown/method"])]
         let server = makeServer(transport: transport)
         try server.run()
         XCTAssertEqual(transport.sent.count, 1)
@@ -58,7 +58,7 @@ final class MCPServerRunTests: XCTestCase {
 
     func testRunUnsupportedToolReturnsMethodNotFoundError() throws {
         let transport = FakeMCPTransport()
-        transport.messages = [jsonData([
+        transport.messages = [try jsonData([
             "jsonrpc": "2.0",
             "id": 4,
             "method": "tools/call",
@@ -80,7 +80,7 @@ final class MCPServerRunTests: XCTestCase {
 
     func testRunNonTuneErrorCaughtAsInternalError() throws {
         let transport = FakeMCPTransport(failSendOnIndices: [0])
-        transport.messages = [jsonData(["jsonrpc": "2.0", "id": 5, "method": "ping"])]
+        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 5, "method": "ping"])]
         let server = makeServer(transport: transport)
         try server.run()
         XCTAssertEqual(transport.sent.count, 1)
