@@ -58,7 +58,7 @@ public struct HardwareBatterySource: BatterySource, Sendable {
             IOServiceMatching("AppleSmartBattery")
         )
         guard service != 0 else {
-            return .unavailable
+            return readPowerSourcesFallback()
         }
         defer { IOObjectRelease(service) }
 
@@ -67,7 +67,7 @@ public struct HardwareBatterySource: BatterySource, Sendable {
             IORegistryEntryCreateCFProperties(service, &unmanagedProps, kCFAllocatorDefault, 0) == KERN_SUCCESS,
             let props = unmanagedProps?.takeRetainedValue() as? [String: Any]
         else {
-            return .readFailed
+            return readPowerSourcesFallback()
         }
 
         return .success(BatteryProperties(
@@ -79,5 +79,57 @@ public struct HardwareBatterySource: BatterySource, Sendable {
             cycleCount: props["CycleCount"] as? Int,
             temperatureCentidegrees: props["Temperature"] as? Int
         ))
+    }
+
+    private func readPowerSourcesFallback() -> BatterySourceResult {
+        // Dynamically resolve IOPowerSources functions using dlopen/dlsym to avoid import constraints
+        let handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_NOW)
+        guard let handle else { return .unavailable }
+        defer { dlclose(handle) }
+
+        typealias IOPowerSourcesCopyPowerSourcesInfoFunc = @convention(c) () -> Unmanaged<CFTypeRef>?
+        typealias IOPowerSourcesCopyDescriptionListFunc = @convention(c) (CFTypeRef) -> Unmanaged<CFArray>?
+
+        guard let copyPowerSourcesInfoSym = dlsym(handle, "IOPowerSourcesCopyPowerSourcesInfo"),
+              let copyDescriptionListSym = dlsym(handle, "IOPowerSourcesCopyDescriptionList") else {
+            return .unavailable
+        }
+
+        let copyPowerSourcesInfo = unsafeBitCast(copyPowerSourcesInfoSym, to: IOPowerSourcesCopyPowerSourcesInfoFunc.self)
+        let copyDescriptionList = unsafeBitCast(copyDescriptionListSym, to: IOPowerSourcesCopyDescriptionListFunc.self)
+
+        guard let snapshotRef = copyPowerSourcesInfo() else {
+            return .unavailable
+        }
+        let snapshot = snapshotRef.takeRetainedValue()
+
+        guard let sourcesRef = copyDescriptionList(snapshot),
+              let sources = sourcesRef.takeRetainedValue() as? [[String: Any]] else {
+            return .unavailable
+        }
+
+        for dict in sources {
+            let type = dict["Type"] as? String
+            guard type == "InternalBattery" else { continue }
+
+            let isCharging = dict["Is Charging"] as? Bool
+            let state = dict["Power Source State"] as? String
+            let externalConnected = (state == "AC Power")
+            let maxCapacity = dict["Max Capacity"] as? Int
+            let currentCapacity = dict["Current Capacity"] as? Int
+            let cycleCount = dict["Cycle Count"] as? Int
+
+            return .success(BatteryProperties(
+                isCharging: isCharging,
+                externalConnected: externalConnected,
+                designCapacity: nil, // Not exposed by public IOPowerSources
+                rawMaxCapacity: maxCapacity,
+                rawCurrentCapacity: currentCapacity,
+                cycleCount: cycleCount,
+                temperatureCentidegrees: nil // Not exposed by public IOPowerSources
+            ))
+        }
+
+        return .unavailable
     }
 }

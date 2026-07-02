@@ -4,6 +4,7 @@
 ///
 /// This is a status-bar-only app (LSUIElement=true) — no dock icon, no main
 /// window. All user interaction happens through the menu-bar icon dropdown.
+@main
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
 

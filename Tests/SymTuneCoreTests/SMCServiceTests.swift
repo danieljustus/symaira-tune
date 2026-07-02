@@ -30,7 +30,7 @@ final class SMCServiceTests: XCTestCase {
         let label = "CPU Core 1"
         #endif
         let conn = FakeSMCConnection(isOpen: true, keys: [
-            key: (fpe2, [0x01, 0x00])
+            key: FakeSMCKeyResult(dataType: fpe2, bytes: [0x01, 0x00])
         ])
         let service = SMCService(connection: conn)
 
@@ -44,7 +44,7 @@ final class SMCServiceTests: XCTestCase {
     func testFanCountZeroReturnsEmpty() {
         let ui8 = smcEncodeKey("ui8 ")
         let conn = FakeSMCConnection(isOpen: true, keys: [
-            "FNum": (ui8, [0])
+            "FNum": FakeSMCKeyResult(dataType: ui8, bytes: [0])
         ])
         let service = SMCService(connection: conn)
 
@@ -56,8 +56,8 @@ final class SMCServiceTests: XCTestCase {
         let fpe2 = smcEncodeKey("fpe2")
         // 0x0500 / 256 = 5.0
         let conn = FakeSMCConnection(isOpen: true, keys: [
-            "FNum": (ui8, [1]),
-            "F0Ac": (fpe2, [0x05, 0x00])
+            "FNum": FakeSMCKeyResult(dataType: ui8, bytes: [1]),
+            "F0Ac": FakeSMCKeyResult(dataType: fpe2, bytes: [0x05, 0x00])
         ])
         let service = SMCService(connection: conn)
 

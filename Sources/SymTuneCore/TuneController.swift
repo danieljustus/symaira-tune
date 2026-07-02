@@ -40,6 +40,8 @@ public final class TuneController: Sendable {
 
     public func sensors_report() -> SensorReport { sensors.read() }
 
+    public func sensorsReport() -> SensorReport { sensors_report() }
+
     public func batteryReport() -> BatteryReport { battery.read() }
 
     public func displaysReport() -> DisplaysReport { displays.list() }
