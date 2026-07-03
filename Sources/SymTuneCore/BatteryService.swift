@@ -8,14 +8,15 @@ import IOKit
 /// Raw `AppleSmartBattery` keys vary slightly across Mac models; values are
 /// reported best-effort with an explanatory note.
 public struct BatteryService: Sendable {
-    public init() {}
+    private let source: any BatterySource
+
+    public init(source: any BatterySource = HardwareBatterySource()) {
+        self.source = source
+    }
 
     public func read() -> BatteryReport {
-        let service = IOServiceGetMatchingService(
-            kIOMainPortDefault,
-            IOServiceMatching("AppleSmartBattery")
-        )
-        guard service != 0 else {
+        switch source.readProperties() {
+        case .unavailable:
             return BatteryReport(
                 present: false, charging: nil, externalConnected: nil,
                 currentCapacityPercent: nil, cycleCount: nil,
@@ -23,14 +24,7 @@ public struct BatteryService: Sendable {
                 temperatureCelsius: nil, chargeLimitSupported: false,
                 notes: ["No AppleSmartBattery node — likely a desktop Mac."]
             )
-        }
-        defer { IOObjectRelease(service) }
-
-        var unmanagedProps: Unmanaged<CFMutableDictionary>?
-        guard
-            IORegistryEntryCreateCFProperties(service, &unmanagedProps, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-            let props = unmanagedProps?.takeRetainedValue() as? [String: Any]
-        else {
+        case .readFailed:
             return BatteryReport(
                 present: true, charging: nil, externalConnected: nil,
                 currentCapacityPercent: nil, cycleCount: nil,
@@ -38,42 +32,38 @@ public struct BatteryService: Sendable {
                 temperatureCelsius: nil, chargeLimitSupported: false,
                 notes: ["Failed to read AppleSmartBattery properties."]
             )
+        case .success(let props):
+            var health: Int?
+            if let design = props.designCapacity, design > 0, let rawMax = props.rawMaxCapacity {
+                health = Int((Double(rawMax) / Double(design) * 100).rounded())
+            }
+
+            var percent: Int?
+            if let rawMax = props.rawMaxCapacity, rawMax > 0, let rawCurrent = props.rawCurrentCapacity {
+                percent = SafetyPolicy.clamp(Int((Double(rawCurrent) / Double(rawMax) * 100).rounded()), 0, 100)
+            }
+
+            var temperatureC: Double?
+            if let raw = props.temperatureCentidegrees {
+                temperatureC = Double(raw) / 100.0
+            }
+
+            return BatteryReport(
+                present: true,
+                charging: props.isCharging,
+                externalConnected: props.externalConnected,
+                currentCapacityPercent: percent,
+                cycleCount: props.cycleCount,
+                designCapacityMah: props.designCapacity,
+                maxCapacityMah: props.rawMaxCapacity,
+                healthPercent: health,
+                temperatureCelsius: temperatureC,
+                chargeLimitSupported: false,
+                notes: [
+                    "Read from raw AppleSmartBattery keys; interpretation can vary by Mac model.",
+                    "Setting a charge limit requires the privileged Pro helper (not in v0.1).",
+                ]
+            )
         }
-
-        let design = props["DesignCapacity"] as? Int
-        let rawMax = (props["AppleRawMaxCapacity"] as? Int) ?? (props["MaxCapacity"] as? Int)
-        let rawCurrent = (props["AppleRawCurrentCapacity"] as? Int) ?? (props["CurrentCapacity"] as? Int)
-
-        var health: Int?
-        if let design, design > 0, let rawMax {
-            health = Int((Double(rawMax) / Double(design) * 100).rounded())
-        }
-
-        var percent: Int?
-        if let rawMax, rawMax > 0, let rawCurrent {
-            percent = SafetyPolicy.clamp(Int((Double(rawCurrent) / Double(rawMax) * 100).rounded()), 0, 100)
-        }
-
-        var temperatureC: Double?
-        if let raw = props["Temperature"] as? Int {
-            temperatureC = Double(raw) / 100.0
-        }
-
-        return BatteryReport(
-            present: true,
-            charging: props["IsCharging"] as? Bool,
-            externalConnected: props["ExternalConnected"] as? Bool,
-            currentCapacityPercent: percent,
-            cycleCount: props["CycleCount"] as? Int,
-            designCapacityMah: design,
-            maxCapacityMah: rawMax,
-            healthPercent: health,
-            temperatureCelsius: temperatureC,
-            chargeLimitSupported: false,
-            notes: [
-                "Read from raw AppleSmartBattery keys; interpretation can vary by Mac model.",
-                "Setting a charge limit requires the privileged Pro helper (not in v0.1).",
-            ]
-        )
     }
 }

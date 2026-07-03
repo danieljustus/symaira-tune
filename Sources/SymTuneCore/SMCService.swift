@@ -169,18 +169,61 @@ private extension Array where Element == UInt8 {
     }
 }
 
-// MARK: - SMC Connection Holder
+// MARK: - SMC Connection Protocol
+
+/// Abstraction over the AppleSMC IOKit connection so `SMCService` can be
+/// unit-tested without real hardware.
+public protocol SMCConnectionProtocol: Sendable {
+    var isOpen: Bool { get }
+
+    /// Read a key's data type and raw bytes, or nil if the key does not exist or the read fails.
+    func readKeyRaw(_ key: String) -> (dataType: UInt32, bytes: [UInt8])?
+
+    /// Write raw bytes to a key. Returns true on success.
+    func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool
+}
+
+// MARK: - Raw IOKit Call
+
+/// Perform a single `IOConnectCallStructMethod` call on the SMC driver.
+/// Selector 2 (`kSMCHandleYPCCommand`) is the standard command dispatch.
+private func smcRawCall(
+    handle: io_connect_t,
+    input: inout SMCParamBlock,
+    output: inout SMCParamBlock
+) -> Bool {
+    guard handle != IO_OBJECT_NULL else { return false }
+
+    var outSize = SMCParamBlock.byteCount
+
+    let kr = input.data.withUnsafeMutableBufferPointer { inBuf in
+        output.data.withUnsafeMutableBufferPointer { outBuf in
+            IOConnectCallStructMethod(
+                handle,
+                2, // kSMCHandleYPCCommand
+                inBuf.baseAddress,
+                SMCParamBlock.byteCount,
+                outBuf.baseAddress,
+                &outSize
+            )
+        }
+    }
+
+    return kr == kIOReturnSuccess
+}
+
+// MARK: - Hardware SMC Connection
 
 /// Reference-type wrapper for the IOKit `io_connect_t` handle.
 /// Prevents accidental double-close when `SMCService` (a struct) is copied.
 /// The connection is opened eagerly in `init` so that `handle` is set once
 /// and never mutated afterward, fulfilling the `@unchecked Sendable` contract.
-private final class SMCConnection: @unchecked Sendable {
+public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     private static let taskPort: mach_port_t = mach_task_self_
-    let handle: io_connect_t
-    let isOpen: Bool
+    public let handle: io_connect_t
+    public let isOpen: Bool
 
-    init() {
+    public init() {
         var openedHandle: io_connect_t = IO_OBJECT_NULL
         var opened = false
 
@@ -214,64 +257,9 @@ private final class SMCConnection: @unchecked Sendable {
             IOServiceClose(handle)
         }
     }
-}
 
-// MARK: - Raw IOKit Call
-
-/// Perform a single `IOConnectCallStructMethod` call on the SMC driver.
-/// Selector 2 (`kSMCHandleYPCCommand`) is the standard command dispatch.
-private func smcRawCall(
-    handle: io_connect_t,
-    input: inout SMCParamBlock,
-    output: inout SMCParamBlock
-) -> Bool {
-    guard handle != IO_OBJECT_NULL else { return false }
-
-    var outSize = SMCParamBlock.byteCount
-
-    let kr = input.data.withUnsafeMutableBufferPointer { inBuf in
-        output.data.withUnsafeMutableBufferPointer { outBuf in
-            IOConnectCallStructMethod(
-                handle,
-                2, // kSMCHandleYPCCommand
-                inBuf.baseAddress,
-                SMCParamBlock.byteCount,
-                outBuf.baseAddress,
-                &outSize
-            )
-        }
-    }
-
-    return kr == kIOReturnSuccess
-}
-
-// MARK: - SMCService
-
-/// Bridge to the System Management Controller (SMC) for temperature/fan sensors.
-///
-/// **Read-only in v0.1** — fan/charge writes belong to the privileged Pro helper.
-/// Write methods are available for use by the helper IPC layer (see
-/// `SMCHelperProtocol`). The connection is opened lazily on first use and closed
-/// on deinit. All reads are unprivileged (user type 0).
-///
-/// Handles Apple Silicon vs Intel key differences automatically. Fanless Macs
-/// are supported: `FNum` returning 0 produces an empty fans array.
-public struct SMCService: Sendable {
-    private let conn: SMCConnection
-
-    public init() {
-        conn = SMCConnection()
-    }
-
-    /// Whether the SMC bridge successfully connected to the AppleSMC driver.
-    public var isAvailable: Bool { conn.isOpen }
-
-    // MARK: - Key Reading
-
-    /// Read an SMC key: returns the data type (as UInt32) and raw bytes,
-    /// or nil if the key doesn't exist or the read fails.
-    private func readKeyRaw(_ key: String) -> (UInt32, [UInt8])? {
-        guard conn.isOpen else { return nil }
+    public func readKeyRaw(_ key: String) -> (dataType: UInt32, bytes: [UInt8])? {
+        guard isOpen else { return nil }
 
         // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
         var in1 = SMCParamBlock()
@@ -279,7 +267,7 @@ public struct SMCService: Sendable {
         in1.data8 = 9 // kSMCReadKeyInfo
 
         var out1 = SMCParamBlock()
-        guard smcRawCall(handle: conn.handle, input: &in1, output: &out1),
+        guard smcRawCall(handle: handle, input: &in1, output: &out1),
               out1.result == 0
         else { return nil }
 
@@ -294,33 +282,15 @@ public struct SMCService: Sendable {
         in2.copyKeyInfo(from: out1)
 
         var out2 = SMCParamBlock()
-        guard smcRawCall(handle: conn.handle, input: &in2, output: &out2),
+        guard smcRawCall(handle: handle, input: &in2, output: &out2),
               out2.result == 0
         else { return nil }
 
         return (dataType, out2.dataBytes(Int(dataSize)))
     }
 
-    /// Read an SMC key and convert to a Double.
-    private func readKeyValue(_ key: String) -> Double? {
-        guard let (dataType, bytes) = readKeyRaw(key) else { return nil }
-        return smcConvertValue(dataType: dataType, bytes: bytes)
-    }
-
-    /// Read an SMC key as an unsigned integer (for `ui8 `, `ui16`, `ui32`).
-    private func readKeyUInt(_ key: String) -> UInt? {
-        guard let (_, bytes) = readKeyRaw(key), !bytes.isEmpty else { return nil }
-        var result: UInt = 0
-        for b in bytes { result = (result << 8) | UInt(b) }
-        return result
-    }
-
-    // MARK: - Key Writing (privileged, used by helper IPC)
-
-    /// Write a raw value to an SMC key. Requires root/SMC connection privileges.
-    /// Used by the privileged Pro helper for fan/charge control.
     public func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
-        guard conn.isOpen, bytes.count <= 32 else { return false }
+        guard isOpen, bytes.count <= 32 else { return false }
 
         // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
         var in1 = SMCParamBlock()
@@ -328,7 +298,7 @@ public struct SMCService: Sendable {
         in1.data8 = 9 // kSMCReadKeyInfo
 
         var out1 = SMCParamBlock()
-        guard smcRawCall(handle: conn.handle, input: &in1, output: &out1),
+        guard smcRawCall(handle: handle, input: &in1, output: &out1),
               out1.result == 0
         else { return false }
 
@@ -347,11 +317,57 @@ public struct SMCService: Sendable {
         }
 
         var out2 = SMCParamBlock()
-        guard smcRawCall(handle: conn.handle, input: &in2, output: &out2),
+        guard smcRawCall(handle: handle, input: &in2, output: &out2),
               out2.result == 0
         else { return false }
 
         return true
+    }
+}
+
+// MARK: - SMCService
+
+/// Bridge to the System Management Controller (SMC) for temperature/fan sensors.
+///
+/// **Read-only in v0.1** — fan/charge writes belong to the privileged Pro helper.
+/// Write methods are available for use by the helper IPC layer (see
+/// `SMCHelperProtocol`). The connection is opened lazily on first use and closed
+/// on deinit. All reads are unprivileged (user type 0).
+///
+/// Handles Apple Silicon vs Intel key differences automatically. Fanless Macs
+/// are supported: `FNum` returning 0 produces an empty fans array.
+public struct SMCService: Sendable {
+    private let connection: any SMCConnectionProtocol
+
+    public init(connection: any SMCConnectionProtocol = HardwareSMCConnection()) {
+        self.connection = connection
+    }
+
+    /// Whether the SMC bridge successfully connected to the AppleSMC driver.
+    public var isAvailable: Bool { connection.isOpen }
+
+    // MARK: - Key Reading
+
+    /// Read an SMC key and convert to a Double.
+    private func readKeyValue(_ key: String) -> Double? {
+        guard let (dataType, bytes) = connection.readKeyRaw(key) else { return nil }
+        return smcConvertValue(dataType: dataType, bytes: bytes)
+    }
+
+    /// Read an SMC key as an unsigned integer (for `ui8 `, `ui16`, `ui32`).
+    private func readKeyUInt(_ key: String) -> UInt? {
+        guard let (_, bytes) = connection.readKeyRaw(key), !bytes.isEmpty else { return nil }
+        var result: UInt = 0
+        for b in bytes { result = (result << 8) | UInt(b) }
+        return result
+    }
+
+    // MARK: - Key Writing (privileged, used by helper IPC)
+
+    /// Write a raw value to an SMC key. Requires root/SMC connection privileges.
+    /// Used by the privileged Pro helper for fan/charge control.
+    public func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
+        connection.writeKeyRaw(key, dataType: dataType, bytes: bytes)
     }
 
     /// Write a value to an SMC key, encoding as the specified data type.
@@ -376,7 +392,7 @@ public struct SMCService: Sendable {
     // MARK: - Temperature Sensors
 
     public func readTemperatures() -> [SensorReading] {
-        guard conn.isOpen else { return [] }
+        guard connection.isOpen else { return [] }
 
         #if arch(arm64)
         let keys = Self.appleSiliconTempKeys
@@ -396,7 +412,7 @@ public struct SMCService: Sendable {
     // MARK: - Fan Sensors
 
     public func readFans() -> [FanReading] {
-        guard conn.isOpen else { return [] }
+        guard connection.isOpen else { return [] }
 
         // Fan count key (`FNum`) returns a ui8.
         guard let fanCount = readKeyUInt("FNum"), fanCount > 0 else { return [] }
