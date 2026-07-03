@@ -6,10 +6,16 @@ struct FakeSMCKeyResult {
     let bytes: [UInt8]
 }
 
+struct FakeSMCWrittenKey {
+    let key: String
+    let dataType: UInt32
+    let bytes: [UInt8]
+}
+
 final class FakeSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     var isOpen: Bool
     var keys: [String: FakeSMCKeyResult]
-    var writtenKeys: [(String, UInt32, [UInt8])] = []
+    var writtenKeys: [FakeSMCWrittenKey] = []
 
     init(isOpen: Bool = true, keys: [String: FakeSMCKeyResult] = [:]) {
         self.isOpen = isOpen
@@ -21,7 +27,7 @@ final class FakeSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     }
 
     func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
-        writtenKeys.append((key, dataType, bytes))
+        writtenKeys.append(FakeSMCWrittenKey(key: key, dataType: dataType, bytes: bytes))
         return true
     }
 }

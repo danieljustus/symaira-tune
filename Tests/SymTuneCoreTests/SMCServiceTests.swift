@@ -76,8 +76,8 @@ final class SMCServiceTests: XCTestCase {
         XCTAssertTrue(success)
         XCTAssertEqual(conn.writtenKeys.count, 1)
         let written = conn.writtenKeys.first!
-        XCTAssertEqual(written.0, "F0Tg")
-        XCTAssertEqual(written.2, [0x02, 0x00])
+        XCTAssertEqual(written.key, "F0Tg")
+        XCTAssertEqual(written.bytes, [0x02, 0x00])
     }
 
     func testWriteKeyValueUnknownTypeReturnsFalse() {

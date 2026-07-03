@@ -208,17 +208,20 @@ struct MainStatusView: View {
             // Footer
             HStack {
                 Spacer()
-                Button(action: {
-                    NSApp.terminate(nil)
-                }) {
-                    Text("Quit")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(SymairaColors.bgDark)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(SymairaColors.goldPrimary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
+                Button(
+                    action: {
+                        NSApp.terminate(nil)
+                    },
+                    label: {
+                        Text("Quit")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(SymairaColors.bgDark)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+                            .background(SymairaColors.goldPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                )
                 .buttonStyle(.plain)
             }
             .padding(.top, 4)
