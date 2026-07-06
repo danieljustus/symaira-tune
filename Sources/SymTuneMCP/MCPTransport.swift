@@ -46,7 +46,7 @@ struct MCPTransport {
         guard length <= maxPayloadSize else {
             throw TuneError.failed("MCP payload size \(length) exceeds maximum allowed \(maxPayloadSize).")
         }
-        return try readBytes(count: length)
+        return try readBytes(count: length, initial: Data(trailingBody))
     }
 
     /// Serialize `payload` and write it with a `Content-Length` header.
@@ -66,7 +66,7 @@ struct MCPTransport {
             }
             data.append(byte)
             if data.count >= 4, let range = data.range(of: Data([13, 10, 13, 10])) {
-                return data[data.startIndex..<range.lowerBound]
+                return data[data.startIndex..<range.upperBound]
             }
         }
         throw TuneError.failed("MCP header exceeded \(maxHeaderSize) bytes without terminator.")
