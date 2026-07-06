@@ -28,3 +28,10 @@ dist/
 
 # Docs
 docs/
+
+# Local agent reports / session state
+.github/coverage/
+.github/prerelease/
+.omo/run-continuation/
+.omo/notepads/
+coverage.html
