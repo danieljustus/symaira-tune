@@ -16,16 +16,25 @@ public final class TuneController: Sendable {
     private let restoreTracker: OverrideTracker
     nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
+    public let dataDir: URL
+    private let historyService: HistoryService
+    private let powerLock = NSLock()
+    nonisolated(unsafe) private var activeTokensCount = 0
+
     public init(
         config: TuneConfig = TuneConfig(),
-        displayWrite: (any DisplayWriteServiceProtocol)? = nil
+        displayWrite: (any DisplayWriteServiceProtocol)? = nil,
+        dataDir: URL? = nil
     ) {
         self.config = config
         self.displayWrite = displayWrite ?? HardwareDisplayWriteService(
             displayService: displays,
             edrOverlay: edrOverlay
         )
-        self.profiles = ProfileService(dataDir: ConfigPaths().dataDir)
+        let resolvedDataDir = dataDir ?? ConfigPaths().dataDir
+        self.dataDir = resolvedDataDir
+        self.profiles = ProfileService(dataDir: resolvedDataDir)
+        self.historyService = HistoryService(dataDir: resolvedDataDir)
         self.restoreTracker = OverrideTracker(displayService: displays, edrOverlay: edrOverlay)
         restoreTracker.registerSignalHandlers()
     }
@@ -34,6 +43,29 @@ public final class TuneController: Sendable {
         restoreTracker.restoreAll()
         dimOverlay.removeAllOverlays()
         edrOverlay.removeAllOverlays()
+    }
+
+    // MARK: - History log helper
+
+    private func logHistory(
+        action: String,
+        requested: Double? = nil,
+        clamped: Double? = nil,
+        applied: Double? = nil,
+        result: String,
+        error: Error? = nil
+    ) {
+        let reason = error != nil ? "\(error!)" : nil
+        let event = HistoryEvent(
+            timestamp: Date(),
+            action: action,
+            requestedValue: requested,
+            clampedValue: clamped,
+            appliedValue: applied,
+            result: result,
+            errorReason: reason
+        )
+        historyService.logEvent(event)
     }
 
     // MARK: - Reads
@@ -116,11 +148,60 @@ public final class TuneController: Sendable {
     // MARK: - Keep awake
 
     public func beginKeepAwake(reason: String, preventDisplaySleep: Bool) throws -> KeepAwakeToken {
-        try power.begin(reason: reason, preventDisplaySleep: preventDisplaySleep)
+        let token = try power.begin(reason: reason, preventDisplaySleep: preventDisplaySleep)
+        powerLock.lock()
+        activeTokensCount += 1
+        powerLock.unlock()
+        return token
     }
 
     public func endKeepAwake(_ token: KeepAwakeToken) {
         power.end(token)
+        powerLock.lock()
+        activeTokensCount = max(0, activeTokensCount - 1)
+        powerLock.unlock()
+    }
+
+    public func isKeepAwakeActive() -> Bool {
+        powerLock.lock()
+        defer { powerLock.unlock() }
+        return activeTokensCount > 0
+    }
+
+    // MARK: - Status Snapshot & Active Overrides
+
+    public func activeOverrides() -> ActiveOverrides {
+        ActiveOverrides(
+            brightness: restoreTracker.hasBrightnessOverride() ? (try? getBuiltinBrightness()) : nil,
+            dim: getDimLevel() < 1.0 ? getDimLevel() : nil,
+            warmth: getWarmthLevel() > 0.0 ? getWarmthLevel() : nil,
+            edrBrightness: restoreTracker.hasEDROverride() ? restoreTracker.appliedEDRBrightness : nil
+        )
+    }
+
+    public func statusReport() -> StatusReport {
+        let sensorsRep = sensors_report()
+        let batteryRep = batteryReport()
+        let displaysRep = displaysReport()
+        let overrides = activeOverrides()
+        let keepAwake = isKeepAwakeActive()
+
+        let result = HealthScorer.calculateScore(
+            sensors: sensorsRep,
+            battery: batteryRep,
+            activeOverrides: overrides,
+            isKeepAwakeActive: keepAwake
+        )
+
+        return StatusReport(
+            healthScore: result.score,
+            healthScoreMsg: result.message,
+            recommendations: result.recommendations,
+            activeOverrides: overrides,
+            sensors: sensorsRep,
+            battery: batteryRep,
+            displays: displaysRep
+        )
     }
 
     // MARK: - Write surface (v0.2 core)
@@ -130,28 +211,40 @@ public final class TuneController: Sendable {
     }
 
     public func applyBuiltinBrightness(_ value: Double) throws {
-        let original = try? displayWrite.getBuiltinBrightness()
-        if let original { restoreTracker.saveBrightness(Float(original)) }
         let clamped = SafetyPolicy.clamp(value, config.brightnessMin, config.brightnessMax)
-        try displayWrite.setBuiltinBrightness(Float(clamped))
+        do {
+            let original = try? displayWrite.getBuiltinBrightness()
+            if let original { restoreTracker.saveBrightness(Float(original)) }
+            try displayWrite.setBuiltinBrightness(Float(clamped))
+            logHistory(action: "brightness.set", requested: value, clamped: clamped, applied: clamped, result: "success")
+        } catch {
+            logHistory(action: "brightness.set", requested: value, clamped: clamped, applied: nil, result: "failed", error: error)
+            throw error
+        }
     }
 
     public func applyExtendedBrightness(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.extendedBrightnessMin, config.extendedBrightnessMax)
-        // Capture the original system headroom before the first override so restore-on-exit
-        // can return the display to its pre-symtune EDR level instead of SDR (1.0).
-        restoreTracker.saveOriginalEDRHeadroom(edrOverlay)
-        restoreTracker.saveEDRBrightness(clamped)
-        try displayWrite.applyExtendedBrightness(clamped, displayID: nil)
+        do {
+            restoreTracker.saveOriginalEDRHeadroom(edrOverlay)
+            restoreTracker.saveEDRBrightness(clamped)
+            try displayWrite.applyExtendedBrightness(clamped, displayID: nil)
+            logHistory(action: "extbright.set", requested: value, clamped: clamped, applied: clamped, result: "success")
+        } catch {
+            logHistory(action: "extbright.set", requested: value, clamped: clamped, applied: nil, result: "failed", error: error)
+            throw error
+        }
     }
 
     public func applyDim(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.dimMin, config.dimMax)
         dimOverlay.applyDim(Float(clamped))
+        logHistory(action: "dim.set", requested: value, clamped: clamped, applied: clamped, result: "success")
     }
 
     public func resetDim() {
         dimOverlay.removeAllOverlays()
+        logHistory(action: "dim.reset", result: "success")
     }
 
     public func getDimLevel() -> Double {
@@ -164,22 +257,41 @@ public final class TuneController: Sendable {
 
     public func applyWarmth(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, 0.0, 1.0)
-        restoreTracker.saveWarmth(Float(clamped))
-        try displayWrite.applyWarmth(Float(clamped))
+        do {
+            restoreTracker.saveWarmth(Float(clamped))
+            try displayWrite.applyWarmth(Float(clamped))
+            logHistory(action: "warmth.set", requested: value, clamped: clamped, applied: clamped, result: "success")
+        } catch {
+            logHistory(action: "warmth.set", requested: value, clamped: clamped, applied: nil, result: "failed", error: error)
+            throw error
+        }
     }
 
     public func resetWarmth() throws {
-        try displayWrite.resetWarmth()
+        do {
+            try displayWrite.resetWarmth()
+            logHistory(action: "warmth.reset", result: "success")
+        } catch {
+            logHistory(action: "warmth.reset", result: "failed", error: error)
+            throw error
+        }
     }
 
     public func restoreAll() {
         restoreTracker.restoreAll()
+        logHistory(action: "restore", result: "success")
     }
 
     // MARK: - Profiles
 
     public func saveProfile(_ profile: TuneProfile) throws {
-        try profiles.saveProfile(profile)
+        do {
+            try profiles.saveProfile(profile)
+            logHistory(action: "profile.save", result: "success")
+        } catch {
+            logHistory(action: "profile.save", result: "failed", error: error)
+            throw error
+        }
     }
 
     public func loadProfile(name: String) throws -> TuneProfile {
@@ -191,18 +303,30 @@ public final class TuneController: Sendable {
     }
 
     public func deleteProfile(name: String) throws {
-        try profiles.deleteProfile(name: name)
+        do {
+            try profiles.deleteProfile(name: name)
+            logHistory(action: "profile.delete", result: "success")
+        } catch {
+            logHistory(action: "profile.delete", result: "failed", error: error)
+            throw error
+        }
     }
 
     public func applyProfile(_ profile: TuneProfile) throws {
-        if let brightness = profile.brightness {
-            try applyBuiltinBrightness(brightness)
-        }
-        if let dim = profile.dim {
-            try applyDim(dim)
-        }
-        if let warmth = profile.warmth {
-            try applyWarmth(warmth)
+        do {
+            if let brightness = profile.brightness {
+                try applyBuiltinBrightness(brightness)
+            }
+            if let dim = profile.dim {
+                try applyDim(dim)
+            }
+            if let warmth = profile.warmth {
+                try applyWarmth(warmth)
+            }
+            logHistory(action: "profile.load", result: "success")
+        } catch {
+            logHistory(action: "profile.load", result: "failed", error: error)
+            throw error
         }
     }
 
@@ -226,22 +350,38 @@ public final class TuneController: Sendable {
 
     public func applyFan(fraction: Double) throws {
         let clamped = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
-        guard let helper = helperClient else {
-            throw TuneError.unsupported(
-                "fan control requires the privileged SMC helper (Pro tier)."
-            )
+        do {
+            guard let helper = helperClient else {
+                throw TuneError.unsupported(
+                    "fan control requires the privileged SMC helper (Pro tier)."
+                )
+            }
+            try helper.setFanFraction(clamped)
+            logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: clamped, result: "success")
+        } catch {
+            logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: nil, result: "failed", error: error)
+            throw error
         }
-        try helper.setFanFraction(clamped)
     }
 
     public func applyChargeLimit(percent: Int) throws {
         let clamped = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
-        guard let helper = helperClient else {
-            throw TuneError.unsupported(
-                "charge limit requires the privileged SMC helper (Pro tier)."
-            )
+        do {
+            guard let helper = helperClient else {
+                throw TuneError.unsupported(
+                    "charge limit requires the privileged SMC helper (Pro tier)."
+                )
+            }
+            try helper.setChargeLimit(clamped)
+            logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: Double(clamped), result: "success")
+        } catch {
+            logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: nil, result: "failed", error: error)
+            throw error
         }
-        try helper.setChargeLimit(clamped)
+    }
+
+    public func getHistory() -> [HistoryEvent] {
+        historyService.readEvents()
     }
 
     static var architecture: String {

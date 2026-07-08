@@ -141,3 +141,84 @@ public struct CapabilityReport: Codable, Sendable {
     public let permissions: PermissionStatus
     public let recommendations: [String]
 }
+
+// MARK: - Active Overrides
+
+public struct ActiveOverrides: Codable, Sendable, Equatable {
+    public let brightness: Double?
+    public let dim: Double?
+    public let warmth: Double?
+    public let edrBrightness: Double?
+
+    public init(
+        brightness: Double? = nil,
+        dim: Double? = nil,
+        warmth: Double? = nil,
+        edrBrightness: Double? = nil
+    ) {
+        self.brightness = brightness
+        self.dim = dim
+        self.warmth = warmth
+        self.edrBrightness = edrBrightness
+    }
+}
+
+// MARK: - Status Report
+
+public struct StatusReport: Codable, Sendable {
+    public let healthScore: Int
+    public let healthScoreMsg: String
+    public let recommendations: [String]
+    public let activeOverrides: ActiveOverrides
+    public let sensors: SensorReport
+    public let battery: BatteryReport
+    public let displays: DisplaysReport
+
+    public init(
+        healthScore: Int,
+        healthScoreMsg: String,
+        recommendations: [String],
+        activeOverrides: ActiveOverrides,
+        sensors: SensorReport,
+        battery: BatteryReport,
+        displays: DisplaysReport
+    ) {
+        self.healthScore = healthScore
+        self.healthScoreMsg = healthScoreMsg
+        self.recommendations = recommendations
+        self.activeOverrides = activeOverrides
+        self.sensors = sensors
+        self.battery = battery
+        self.displays = displays
+    }
+}
+
+// MARK: - History Event
+
+public struct HistoryEvent: Codable, Sendable, Equatable {
+    public let timestamp: Date
+    public let action: String
+    public let requestedValue: Double?
+    public let clampedValue: Double?
+    public let appliedValue: Double?
+    public let result: String
+    public let errorReason: String?
+
+    public init(
+        timestamp: Date = Date(),
+        action: String,
+        requestedValue: Double? = nil,
+        clampedValue: Double? = nil,
+        appliedValue: Double? = nil,
+        result: String,
+        errorReason: String? = nil
+    ) {
+        self.timestamp = timestamp
+        self.action = action
+        self.requestedValue = requestedValue
+        self.clampedValue = clampedValue
+        self.appliedValue = appliedValue
+        self.result = result
+        self.errorReason = errorReason
+    }
+}

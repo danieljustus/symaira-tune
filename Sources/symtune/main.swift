@@ -10,6 +10,9 @@ USAGE
 
 READ COMMANDS (v0.1)
   doctor                 Capabilities, host info, and recommendations (JSON).
+  status [--json] [--watch [--interval <duration>]]
+                         System health status snapshot (Score, overrides, sensors, battery).
+  history [--json]       Write operations history log.
   sensors                Thermal pressure + (when available) temps/fan RPM (JSON).
   battery                Battery health: charge %, cycles, capacity, condition (JSON).
   displays               Displays with EDR headroom / extended-brightness capability (JSON).
@@ -164,6 +167,126 @@ func runProfile(_ args: [String], controller: TuneController) throws {
         throw TuneError.usage("profile: unknown subcommand '\(subcommand)'.")
     }
 }
+func emitNDJSON<T: Encodable>(_ value: T) throws {
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let data = try encoder.encode(value)
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write(Data("\n".utf8))
+}
+
+func runStatus(_ args: [String], controller: TuneController) throws {
+    var isWatch = false
+    var interval: TimeInterval = 1.0
+    var isJson = false
+
+    var index = 0
+    while index < args.count {
+        switch args[index] {
+        case "--watch":
+            isWatch = true
+        case "--interval":
+            index += 1
+            guard index < args.count else {
+                throw TuneError.usage("status: --interval requires a value.")
+            }
+            interval = try DurationParser.parse(args[index])
+        case "--json":
+            isJson = true
+        default:
+            throw TuneError.usage("status: unknown option '\(args[index])'")
+        }
+        index += 1
+    }
+
+    if isWatch {
+        while true {
+            let report = controller.statusReport()
+            try emitNDJSON(report)
+            Thread.sleep(forTimeInterval: interval)
+        }
+    } else {
+        let report = controller.statusReport()
+        if isJson {
+            try emitJSON(report)
+        } else {
+            emit("symtune health: \(report.healthScoreMsg) (Score: \(report.healthScore)/100)")
+            emit("\nRecommendations:")
+            for rec in report.recommendations {
+                emit("- \(rec)")
+            }
+            emit("\nActive Overrides:")
+            let o = report.activeOverrides
+            var anyOverride = false
+            if let b = o.brightness {
+                emit("- Brightness: \(Int(b * 100))%")
+                anyOverride = true
+            }
+            if let d = o.dim {
+                emit("- Software Dim: \(Int(d * 100))%")
+                anyOverride = true
+            }
+            if let w = o.warmth {
+                emit("- Warmth: \(Int(w * 100))%")
+                anyOverride = true
+            }
+            if let edr = o.edrBrightness {
+                emit("- Extended EDR Brightness: \(String(format: "%.1f", edr))x")
+                anyOverride = true
+            }
+            if !anyOverride {
+                emit("- None")
+            }
+        }
+    }
+}
+
+func runHistory(_ args: [String], controller: TuneController) throws {
+    var isJson = false
+    for arg in args {
+        if arg == "--json" {
+            isJson = true
+        } else {
+            throw TuneError.usage("history: unknown option '\(arg)'")
+        }
+    }
+
+    let events = controller.getHistory()
+    if isJson {
+        try emitJSON(events)
+    } else {
+        if events.isEmpty {
+            emit("No history events recorded.")
+            return
+        }
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+        emit(String(format: "%-20@ %-16@ %-10@ %-10@ %-10@ %-10@ %@",
+                    "Timestamp" as NSString,
+                    "Action" as NSString,
+                    "Requested" as NSString,
+                    "Clamped" as NSString,
+                    "Applied" as NSString,
+                    "Result" as NSString,
+                    "Reason/Error" as NSString))
+        emit(String(repeating: "-", count: 90))
+        for event in events {
+            let req = event.requestedValue != nil ? String(format: "%.2f", event.requestedValue!) : "n/a"
+            let clm = event.clampedValue != nil ? String(format: "%.2f", event.clampedValue!) : "n/a"
+            let app = event.appliedValue != nil ? String(format: "%.2f", event.appliedValue!) : "n/a"
+            let err = event.errorReason ?? ""
+            emit(String(format: "%-20@ %-16@ %-10@ %-10@ %-10@ %-10@ %@",
+                        df.string(from: event.timestamp) as NSString,
+                        event.action as NSString,
+                        req as NSString,
+                        clm as NSString,
+                        app as NSString,
+                        event.result as NSString,
+                        err as NSString))
+        }
+    }
+}
 
 private func runBrightness(_ rest: [String], controller: TuneController) throws {
     if rest.first == "get" || rest.isEmpty {
@@ -173,6 +296,39 @@ private func runBrightness(_ rest: [String], controller: TuneController) throws 
         try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
         try emitJSON(ApplyResult(applied: true))
     }
+}
+
+private func runDim(_ rest: [String], controller: TuneController) throws {
+    if rest.first == "reset" {
+        controller.resetDim()
+        try emitJSON(ApplyResult(applied: true))
+    } else {
+        try controller.applyDim(try parseValue(rest, command: "dim"))
+        try emitJSON(ApplyResult(applied: true))
+    }
+}
+
+private func runWarmth(_ rest: [String], controller: TuneController) throws {
+    if rest.first == "reset" {
+        try controller.resetWarmth()
+        try emitJSON(ApplyResult(applied: true))
+    } else {
+        try controller.applyWarmth(try parseValue(rest, command: "warmth"))
+        try emitJSON(ApplyResult(applied: true))
+    }
+}
+
+private func runExtBright(_ rest: [String], controller: TuneController) throws {
+    try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
+    try emitJSON(ApplyResult(applied: true))
+}
+
+private func runFan(_ rest: [String], controller: TuneController) throws {
+    try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
+}
+
+private func runBatteryLimit(_ rest: [String], controller: TuneController) throws {
+    try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
 }
 
 func runMain() -> Int32 {
@@ -187,6 +343,10 @@ func runMain() -> Int32 {
         switch command {
         case "serve":
             try MCPServer(controller: controller).run()
+        case "status":
+            try runStatus(rest, controller: controller)
+        case "history":
+            try runHistory(rest, controller: controller)
         case "doctor":
             try emitJSON(controller.capabilities())
         case "sensors":
@@ -202,33 +362,20 @@ func runMain() -> Int32 {
         case "brightness":
             try runBrightness(rest, controller: controller)
         case "extbright":
-            try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
-            try emitJSON(ApplyResult(applied: true))
+            try runExtBright(rest, controller: controller)
         case "dim":
-            if rest.first == "reset" {
-                controller.resetDim()
-                try emitJSON(ApplyResult(applied: true))
-            } else {
-                try controller.applyDim(try parseValue(rest, command: "dim"))
-                try emitJSON(ApplyResult(applied: true))
-            }
+            try runDim(rest, controller: controller)
         case "warmth":
-            if rest.first == "reset" {
-                try controller.resetWarmth()
-                try emitJSON(ApplyResult(applied: true))
-            } else {
-                try controller.applyWarmth(try parseValue(rest, command: "warmth"))
-                try emitJSON(ApplyResult(applied: true))
-            }
+            try runWarmth(rest, controller: controller)
         case "restore":
             controller.restoreAll()
             try emitJSON(ApplyResult(applied: true))
         case "profile":
             try runProfile(rest, controller: controller)
         case "fan":
-            try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
+            try runFan(rest, controller: controller)
         case "battery-limit":
-            try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
+            try runBatteryLimit(rest, controller: controller)
         case "version", "--version", "-v":
             runVersion(checkForUpdates: rest.contains("--check-for-updates"))
         case "help", "--help", "-h":
