@@ -1,12 +1,18 @@
 import Foundation
 
+public struct HealthScoreResult: Sendable {
+    public let score: Int
+    public let message: String
+    public let recommendations: [String]
+}
+
 public enum HealthScorer: Sendable {
     public static func calculateScore(
         sensors: SensorReport,
         battery: BatteryReport,
         activeOverrides: ActiveOverrides,
         isKeepAwakeActive: Bool
-    ) -> (score: Int, message: String, recommendations: [String]) {
+    ) -> HealthScoreResult {
         var score = 100
         var recommendations: [String] = []
 
@@ -97,6 +103,6 @@ public enum HealthScorer: Sendable {
             recommendations.append("System is running optimally with no warnings.")
         }
 
-        return (score, message, recommendations)
+        return HealthScoreResult(score: score, message: message, recommendations: recommendations)
     }
 }

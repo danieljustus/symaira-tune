@@ -222,4 +222,3 @@ public struct HistoryEvent: Codable, Sendable, Equatable {
         self.errorReason = errorReason
     }
 }
-

@@ -298,6 +298,39 @@ private func runBrightness(_ rest: [String], controller: TuneController) throws 
     }
 }
 
+private func runDim(_ rest: [String], controller: TuneController) throws {
+    if rest.first == "reset" {
+        controller.resetDim()
+        try emitJSON(ApplyResult(applied: true))
+    } else {
+        try controller.applyDim(try parseValue(rest, command: "dim"))
+        try emitJSON(ApplyResult(applied: true))
+    }
+}
+
+private func runWarmth(_ rest: [String], controller: TuneController) throws {
+    if rest.first == "reset" {
+        try controller.resetWarmth()
+        try emitJSON(ApplyResult(applied: true))
+    } else {
+        try controller.applyWarmth(try parseValue(rest, command: "warmth"))
+        try emitJSON(ApplyResult(applied: true))
+    }
+}
+
+private func runExtBright(_ rest: [String], controller: TuneController) throws {
+    try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
+    try emitJSON(ApplyResult(applied: true))
+}
+
+private func runFan(_ rest: [String], controller: TuneController) throws {
+    try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
+}
+
+private func runBatteryLimit(_ rest: [String], controller: TuneController) throws {
+    try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
+}
+
 func runMain() -> Int32 {
     guard let command = CommandLine.arguments.dropFirst().first else {
         emit(usage)
@@ -329,33 +362,20 @@ func runMain() -> Int32 {
         case "brightness":
             try runBrightness(rest, controller: controller)
         case "extbright":
-            try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
-            try emitJSON(ApplyResult(applied: true))
+            try runExtBright(rest, controller: controller)
         case "dim":
-            if rest.first == "reset" {
-                controller.resetDim()
-                try emitJSON(ApplyResult(applied: true))
-            } else {
-                try controller.applyDim(try parseValue(rest, command: "dim"))
-                try emitJSON(ApplyResult(applied: true))
-            }
+            try runDim(rest, controller: controller)
         case "warmth":
-            if rest.first == "reset" {
-                try controller.resetWarmth()
-                try emitJSON(ApplyResult(applied: true))
-            } else {
-                try controller.applyWarmth(try parseValue(rest, command: "warmth"))
-                try emitJSON(ApplyResult(applied: true))
-            }
+            try runWarmth(rest, controller: controller)
         case "restore":
             controller.restoreAll()
             try emitJSON(ApplyResult(applied: true))
         case "profile":
             try runProfile(rest, controller: controller)
         case "fan":
-            try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
+            try runFan(rest, controller: controller)
         case "battery-limit":
-            try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
+            try runBatteryLimit(rest, controller: controller)
         case "version", "--version", "-v":
             runVersion(checkForUpdates: rest.contains("--check-for-updates"))
         case "help", "--help", "-h":

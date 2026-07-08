@@ -186,7 +186,7 @@ public final class TuneController: Sendable {
         let overrides = activeOverrides()
         let keepAwake = isKeepAwakeActive()
 
-        let (score, msg, recs) = HealthScorer.calculateScore(
+        let result = HealthScorer.calculateScore(
             sensors: sensorsRep,
             battery: batteryRep,
             activeOverrides: overrides,
@@ -194,9 +194,9 @@ public final class TuneController: Sendable {
         )
 
         return StatusReport(
-            healthScore: score,
-            healthScoreMsg: msg,
-            recommendations: recs,
+            healthScore: result.score,
+            healthScoreMsg: result.message,
+            recommendations: result.recommendations,
             activeOverrides: overrides,
             sensors: sensorsRep,
             battery: batteryRep,

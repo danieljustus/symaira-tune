@@ -31,17 +31,17 @@ final class StatusTests: XCTestCase {
             edrBrightness: nil
         )
 
-        let (score, message, recs) = HealthScorer.calculateScore(
+        let result = HealthScorer.calculateScore(
             sensors: sensors,
             battery: battery,
             activeOverrides: overrides,
             isKeepAwakeActive: false
         )
 
-        XCTAssertEqual(score, 100)
-        XCTAssertEqual(message, "System health is optimal.")
-        XCTAssertEqual(recs.count, 1)
-        XCTAssertTrue(recs[0].contains("optimally"))
+        XCTAssertEqual(result.score, 100)
+        XCTAssertEqual(result.message, "System health is optimal.")
+        XCTAssertEqual(result.recommendations.count, 1)
+        XCTAssertTrue(result.recommendations[0].contains("optimally"))
     }
 
     func testHealthScorerWarningsAndDegradation() {
@@ -72,7 +72,7 @@ final class StatusTests: XCTestCase {
             edrBrightness: 1.2
         )
 
-        let (score, message, recs) = HealthScorer.calculateScore(
+        let result = HealthScorer.calculateScore(
             sensors: sensors,
             battery: battery,
             activeOverrides: overrides,
@@ -86,18 +86,18 @@ final class StatusTests: XCTestCase {
         // -10 (cycles > 1000)
         // -5 (battery warm 38C)
         // Total = 40. Clamped to 40.
-        XCTAssertEqual(score, 40)
-        XCTAssertEqual(message, "System health is critical. Performance or battery may be severely impacted.")
-        XCTAssertTrue(recs.contains(where: { $0.contains("serious") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("SMC connection failed") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("degraded (75%)") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("cycle count is high") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("Battery temperature is warm") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("Keep-awake") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("brightness") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("dim") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("Warmth") }))
-        XCTAssertTrue(recs.contains(where: { $0.contains("Extended EDR") }))
+        XCTAssertEqual(result.score, 40)
+        XCTAssertEqual(result.message, "System health is critical. Performance or battery may be severely impacted.")
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("serious") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("SMC connection failed") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("degraded (75%)") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("cycle count is high") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("Battery temperature is warm") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("Keep-awake") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("brightness") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("dim") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("Warmth") }))
+        XCTAssertTrue(result.recommendations.contains(where: { $0.contains("Extended EDR") }))
     }
 
     func testHealthScorerCriticalBattery() {
@@ -123,7 +123,7 @@ final class StatusTests: XCTestCase {
         )
         let overrides = ActiveOverrides()
 
-        let (score, _, _) = HealthScorer.calculateScore(
+        let result = HealthScorer.calculateScore(
             sensors: sensors,
             battery: battery,
             activeOverrides: overrides,
@@ -131,7 +131,7 @@ final class StatusTests: XCTestCase {
         )
 
         // 100 - 60 - 15 = 25
-        XCTAssertEqual(score, 25)
+        XCTAssertEqual(result.score, 25)
     }
 
     func testDurationParserValid() throws {
