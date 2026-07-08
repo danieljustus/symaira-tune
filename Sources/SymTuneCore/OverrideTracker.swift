@@ -10,6 +10,7 @@ final class OverrideTracker: @unchecked Sendable {
     private var _originalWarmth: Float?
     private var _appliedWarmth: Float = 0
     private var _originalEDRBrightness: Double?
+    private var _appliedEDRBrightness: Double?
     private var _originalEDRHeadroom: Double?
     private var _hasOverrides = false
     private var signalSources: [DispatchSourceSignal] = []
@@ -20,6 +21,30 @@ final class OverrideTracker: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return _appliedWarmth
+    }
+
+    var appliedEDRBrightness: Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _appliedEDRBrightness
+    }
+
+    func hasBrightnessOverride() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _originalBrightness != nil
+    }
+
+    func hasWarmthOverride() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _originalWarmth != nil
+    }
+
+    func hasEDROverride() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _originalEDRBrightness != nil
     }
 
     init(displayService: DisplayService? = nil, edrOverlay: EDROverlayService? = nil) {
@@ -63,6 +88,7 @@ final class OverrideTracker: @unchecked Sendable {
     func saveEDRBrightness(_ value: Double) {
         lock.lock()
         defer { lock.unlock() }
+        _appliedEDRBrightness = value
         if _originalEDRBrightness == nil {
             _originalEDRBrightness = value
             _hasOverrides = true
@@ -90,6 +116,7 @@ final class OverrideTracker: @unchecked Sendable {
         _originalBrightness = nil
         _originalWarmth = nil
         _originalEDRBrightness = nil
+        _appliedEDRBrightness = nil
         _originalEDRHeadroom = nil
         _hasOverrides = false
         lock.unlock()
