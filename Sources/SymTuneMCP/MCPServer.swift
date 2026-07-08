@@ -157,6 +157,8 @@ public final class MCPServer {
         DeleteProfileTool(),
         SetFanTool(),
         SetChargeLimitTool(),
+        GetStatusTool(),
+        GetHistoryTool(),
     ]
 }
 

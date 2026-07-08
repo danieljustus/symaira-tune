@@ -287,6 +287,26 @@ struct SetChargeLimitTool: MCPTool, @unchecked Sendable {
     }
 }
 
+struct GetStatusTool: MCPTool, @unchecked Sendable {
+    let name = "get_status"
+    let description = "Get the consolidated health status snapshot of the system, including score, recommendations, overrides, and raw reports."
+    let inputSchema: [String: Any] = [:]
+
+    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
+        controller.statusReport()
+    }
+}
+
+struct GetHistoryTool: MCPTool, @unchecked Sendable {
+    let name = "get_history"
+    let description = "Retrieve the write operations history log."
+    let inputSchema: [String: Any] = [:]
+
+    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
+        controller.getHistory()
+    }
+}
+
 // MARK: - Schema helpers
 
 private func numberProperty(name: String, minimum: Double, maximum: Double) -> [String: Any] {

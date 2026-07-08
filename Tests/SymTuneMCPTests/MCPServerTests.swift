@@ -142,6 +142,20 @@ final class MCPServerToolCallTests: XCTestCase {
         XCTAssertNotNil(content?.first?["text"])
     }
 
+    func testCallGetStatus() throws {
+        let result = try callTool("get_status")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+        let text = content?.first?["text"] as? String
+        XCTAssertTrue(text?.contains("health_score") == true)
+    }
+
+    func testCallGetHistory() throws {
+        let result = try callTool("get_history")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+    }
+
     func testCallListDisplays() throws {
         let result = try callTool("list_displays")
         let content = result["content"] as? [[String: Any]]
