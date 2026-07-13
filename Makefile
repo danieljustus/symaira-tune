@@ -1,9 +1,15 @@
 BINARY := symtune
 
-.PHONY: build release test lint run doctor serve clean
+.PHONY: build build-app smoke-app release test lint run doctor serve clean
 
 build:
 	swift build
+
+build-app:
+	./scripts/build-app.sh
+
+smoke-app: build-app
+	./scripts/smoke-app.sh build/app/SymairaTune.app
 
 release:
 	swift build -c release

@@ -11,9 +11,10 @@ the machine — e.g. "this render is running hot, ramp the fans and dim the scre
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
 (Apache-2.0 core).
 
-> **Status: v0.1 — core reads + writes.** Built-in brightness, extended/EDR
-> brightness, software dim, color temperature warmth, profile management, and
-> rule engine work today. Install via Homebrew (`brew install danieljustus/tap/symtune`) or the DMG in the release assets.
+> **Status: v0.1 core + standalone menu-bar app.** The next release packages
+> `SymairaTune.app` and the `symtune` CLI together in a signed/notarized DMG.
+> Homebrew installs both from the generated cask
+> (`brew install danieljustus/tap/symtune`).
 
 ## Why not the Mac App Store?
 
@@ -28,6 +29,23 @@ git clone <repo-url> && cd symaira-tune
 swift build -c release
 .build/release/symtune doctor
 ```
+
+## Standalone menu-bar app
+
+The app is a first-class standalone artifact, not a Hub-only component. From a
+macOS checkout with full Xcode and XcodeGen installed:
+
+```bash
+brew install xcodegen
+make build-app
+open build/app/SymairaTune.app
+make smoke-app
+```
+
+The release DMG contains `SymairaTune.app` and the CLI binary. The app uses the
+same `TuneController` and `SafetyPolicy` as the CLI and MCP surfaces. See
+[`docs/manual-app-verification.md`](docs/manual-app-verification.md) for the
+real-host control and restore-on-exit checklist.
 
 ## CLI
 

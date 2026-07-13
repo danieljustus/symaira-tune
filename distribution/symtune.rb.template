@@ -1,13 +1,16 @@
 cask "symtune" do
-  version "0.1.0"
+  version "0.2.0"
   sha256 "PLACEHOLDER_SHA256"
 
   url "https://github.com/danieljustus/symaira-tune/releases/download/v#{version}/symtune-#{version}.dmg"
-  name "symtune"
-  desc "Tune your Mac — thermals, brightness, power — from the CLI and for AI agents"
+  name "Symaira Tune"
+  desc "Native macOS menu-bar controls for thermals, brightness, and power"
   homepage "https://github.com/danieljustus/symaira-tune"
 
-  artifact "symtune", target: "/usr/local/bin/symtune"
+  depends_on macos: :sonoma
+
+  app "SymairaTune.app"
+  binary "symtune"
 
   zap trash: [
     "~/.config/symtune",
