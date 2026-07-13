@@ -26,9 +26,6 @@ dist/
 .github/review/
 .omo/
 
-# Docs
-docs/
-
 # Local agent reports / session state
 .github/coverage/
 .github/prerelease/

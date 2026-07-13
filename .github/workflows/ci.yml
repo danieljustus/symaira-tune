@@ -61,15 +61,7 @@ jobs:
           xcode-version: '26.0'
       - name: Install xcodegen
         run: brew install xcodegen
-      - name: Generate Xcode project
-        run: xcodegen generate
       - name: Build app target
-        run: |
-          xcodebuild \
-            -project SymairaTune.xcodeproj \
-            -scheme SymairaTune \
-            -configuration Release \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+        run: ./scripts/build-app.sh
+      - name: Smoke-test app bundle
+        run: ./scripts/smoke-app.sh build/app/SymairaTune.app

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Standalone `SymairaTune.app` release packaging alongside the `symtune` CLI,
+  including reproducible XcodeGen builds and bundle smoke checks (`#129`).
+- Homebrew cask generation that installs the menu-bar app and links the CLI
+  binary (`#129`).
+
 ## [0.1.4] — 2026-07-01
 
 ### Fixed

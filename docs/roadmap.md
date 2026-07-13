@@ -23,16 +23,21 @@ and battery-charge writes need the Pro privileged helper.
 - [x] Update checker (GitHub releases).
 - [x] MCP server over stdio.
 
-## v0.2 — app / menu-bar target
+## v0.2 — standalone app / menu-bar target
 
-The XcodeGen project and SwiftUI/AppKit sources exist under `Sources/SymTuneApp/` and `project.yml`, but the app target is not yet shipped as a first-class artifact. See [#129](https://github.com/danieljustus/symaira-tune/issues/129) for the shipping checklist.
+`SymairaTune.app` ships as a standalone, notarized macOS menu-bar app beside
+the CLI. It is not a Hub-only component. The XcodeGen project and SwiftUI/AppKit
+sources live under `Sources/SymTuneApp/` and `project.yml`; the release workflow
+packages both artifacts into the DMG and publishes the matching Homebrew cask.
+See [manual app verification](manual-app-verification.md).
 
 - [x] XcodeGen project config (`project.yml`) and SwiftUI menu-bar app sources
-- [x] CI build job for the app target
-- [ ] Decide distribution: standalone DMG vs Symaira Hub integration
-- [ ] Signed/notarized app artifact in releases
-- [ ] Homebrew cask updated to install the app bundle
-- [ ] End-to-end verification on macOS
+- [x] CI build job for the app target with Swift 6 compilation and bundle smoke checks
+- [x] Decide distribution: standalone DMG
+- [x] Release workflow builds a DMG containing `SymairaTune.app` and `symtune`
+- [x] Release workflow signs/notarizes the app when Developer ID and Apple credentials are configured
+- [x] Homebrew cask generation installs the app bundle and links the CLI
+- [x] Documented real-host end-to-end verification checklist
 
 ## Pro — privileged SMC helper (separate repo, paid)
 
