@@ -25,7 +25,14 @@ and battery-charge writes need the Pro privileged helper.
 
 ## v0.2 — app / menu-bar target
 
-- [ ] App/menu-bar target (xcodegen `project.yml`) — needed for on-screen EDR.
+The XcodeGen project and SwiftUI/AppKit sources exist under `Sources/SymTuneApp/` and `project.yml`, but the app target is not yet shipped as a first-class artifact. See [#129](https://github.com/danieljustus/symaira-tune/issues/129) for the shipping checklist.
+
+- [x] XcodeGen project config (`project.yml`) and SwiftUI menu-bar app sources
+- [x] CI build job for the app target
+- [ ] Decide distribution: standalone DMG vs Symaira Hub integration
+- [ ] Signed/notarized app artifact in releases
+- [ ] Homebrew cask updated to install the app bundle
+- [ ] End-to-end verification on macOS
 
 ## Pro — privileged SMC helper (separate repo, paid)
 
