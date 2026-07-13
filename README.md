@@ -11,7 +11,7 @@ the machine — e.g. "this render is running hot, ramp the fans and dim the scre
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
 (Apache-2.0 core).
 
-> **Status: v0.1 core + standalone menu-bar app.** The next release packages
+> **Status: v0.2 core + standalone menu-bar app.** The next release packages
 > `SymairaTune.app` and the `symtune` CLI together in a signed/notarized DMG.
 > Homebrew installs both from the generated cask
 > (`brew install danieljustus/tap/symtune`).

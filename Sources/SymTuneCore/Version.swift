@@ -5,5 +5,5 @@ import Foundation
 /// `SYMTUNE_VERSION` environment variable so the binary always reports the tag
 /// it was built from.
 public enum TuneVersion: Sendable {
-    public static let current = "0.1.4"
+    public static let current = "0.2.0"
 }
