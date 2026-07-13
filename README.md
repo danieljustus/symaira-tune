@@ -90,9 +90,7 @@ Tools exposed: `get_capabilities`, `get_sensors`, `get_battery`, `list_displays`
 
 ## Safety
 
-Every write path clamps through `SafetyPolicy` and never disables firmware
-thermal protection; overridden values are restored when the process exits. See
-`NOTICE`.
+Every active write path is bounded by `SafetyPolicy`; the public core does not write fan or charge-limit SMC keys without the separate Pro helper, and it never disables firmware thermal protection. Temporary display overrides are restored on normal teardown and handled termination signals where the system value can be captured. Read the full, implementation-grounded model in [`SAFETY_AUDIT.md`](SAFETY_AUDIT.md). See also [`NOTICE`](NOTICE) and [`docs/commercial-boundary.md`](docs/commercial-boundary.md).
 
 ## License
 
