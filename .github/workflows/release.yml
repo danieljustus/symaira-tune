@@ -90,22 +90,39 @@ jobs:
           DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          set -euo pipefail
+          echo "SIGNED=false" >> "$GITHUB_OUTPUT"
           if [ -z "$DEVELOPER_ID_APPLICATION" ]; then
-            echo "SIGNED=false" >> "$GITHUB_OUTPUT"
             echo "No Developer ID certificate — producing an unsigned artifact."
             exit 0
           fi
 
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
           CERTIFICATE_PATH="$RUNNER_TEMP/certificate.p12"
+          cleanup() {
+            rm -f "$CERTIFICATE_PATH"
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
           security create-keychain -p "${KEYCHAIN_PASSWORD:-}" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "${KEYCHAIN_PASSWORD:-}" "$KEYCHAIN_PATH"
           printf '%s' "$DEVELOPER_ID_APPLICATION" | base64 --decode > "$CERTIFICATE_PATH"
-          security import "$CERTIFICATE_PATH" \
-            -k "$KEYCHAIN_PATH" \
-            -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign
+
+          if [ -n "${DEVELOPER_ID_CERTIFICATE_PASSWORD:-}" ]; then
+            security import "$CERTIFICATE_PATH" \
+              -k "$KEYCHAIN_PATH" \
+              -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+              -A -t cert -f pkcs12 -T /usr/bin/codesign
+          elif ! security import "$CERTIFICATE_PATH" \
+              -k "$KEYCHAIN_PATH" \
+              -P "" \
+              -A -t cert -f pkcs12 -T /usr/bin/codesign; then
+            echo "::warning::Developer ID certificate password is not configured; producing an unsigned artifact."
+            exit 0
+          fi
+          security set-key-partition-list -S apple-tool:,apple: -k "${KEYCHAIN_PASSWORD:-}" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
@@ -122,8 +139,6 @@ jobs:
           codesign --verify --deep --strict --verbose=2 build/SymairaTune.app
           codesign --verify --strict --verbose=2 build/symtune
           echo "SIGNED=true" >> "$GITHUB_OUTPUT"
-          rm -f "$CERTIFICATE_PATH"
-          security delete-keychain "$KEYCHAIN_PATH"
 
       - name: Create DMG
         run: |
