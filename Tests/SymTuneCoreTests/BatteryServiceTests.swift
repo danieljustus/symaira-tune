@@ -90,10 +90,14 @@ final class BatteryServiceTests: XCTestCase {
     }
 
     func testChargeLimitSupportedWhenClosureReturnsTrue() {
-        let source = FakeBatterySource(result: .unavailable)
+        let props = BatteryProperties(
+            isCharging: true,
+            externalConnected: true
+        )
+        let source = FakeBatterySource(result: .success(props))
         let service = BatteryService(source: source, isChargeLimitSupported: { true })
         let report = service.read()
-        XCTAssertFalse(report.present)
+        XCTAssertTrue(report.present)
         XCTAssertTrue(report.chargeLimitSupported)
     }
 
