@@ -35,7 +35,14 @@ final class StatusBarController: NSObject {
     }
 
     private func setupPopover() {
-        popover.contentViewController = NSHostingController(rootView: MainStatusView(controller: controller))
+        let hosting = NSHostingController(rootView: MainStatusView(controller: controller))
+        // Without preferredContentSize sizing, the SwiftUI content reports its
+        // height only after the popover is shown (and again on every periodic
+        // refresh), so the popover window gets anchored with a stale frame and
+        // ends up clipped above the menu bar instead of hanging below the icon.
+        hosting.sizingOptions = .preferredContentSize
+        popover.contentViewController = hosting
+        popover.contentSize = hosting.view.fittingSize
         popover.behavior = .transient
     }
 
@@ -46,9 +53,10 @@ final class StatusBarController: NSObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            // Activate the app to ensure UI focus
-            NSApp.activate(ignoringOtherApps: true)
+            // Show first, then activate: activating an LSUIElement app before
+            // the popover is anchored can misplace the popover window.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 }
