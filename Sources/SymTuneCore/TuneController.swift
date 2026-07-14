@@ -415,6 +415,12 @@ public final class TuneController: Sendable {
             }
             try fanControl.applyFan(fraction: fraction, config: config)
             logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: clamped, result: "success")
+        } catch let error as FanControlError {
+            logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: nil, result: "failed", error: error)
+            throw mapFanControlError(error)
+        } catch let error as SMCWritePolicy.ValidationError {
+            logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: nil, result: "failed", error: error)
+            throw mapValidationError(error)
         } catch {
             logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: nil, result: "failed", error: error)
             throw error
@@ -425,6 +431,9 @@ public final class TuneController: Sendable {
         do {
             try fanControl.restoreAuto()
             logHistory(action: "fan.auto", result: "success")
+        } catch let error as FanControlError {
+            logHistory(action: "fan.auto", result: "failed", error: error)
+            throw mapFanControlError(error)
         } catch {
             logHistory(action: "fan.auto", result: "failed", error: error)
             throw error
@@ -438,6 +447,9 @@ public final class TuneController: Sendable {
             smcRestoreTracker.saveChargeOriginal()
             try chargeLimit.applyChargeLimit(percent: percent, config: config)
             logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: Double(clamped), result: "success")
+        } catch let error as SMCWritePolicy.ValidationError {
+            logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: nil, result: "failed", error: error)
+            throw mapValidationError(error)
         } catch {
             logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: nil, result: "failed", error: error)
             throw error
@@ -456,6 +468,32 @@ public final class TuneController: Sendable {
 
     public func getHistory() -> [HistoryEvent] {
         historyService.readEvents()
+    }
+
+    private func mapFanControlError(_ error: FanControlError) -> TuneError {
+        switch error {
+        case .noFansDetected:
+            return .unsupported("SMC reports no fans; fan control is unavailable")
+        case .fanModeWriteRejected(let index):
+            return .permission("SMC rejected manual mode for fan \(index); run with sudo")
+        case .targetRPMWriteFailed(let index):
+            return .permission("SMC rejected target RPM for fan \(index)")
+        case .unsupportedPlatform:
+            return .unsupported("Fan control is not supported on this platform")
+        }
+    }
+
+    private func mapValidationError(_ error: SMCWritePolicy.ValidationError) -> TuneError {
+        switch error {
+        case .noSMCConnection:
+            return .permission("SMC not available for write")
+        case .thermalEmergency(let celsius):
+            return .permission("thermal emergency at \(celsius)°C; refusing write")
+        case .fanMaxRPMUnavailable(let index):
+            return .unsupported("SMC did not report maximum RPM for fan \(index)")
+        case .chargeLimitNoACPower:
+            return .permission("charge limit requires AC power and SMC write access")
+        }
     }
 
     static var architecture: String {

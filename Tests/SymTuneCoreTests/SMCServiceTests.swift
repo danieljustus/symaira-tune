@@ -91,7 +91,7 @@ final class SMCServiceTests: XCTestCase {
         XCTAssertEqual(written.dataType, smcEncodeKey("flt "))
 
         let val: Float = 42.0
-        let raw = val.bitPattern.bigEndian
+        let raw = val.bitPattern
         let expected = [
             UInt8((raw >> 24) & 0xFF),
             UInt8((raw >> 16) & 0xFF),

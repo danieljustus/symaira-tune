@@ -35,7 +35,7 @@ final class FanControlServiceTests: XCTestCase {
     #endif
 
     private func floatBytes(_ value: Double) -> [UInt8] {
-        let raw = Float(value).bitPattern.bigEndian
+        let raw = Float(value).bitPattern
         return [
             UInt8((raw >> 24) & 0xFF),
             UInt8((raw >> 16) & 0xFF),

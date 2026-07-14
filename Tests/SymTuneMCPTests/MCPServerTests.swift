@@ -115,8 +115,8 @@ final class MCPServerToolCallTests: XCTestCase {
 
     func testCallToolUnknownToolThrows() {
         XCTAssertThrowsError(try callTool("nonexistent_tool")) { error in
-            guard case TuneError.usage(let msg) = error else {
-                return XCTFail("Expected .usage, got \(error)")
+            guard case TuneError.unsupported(let msg) = error else {
+                return XCTFail("Expected .unsupported, got \(error)")
             }
             XCTAssertTrue(msg.contains("Unknown tool"))
         }

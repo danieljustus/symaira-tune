@@ -39,9 +39,7 @@ func smcConvertValue(dataType: UInt32, bytes: [UInt8]) -> Double {
         guard bytes.count >= 4 else { return 0 }
         let raw: UInt32 = UInt32(bytes[0]) << 24 | UInt32(bytes[1]) << 16
                         | UInt32(bytes[2]) << 8 | UInt32(bytes[3])
-        var val: Float = 0
-        memcpy(&val, withUnsafePointer(to: raw) { $0 }, MemoryLayout<Float>.size)
-        return Double(val)
+        return Double(Float(bitPattern: raw))
 
     case "sp78":
         // Signed fixed-point 7.8 (2 bytes, big-endian).
@@ -389,7 +387,7 @@ public struct SMCService: Sendable {
             let raw = UInt16((value * 256.0).rounded())
             bytes = [UInt8((raw >> 8) & 0xFF), UInt8(raw & 0xFF)]
         case "flt ":
-            let raw = Float(value).bitPattern.bigEndian
+            let raw = Float(value).bitPattern
             bytes = [
                 UInt8((raw >> 24) & 0xFF),
                 UInt8((raw >> 16) & 0xFF),
