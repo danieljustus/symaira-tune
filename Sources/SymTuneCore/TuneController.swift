@@ -29,6 +29,7 @@ public final class TuneController: Sendable {
         config: TuneConfig = TuneConfig(),
         displayWrite: (any DisplayWriteServiceProtocol)? = nil,
         smcService: SMCService? = nil,
+        batterySource: (any BatterySource)? = nil,
         dataDir: URL? = nil
     ) {
         self.config = config
@@ -45,9 +46,12 @@ public final class TuneController: Sendable {
         self.sensors = SensorService(smc: smc)
         self.fanControl = FanControlService(smc: smc, sensors: sensors)
         self.chargeLimit = ChargeLimitService(smc: smc)
-        self.battery = BatteryService(isChargeLimitSupported: { [chargeLimit] in
-            chargeLimit.detectKeyFamily() != nil
-        })
+        self.battery = BatteryService(
+            source: batterySource ?? HardwareBatterySource(),
+            isChargeLimitSupported: { [chargeLimit] in
+                chargeLimit.detectKeyFamily() != nil
+            }
+        )
         self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
         self.restoreTracker = OverrideTracker(
             displayService: displays,
