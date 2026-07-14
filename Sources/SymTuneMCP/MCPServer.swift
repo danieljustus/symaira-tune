@@ -84,7 +84,7 @@ public final class MCPServer {
         }
         let arguments = params["arguments"] as? [String: Any] ?? [:]
         guard let tool = registry.tool(named: name) else {
-            throw TuneError.usage("Unknown tool '\(name)'.")
+            throw TuneError.unsupported("Unknown tool '\(name)'.")
         }
 
         let payload = try tool.invoke(arguments: arguments, controller: controller, keepAwakeToken: &keepAwakeToken)

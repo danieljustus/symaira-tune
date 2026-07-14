@@ -28,6 +28,7 @@ final class FakeSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
 
     func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
         writtenKeys.append(FakeSMCWrittenKey(key: key, dataType: dataType, bytes: bytes))
+        keys[key] = FakeSMCKeyResult(dataType: dataType, bytes: bytes)
         return true
     }
 }

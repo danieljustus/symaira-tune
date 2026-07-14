@@ -63,7 +63,7 @@ final class MCPServerRunTests: XCTestCase {
             "id": 4,
             "method": "tools/call",
             "params": [
-                "name": "set_fan",
+                "name": "nonexistent_tool",
                 "arguments": ["fraction": 0.5]
             ]
         ])]
