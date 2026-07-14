@@ -2,10 +2,11 @@ import Foundation
 
 /// Facade over the individual services. Both the CLI and the MCP server talk to
 /// the controller only — they never touch services directly. This is also where
-/// the safety policy and (future) restore-on-exit bookkeeping live.
+/// the safety policy and restore-on-exit bookkeeping live.
 public final class TuneController: Sendable {
-    private let sensors = SensorService()
-    private let battery = BatteryService()
+    private let smc: SMCService
+    private let sensors: SensorService
+    private let battery: BatteryService
     private let displays = DisplayService()
     private let power = PowerService()
     private let dimOverlay = DimOverlay()
@@ -14,6 +15,9 @@ public final class TuneController: Sendable {
     private let profiles: ProfileService
     public let config: TuneConfig
     private let restoreTracker: OverrideTracker
+    private let fanControl: FanControlService
+    private let chargeLimit: ChargeLimitService
+    private let smcRestoreTracker: SMCRestoreTracker
     nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public let dataDir: URL
@@ -24,6 +28,7 @@ public final class TuneController: Sendable {
     public init(
         config: TuneConfig = TuneConfig(),
         displayWrite: (any DisplayWriteServiceProtocol)? = nil,
+        smcService: SMCService? = nil,
         dataDir: URL? = nil
     ) {
         self.config = config
@@ -35,12 +40,26 @@ public final class TuneController: Sendable {
         self.dataDir = resolvedDataDir
         self.profiles = ProfileService(dataDir: resolvedDataDir)
         self.historyService = HistoryService(dataDir: resolvedDataDir)
-        self.restoreTracker = OverrideTracker(displayService: displays, edrOverlay: edrOverlay)
+        let smc = smcService ?? SMCService()
+        self.smc = smc
+        self.sensors = SensorService(smc: smc)
+        self.fanControl = FanControlService(smc: smc, sensors: sensors)
+        self.chargeLimit = ChargeLimitService(smc: smc)
+        self.battery = BatteryService(isChargeLimitSupported: { [chargeLimit] in
+            chargeLimit.detectKeyFamily() != nil
+        })
+        self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
+        self.restoreTracker = OverrideTracker(
+            displayService: displays,
+            edrOverlay: edrOverlay,
+            onRestore: { [smcRestoreTracker] in smcRestoreTracker.restoreAll() }
+        )
         restoreTracker.registerSignalHandlers()
     }
 
     deinit {
         restoreTracker.restoreAll()
+        smcRestoreTracker.restoreAll()
         dimOverlay.removeAllOverlays()
         edrOverlay.removeAllOverlays()
     }
@@ -79,13 +98,13 @@ public final class TuneController: Sendable {
     public func displaysReport() -> DisplaysReport { displays.list() }
 
     public func permissions() -> PermissionStatus {
-        let helperInstalled = helperClient != nil
+        let smcWritable = smc.isAvailable
         return PermissionStatus(
-            privilegedHelperInstalled: helperInstalled,
+            privilegedHelperInstalled: smcWritable,
             notes: [
-                helperInstalled
-                    ? "Privileged SMC helper is installed and ready for fan/charge writes."
-                    : "Privileged SMC helper not detected. Fan and charge-limit writes require the Pro helper.",
+                smcWritable
+                    ? "SMC write access available. Fan and charge-limit writes require root (run with sudo)."
+                    : "SMC write access unavailable. Fan and charge-limit features require a real Mac and root privileges.",
             ]
         )
     }
@@ -93,12 +112,14 @@ public final class TuneController: Sendable {
     public func capabilities() -> CapabilityReport {
         let batteryPresent = battery.read().present
         let edrCapable = displays.anyEDRCapable()
+        let smcAvailable = sensors.smcAvailable
+        let smcWritable = smc.isAvailable
 
         let caps: [Capability] = [
             Capability(id: "sensors.thermalPressure", available: true, tier: "core",
                        detail: "Coarse thermal pressure from ProcessInfo (nominal…critical)."),
-            Capability(id: "sensors.smc", available: sensors.smcAvailable, tier: "core",
-                       detail: sensors.smcAvailable
+            Capability(id: "sensors.smc", available: smcAvailable, tier: "core",
+                       detail: smcAvailable
                            ? "Detailed die temps & fan RPM via AppleSMC IOKit (unprivileged)."
                            : "SMC connection unavailable — detailed sensors not accessible."),
             Capability(id: "battery.read", available: batteryPresent, tier: "core",
@@ -107,8 +128,8 @@ public final class TuneController: Sendable {
                        detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
             Capability(id: "display.brightness.extended.set", available: edrCapable, tier: "core",
                        detail: edrCapable
-                           ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
-                           : "No EDR-capable display detected — extended brightness unavailable."),
+                            ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
+                            : "No EDR-capable display detected — extended brightness unavailable."),
             Capability(id: "display.dim.set", available: true, tier: "core",
                        detail: "Sub-minimum software dim overlay via transparent NSWindow."),
             Capability(id: "display.brightness.set", available: true, tier: "core",
@@ -117,10 +138,14 @@ public final class TuneController: Sendable {
                        detail: "Color temperature warmth via CGSetDisplayTransferByTable gamma LUT."),
             Capability(id: "power.keepAwake", available: true, tier: "core",
                        detail: "Prevent idle sleep via IOKit power assertion."),
-            Capability(id: "fan.control", available: false, tier: "pro",
-                       detail: "Fan curves / fixed RPM — requires privileged SMC helper."),
-            Capability(id: "battery.chargeLimit", available: false, tier: "pro",
-                       detail: "Hold charge at a target percent — requires privileged SMC helper."),
+            Capability(id: "fan.control", available: smcWritable, tier: "core",
+                       detail: smcWritable
+                            ? "Fan speed control via SMC. Requires root for writes."
+                            : "SMC unavailable — fan control not possible."),
+            Capability(id: "battery.chargeLimit", available: smcWritable, tier: "core",
+                       detail: smcWritable
+                            ? "Battery charge limiting via SMC. Requires root for writes."
+                            : "SMC unavailable — charge limiting not possible."),
         ]
 
         var recommendations: [String] = []
@@ -131,7 +156,7 @@ public final class TuneController: Sendable {
             recommendations.append("No battery detected; battery features are not applicable on this Mac.")
         }
         if recommendations.isEmpty {
-            recommendations.append("Core read features are ready. Run `symtune serve` to expose them over MCP.")
+            recommendations.append("Core features are ready. Run `symtune serve` to expose them over MCP.")
         }
 
         return CapabilityReport(
@@ -175,8 +200,38 @@ public final class TuneController: Sendable {
             brightness: restoreTracker.hasBrightnessOverride() ? (try? getBuiltinBrightness()) : nil,
             dim: getDimLevel() < 1.0 ? getDimLevel() : nil,
             warmth: getWarmthLevel() > 0.0 ? getWarmthLevel() : nil,
-            edrBrightness: restoreTracker.hasEDROverride() ? restoreTracker.appliedEDRBrightness : nil
+            edrBrightness: restoreTracker.hasEDROverride() ? restoreTracker.appliedEDRBrightness : nil,
+            fanFraction: activeFanFraction(),
+            chargeLimitPercent: activeChargeLimitPercent()
         )
+    }
+
+    private func activeFanFraction() -> Double? {
+        // Best-effort: read current fan targets and report the uniform fraction.
+        guard smc.isAvailable else { return nil }
+        let fanCount = smc.readKeyUInt("FNum").map { Int($0) } ?? 0
+        guard fanCount > 0 else { return nil }
+        var fractions: [Double] = []
+        for i in 0..<fanCount {
+            guard let mode = smc.readFanMode(fanIndex: i), mode == 1 else { return nil }
+            guard let target = smc.readFanTargetRPM(fanIndex: i),
+                  let max = smc.readFanMaxRPM(fanIndex: i), max > 0 else { return nil }
+            fractions.append(target / max)
+        }
+        let avg = fractions.reduce(0, +) / Double(fractions.count)
+        return avg
+    }
+
+    private func activeChargeLimitPercent() -> Int? {
+        guard smc.isAvailable, let family = chargeLimit.detectKeyFamily() else { return nil }
+        switch family {
+        case .chte:
+            return smc.readKeyUInt32("CHTE").map { $0 == 1 ? 80 : nil } ?? nil
+        case .ch0b:
+            return smc.readKeyUInt("CH0B").map { $0 == 2 ? 80 : nil } ?? nil
+        case .chlc:
+            return smc.readKeyUInt("CHLC").map { Int($0) }
+        }
     }
 
     public func statusReport() -> StatusReport {
@@ -279,6 +334,7 @@ public final class TuneController: Sendable {
 
     public func restoreAll() {
         restoreTracker.restoreAll()
+        smcRestoreTracker.restoreAll()
         logHistory(action: "restore", result: "success")
     }
 
@@ -348,15 +404,16 @@ public final class TuneController: Sendable {
         try profiles.removeRule(id: id)
     }
 
+    // MARK: - Fan and charge control
+
     public func applyFan(fraction: Double) throws {
-        let clamped = SafetyPolicy.clamp(fraction, config.fanFractionMin, config.fanFractionMax)
+        let clamped = SMCWritePolicy.clampFanFraction(fraction, min: config.fanFractionMin, max: config.fanFractionMax)
         do {
-            guard let helper = helperClient else {
-                throw TuneError.unsupported(
-                    "fan control requires the privileged SMC helper (Pro tier)."
-                )
+            let fanCount = smc.readKeyUInt("FNum").map { Int($0) } ?? 0
+            for i in 0..<fanCount {
+                smcRestoreTracker.saveFanOriginal(fanIndex: i)
             }
-            try helper.setFanFraction(clamped)
+            try fanControl.applyFan(fraction: fraction, config: config)
             logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: clamped, result: "success")
         } catch {
             logHistory(action: "fan.set", requested: fraction, clamped: clamped, applied: nil, result: "failed", error: error)
@@ -364,18 +421,35 @@ public final class TuneController: Sendable {
         }
     }
 
+    public func restoreFanAuto() throws {
+        do {
+            try fanControl.restoreAuto()
+            logHistory(action: "fan.auto", result: "success")
+        } catch {
+            logHistory(action: "fan.auto", result: "failed", error: error)
+            throw error
+        }
+    }
+
     public func applyChargeLimit(percent: Int) throws {
         let clamped = SafetyPolicy.clamp(percent, config.chargeLimitMin, config.chargeLimitMax)
         do {
-            guard let helper = helperClient else {
-                throw TuneError.unsupported(
-                    "charge limit requires the privileged SMC helper (Pro tier)."
-                )
-            }
-            try helper.setChargeLimit(clamped)
+            try SMCWritePolicy.requireACPower(battery: battery)
+            smcRestoreTracker.saveChargeOriginal()
+            try chargeLimit.applyChargeLimit(percent: percent, config: config)
             logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: Double(clamped), result: "success")
         } catch {
             logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: nil, result: "failed", error: error)
+            throw error
+        }
+    }
+
+    public func clearChargeLimit() throws {
+        do {
+            try chargeLimit.clearChargeLimit()
+            logHistory(action: "battery-limit.clear", result: "success")
+        } catch {
+            logHistory(action: "battery-limit.clear", result: "failed", error: error)
             throw error
         }
     }

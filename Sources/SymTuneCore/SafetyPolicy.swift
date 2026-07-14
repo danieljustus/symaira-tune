@@ -31,10 +31,27 @@ public enum SafetyPolicy: Sendable {
     /// fraction can only push the fan *faster*, never below the auto target.
     public static let fanFractionMin = 0.0
     public static let fanFractionMax = 1.0
+    /// Soft floor for manual fan requests. Even if the user asks for 0.0, the
+    /// effective fraction is floored here to avoid completely silencing fans.
+    public static let fanSpeedFloor = 0.15
 
     // MARK: Battery charge limit (percent).
     public static let chargeLimitMin = 50
     public static let chargeLimitMax = 100
+    /// Hysteresis band used by the charge-limit controller: re-allow charging
+    /// only when the battery has dropped this far below the target.
+    public static let chargeLimitHysteresis = 5
+
+    // MARK: Thermal emergency threshold.
+    /// If any die sensor exceeds this temperature, manual fan writes are
+    /// refused and existing overrides are restored. This is a last-resort
+    /// guardrail; the firmware's own thermal protection always takes precedence.
+    public static let thermalOverrideCelsius = 90.0
+
+    // MARK: Adapter check for charge limiting.
+    /// Refuse to inhibit charging unless the Mac is on AC power. Inhibiting
+    /// charge while running on battery can cause an unexpected shutdown.
+    public static let requireACForChargeLimit = true
 
     /// Clamp `value` into the inclusive `[lower, upper]` range.
     public static func clamp<T: Comparable>(_ value: T, _ lower: T, _ upper: T) -> T {

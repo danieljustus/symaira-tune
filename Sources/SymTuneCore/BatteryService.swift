@@ -9,12 +9,18 @@ import IOKit
 /// reported best-effort with an explanatory note.
 public struct BatteryService: Sendable {
     private let source: any BatterySource
+    private let isChargeLimitSupported: @Sendable () -> Bool
 
-    public init(source: any BatterySource = HardwareBatterySource()) {
+    public init(
+        source: any BatterySource = HardwareBatterySource(),
+        isChargeLimitSupported: @escaping @Sendable () -> Bool = { false }
+    ) {
         self.source = source
+        self.isChargeLimitSupported = isChargeLimitSupported
     }
 
     public func read() -> BatteryReport {
+        let chargeLimitSupported = isChargeLimitSupported()
         switch source.readProperties() {
         case .unavailable:
             return BatteryReport(
@@ -48,6 +54,13 @@ public struct BatteryService: Sendable {
                 temperatureC = Double(raw) / 100.0
             }
 
+            var notes = [
+                "Read from raw AppleSmartBattery keys; interpretation can vary by Mac model.",
+            ]
+            if !chargeLimitSupported {
+                notes.append("Charge-limit SMC key not detected on this Mac.")
+            }
+
             return BatteryReport(
                 present: true,
                 charging: props.isCharging,
@@ -58,11 +71,8 @@ public struct BatteryService: Sendable {
                 maxCapacityMah: props.rawMaxCapacity,
                 healthPercent: health,
                 temperatureCelsius: temperatureC,
-                chargeLimitSupported: false,
-                notes: [
-                    "Read from raw AppleSmartBattery keys; interpretation can vary by Mac model.",
-                    "Setting a charge limit requires the privileged Pro helper (not in v0.1).",
-                ]
+                chargeLimitSupported: chargeLimitSupported,
+                notes: notes
             )
         }
     }

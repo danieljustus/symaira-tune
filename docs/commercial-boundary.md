@@ -1,37 +1,48 @@
-# Commercial Boundary — Core vs Pro
+# Commercial Boundary
 
-`symaira-tune` follows the ecosystem pattern: an open **Apache-2.0 core** plus an
-optional **Pro** layer for the capabilities that need privileged hardware access.
+`symaira-tune` is a single, open **Apache-2.0** project. There is no separate
+"Pro" repository or feature gate for hardware-tuning capabilities.
 
-## Core (this repo, Apache-2.0)
+## What is in this repository
 
-Everything that is unprivileged or app-local:
+Everything ships from this repo:
 
-- Read state: thermal pressure, battery health, display/EDR info.
+- Read state: thermal pressure, battery health, display/EDR info, fan RPM.
 - Keep-awake (power assertions).
-- Display tuning that needs only an app context (not the SMC):
-  extended/EDR brightness, software dim overlay, built-in brightness (v0.1).
+- Display tuning: built-in brightness, extended/EDR brightness, software dim
+  overlay, color warmth.
+- **Fan speed control** via SMC writes.
+- **Battery charge limiting** via SMC writes.
 - The full CLI surface and the MCP server.
 
 No billing, tenant, account, or cloud code lives here.
 
-## Pro (separate, privileged helper)
+## Privilege model for SMC writes
 
-Capabilities that require **SMC writes**, and therefore a privileged helper
-installed via `SMAppService`/`SMJobBless` with a Developer ID:
+Fan and battery-charge-limit commands write to the Apple SMC. These operations
+require root privileges. The simplest supported mode is to run the CLI with
+`sudo`:
 
-- Fan control: fixed RPM and custom temperature→speed curves.
-- Battery charge limiting: hold at a target percent, calibration/sailing modes.
+```bash
+sudo symtune fan set 0.5
+sudo symtune battery-limit set 80
+```
 
-Rationale for keeping these behind a paid helper:
+The same process performs the write, clamps the value through `SafetyPolicy`, and
+restores the original SMC values on normal exit or `SIGINT`/`SIGTERM`.
 
-- They carry real hardware-safety/liability weight — they deserve a maintained,
-  signed, notarized helper with strong guardrails (clamp ranges, never disable
-  thermal protection, restore-on-exit).
-- They map cleanly to a Pro tier and the existing Symaira "Suite" bundle pricing.
+A future optional `symtune-helper` daemon (installed via `SMAppService`) may be
+added so that users do not have to run the entire `symtune` binary as root. That
+helper will also live in this repository under Apache-2.0; it is not a
+commercial gate. `SMCHelperProtocol` already defines the XPC contract.
 
 ## Implementation rule
 
-Implement the **core capability** in this repo first (e.g. the SMC bridge and
-sensor reads), release/tag it, then let the private Pro repo/helper consume the
-tagged artifact. Never add Pro-only/cloud code to this repo.
+Keep all capability code in this repo. Any privileged helper must be a
+convenience wrapper around the same core logic, not a separate product tier.
+
+## Public/pro boundary
+
+There is no private commercial feature set for `symaira-tune`. Proprietary
+Symaira products (e.g. cloud or enterprise tiers) consume this open core as a
+library but do not add hardware-tuning features that are withheld from it.

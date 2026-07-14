@@ -96,7 +96,7 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(history[0].appliedValue, 0.8)
         XCTAssertEqual(history[0].result, "success")
 
-        // Perform a failed write path (like fan set, which is unsupported on Pro helper)
+        // Perform a failed write path (fan set without SMC access in tests)
         XCTAssertThrowsError(try controller.applyFan(fraction: 0.5))
 
         history = controller.getHistory()
@@ -106,7 +106,7 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(history[1].clampedValue, 0.5)
         XCTAssertNil(history[1].appliedValue)
         XCTAssertEqual(history[1].result, "failed")
-        XCTAssertTrue(history[1].errorReason?.contains("SMC helper") == true)
+        XCTAssertNotNil(history[1].errorReason)
     }
 }
 

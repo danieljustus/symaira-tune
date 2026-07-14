@@ -251,11 +251,11 @@ struct DeleteProfileTool: MCPTool, @unchecked Sendable {
     }
 }
 
-// MARK: - Pro tools (require privileged helper)
+// MARK: - Fan and charge-limit tools
 
 struct SetFanTool: MCPTool, @unchecked Sendable {
     let name = "set_fan"
-    let description = "Set fan speed as a fraction 0.0–1.0. Pro — requires the privileged helper."
+    let description = "Set fan speed as a fraction 0.0–1.0. Requires root/SMC write access."
     let inputSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -266,13 +266,13 @@ struct SetFanTool: MCPTool, @unchecked Sendable {
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
-        return ApplyResult(applied: false)
+        return ApplyResult(applied: true)
     }
 }
 
 struct SetChargeLimitTool: MCPTool, @unchecked Sendable {
     let name = "set_charge_limit"
-    let description = "Hold battery charge at a target percent (50–100). Pro — requires the privileged helper."
+    let description = "Hold battery charge at a target percent (50–100). Requires root/SMC write access."
     let inputSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -283,7 +283,18 @@ struct SetChargeLimitTool: MCPTool, @unchecked Sendable {
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         try controller.applyChargeLimit(percent: requireInt(arguments["percent"], name: "percent"))
-        return ApplyResult(applied: false)
+        return ApplyResult(applied: true)
+    }
+}
+
+struct ClearChargeLimitTool: MCPTool, @unchecked Sendable {
+    let name = "clear_charge_limit"
+    let description = "Clear battery charge limit and re-enable charging. Requires root/SMC write access."
+    let inputSchema: [String: Any] = [:]
+
+    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
+        try controller.clearChargeLimit()
+        return ApplyResult(applied: true)
     }
 }
 

@@ -88,4 +88,25 @@ final class BatteryServiceTests: XCTestCase {
 
         XCTAssertEqual(report.currentCapacityPercent, 100)
     }
+
+    func testChargeLimitSupportedWhenClosureReturnsTrue() {
+        let source = FakeBatterySource(result: .unavailable)
+        let service = BatteryService(source: source, isChargeLimitSupported: { true })
+        let report = service.read()
+        XCTAssertFalse(report.present)
+        XCTAssertTrue(report.chargeLimitSupported)
+    }
+
+    func testChargeLimitUnsupportedWhenClosureReturnsFalse() {
+        let props = BatteryProperties(
+            isCharging: true,
+            externalConnected: true
+        )
+        let source = FakeBatterySource(result: .success(props))
+        let service = BatteryService(source: source, isChargeLimitSupported: { false })
+        let report = service.read()
+        XCTAssertTrue(report.present)
+        XCTAssertFalse(report.chargeLimitSupported)
+        XCTAssertTrue(report.notes.contains("Charge-limit SMC key not detected on this Mac."))
+    }
 }

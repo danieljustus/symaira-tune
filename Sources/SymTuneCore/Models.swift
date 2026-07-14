@@ -56,8 +56,8 @@ public struct BatteryReport: Codable, Sendable {
     /// maxCapacity / designCapacity, in percent. ~100 on a healthy battery.
     public let healthPercent: Int?
     public let temperatureCelsius: Double?
-    /// Whether a user-set charge limit can be applied. `false` in the core
-    /// build — this needs the privileged Pro helper (see commercial-boundary.md).
+    /// Whether the SMC exposes a charge-limit key on this Mac. This depends on
+    /// the platform key probe (CHTE/CH0B/CHLC) and an SMC connection.
     public let chargeLimitSupported: Bool
     public let notes: [String]
 }
@@ -120,14 +120,15 @@ public struct ProfileList: Codable, Sendable {
 public struct Capability: Codable, Sendable {
     public let id: String
     public let available: Bool
-    /// `core` (Apache-2.0, this binary) or `pro` (needs the privileged helper).
+    /// Capability tier: `core` for features shipped in the open binary.
+    /// The previous `pro` tier has been removed; all features live in core.
     public let tier: String
     public let detail: String
 }
 
 public struct PermissionStatus: Codable, Sendable {
-    /// The privileged SMC helper that fan/charge writes will require. Planned —
-    /// always `false` in v0.1.
+    /// True when the SMC connection is open. Fan and charge-limit writes still
+    /// require the process to run with root privileges.
     public let privilegedHelperInstalled: Bool
     public let notes: [String]
 }
@@ -149,17 +150,25 @@ public struct ActiveOverrides: Codable, Sendable, Equatable {
     public let dim: Double?
     public let warmth: Double?
     public let edrBrightness: Double?
+    /// Active uniform fan fraction when fans are in manual mode.
+    public let fanFraction: Double?
+    /// Active charge limit percent, if a charge-limit key is set.
+    public let chargeLimitPercent: Int?
 
     public init(
         brightness: Double? = nil,
         dim: Double? = nil,
         warmth: Double? = nil,
-        edrBrightness: Double? = nil
+        edrBrightness: Double? = nil,
+        fanFraction: Double? = nil,
+        chargeLimitPercent: Int? = nil
     ) {
         self.brightness = brightness
         self.dim = dim
         self.warmth = warmth
         self.edrBrightness = edrBrightness
+        self.fanFraction = fanFraction
+        self.chargeLimitPercent = chargeLimitPercent
     }
 }
 

@@ -177,21 +177,23 @@ final class MCPServerToolCallTests: XCTestCase {
         XCTAssertEqual(result["isError"] as? Bool, false)
     }
 
-    func testCallSetFanUnsupported() {
+    func testCallSetFanRequiresSMCOrRoot() {
         XCTAssertThrowsError(try callTool("set_fan", arguments: ["fraction": 0.5])) { error in
-            guard case TuneError.unsupported(let msg) = error else {
-                return XCTFail("Expected .unsupported, got \(error)")
-            }
-            XCTAssertTrue(msg.contains("helper"))
+            let message = "\(error)"
+            XCTAssertTrue(
+                message.contains("SMC") || message.contains("root") || message.contains("permission") || message.contains("unsupported"),
+                "unexpected error: \(error)"
+            )
         }
     }
 
-    func testCallSetChargeLimitUnsupported() {
+    func testCallSetChargeLimitRequiresSMCOrRoot() {
         XCTAssertThrowsError(try callTool("set_charge_limit", arguments: ["percent": 80])) { error in
-            guard case TuneError.unsupported(let msg) = error else {
-                return XCTFail("Expected .unsupported, got \(error)")
-            }
-            XCTAssertTrue(msg.contains("helper"))
+            let message = "\(error)"
+            XCTAssertTrue(
+                message.contains("SMC") || message.contains("root") || message.contains("permission") || message.contains("unsupported"),
+                "unexpected error: \(error)"
+            )
         }
     }
 

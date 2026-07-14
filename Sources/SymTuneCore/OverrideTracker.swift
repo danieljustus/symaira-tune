@@ -16,6 +16,7 @@ final class OverrideTracker: @unchecked Sendable {
     private var signalSources: [DispatchSourceSignal] = []
     private var displayService: DisplayService?
     private var edrOverlay: EDROverlayService?
+    private let onRestore: (() -> Void)?
 
     var currentWarmth: Float {
         lock.lock()
@@ -47,9 +48,10 @@ final class OverrideTracker: @unchecked Sendable {
         return _originalEDRBrightness != nil
     }
 
-    init(displayService: DisplayService? = nil, edrOverlay: EDROverlayService? = nil) {
+    init(displayService: DisplayService? = nil, edrOverlay: EDROverlayService? = nil, onRestore: (() -> Void)? = nil) {
         self.displayService = displayService
         self.edrOverlay = edrOverlay
+        self.onRestore = onRestore
     }
 
     func registerSignalHandlers() {
@@ -138,6 +140,7 @@ final class OverrideTracker: @unchecked Sendable {
             try? edrOverlay?.applyExtendedBrightness(edrHeadroom)
         }
         edrOverlay?.removeAllOverlays()
+        onRestore?()
     }
 
     private func restoreBrightness(_ value: Float) {

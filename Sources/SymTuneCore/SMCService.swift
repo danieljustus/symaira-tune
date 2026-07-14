@@ -327,12 +327,13 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
 
 // MARK: - SMCService
 
-/// Bridge to the System Management Controller (SMC) for temperature/fan sensors.
+/// Bridge to the System Management Controller (SMC) for temperature/fan sensors
+/// and (when running with sufficient privileges) fan/charge-limit writes.
 ///
-/// **Read-only in v0.1** — fan/charge writes belong to the privileged Pro helper.
-/// Write methods are available for use by the helper IPC layer (see
-/// `SMCHelperProtocol`). The connection is opened lazily on first use and closed
-/// on deinit. All reads are unprivileged (user type 0).
+/// Reads are unprivileged (user type 0). Writes require root/SMC privileges;
+/// without them the driver returns an error that the caller surfaces as a
+/// permission failure. The controller is responsible for safety clamps,
+/// restore-on-exit, and never disabling firmware thermal protection.
 ///
 /// Handles Apple Silicon vs Intel key differences automatically. Fanless Macs
 /// are supported: `FNum` returning 0 produces an empty fans array.
@@ -348,18 +349,25 @@ public struct SMCService: Sendable {
 
     // MARK: - Key Reading
 
-    /// Read an SMC key and convert to a Double.
-    private func readKeyValue(_ key: String) -> Double? {
+    public func readKeyValue(_ key: String) -> Double? {
         guard let (dataType, bytes) = connection.readKeyRaw(key) else { return nil }
         return smcConvertValue(dataType: dataType, bytes: bytes)
     }
 
     /// Read an SMC key as an unsigned integer (for `ui8 `, `ui16`, `ui32`).
-    private func readKeyUInt(_ key: String) -> UInt? {
+    public func readKeyUInt(_ key: String) -> UInt? {
         guard let (_, bytes) = connection.readKeyRaw(key), !bytes.isEmpty else { return nil }
         var result: UInt = 0
         for b in bytes { result = (result << 8) | UInt(b) }
         return result
+    }
+
+    /// Read a `ui32` SMC key, returning the full 32-bit value.
+    public func readKeyUInt32(_ key: String) -> UInt32? {
+        guard let (dataType, bytes) = connection.readKeyRaw(key) else { return nil }
+        guard smcDecodeKey(dataType) == "ui32", bytes.count >= 4 else { return nil }
+        return UInt32(bytes[0]) << 24 | UInt32(bytes[1]) << 16
+             | UInt32(bytes[2]) << 8 | UInt32(bytes[3])
     }
 
     // MARK: - Key Writing (privileged, used by helper IPC)
@@ -371,6 +379,8 @@ public struct SMCService: Sendable {
     }
 
     /// Write a value to an SMC key, encoding as the specified data type.
+    /// Supported types: `fpe2` (Intel temperature/fan), `flt ` (Apple Silicon
+    /// fan RPM), `ui8 `, `ui16`, `ui32`.
     public func writeKeyValue(_ key: String, value: Double, dataType: String = "fpe2") -> Bool {
         let typeUInt = smcEncodeKey(dataType)
         let bytes: [UInt8]
@@ -378,11 +388,27 @@ public struct SMCService: Sendable {
         case "fpe2":
             let raw = UInt16((value * 256.0).rounded())
             bytes = [UInt8((raw >> 8) & 0xFF), UInt8(raw & 0xFF)]
+        case "flt ":
+            let raw = Float(value).bitPattern.bigEndian
+            bytes = [
+                UInt8((raw >> 24) & 0xFF),
+                UInt8((raw >> 16) & 0xFF),
+                UInt8((raw >> 8) & 0xFF),
+                UInt8(raw & 0xFF)
+            ]
         case "ui8 ":
             bytes = [UInt8(min(max(value, 0), 255))]
         case "ui16":
             let raw = UInt16(min(max(value, 0), 65535))
             bytes = [UInt8((raw >> 8) & 0xFF), UInt8(raw & 0xFF)]
+        case "ui32":
+            let raw = UInt32(min(max(value, 0), 4294967295))
+            bytes = [
+                UInt8((raw >> 24) & 0xFF),
+                UInt8((raw >> 16) & 0xFF),
+                UInt8((raw >> 8) & 0xFF),
+                UInt8(raw & 0xFF)
+            ]
         default:
             return false
         }

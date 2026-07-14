@@ -2,10 +2,7 @@
 
 Source of truth for what's built vs planned. Capability IDs match `doctor`.
 
-## v0.1 — core reads + writes (current)
-
-Buildable, tested, runnable. Reads, writes, MCP, and profiles work today. Fan
-and battery-charge writes need the Pro privileged helper.
+## v0.1 — core reads + writes (shipped)
 
 - [x] SPM package, three targets, CI, docs, safety policy.
 - [x] `sensors.thermalPressure` — coarse thermal level from `ProcessInfo`.
@@ -23,7 +20,7 @@ and battery-charge writes need the Pro privileged helper.
 - [x] Update checker (GitHub releases).
 - [x] MCP server over stdio.
 
-## v0.2 — standalone app / menu-bar target
+## v0.2 — standalone app / menu-bar target (shipped)
 
 `SymairaTune.app` ships as a standalone, notarized macOS menu-bar app beside
 the CLI. It is not a Hub-only component. The XcodeGen project and SwiftUI/AppKit
@@ -39,18 +36,27 @@ See [manual app verification](manual-app-verification.md).
 - [x] Homebrew cask generation installs the app bundle and links the CLI
 - [x] Documented real-host end-to-end verification checklist
 
-## Pro — privileged SMC helper (separate repo, paid)
+## v0.3 — SMC writes in the open core (current)
 
-See `commercial-boundary.md`.
+All previously planned "Pro" hardware-tuning features are now part of the open
+core. They require the process to run as root because they write to the Apple SMC.
 
-- [ ] Privileged helper via `SMAppService` (Developer ID, notarized).
-- [ ] `fan.control` — fixed RPM + custom temperature→speed curves, presets
-      (Quiet/Auto/Cool). Always honors the firmware floor.
-- [ ] `battery.chargeLimit` — hold at target %, calibration/sailing modes.
-- [ ] DDC/CI external-monitor brightness (IOKit I2C) — evaluate here vs helper.
+- [x] `fan.control` — fixed RPM via manual SMC mode, clamped fraction, firmware
+      floor preserved, restore-on-exit.
+- [x] `battery.chargeLimit` — inhibit charging via Apple Silicon (`CHTE`/`CH0B`) or
+      Intel (`CHLC`) SMC keys, restore-on-exit, AC-power guardrail.
+- [x] New CLI commands: `fan auto`, `battery-limit clear`.
+- [x] New MCP tools: `clear_charge_limit`.
+- [x] Remove Core/Pro split from docs and capability model.
+- [x] Safety policy additions: `fanSpeedFloor`, thermal emergency threshold,
+      AC adapter check for charge limits.
 
-## Cross-cutting / tech debt
+## Future / cross-cutting
 
+- [ ] Optional privileged `symtune-helper` daemon via `SMAppService` so users do
+      not need to run the whole CLI as root. The helper remains Apache-2.0 in
+      this repo.
+- [ ] DDC/CI external-monitor brightness (IOKit I2C) — evaluate helper vs direct.
 - [ ] Tighten to Swift 6 strict concurrency (currently Swift 5 language mode;
       main friction is AppKit MainActor isolation in `DisplayService`).
 - [ ] GoReleaser-equivalent release flow: notarized DMG + Homebrew cask in

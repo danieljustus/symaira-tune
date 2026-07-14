@@ -8,7 +8,7 @@ symtune \(TuneVersion.current) — tune your Mac (thermals, brightness, power) f
 USAGE
   symtune <command> [options]
 
-READ COMMANDS (v0.1)
+READ COMMANDS
   doctor                 Capabilities, host info, and recommendations (JSON).
   status [--json] [--watch [--interval <duration>]]
                          System health status snapshot (Score, overrides, sensors, battery).
@@ -16,7 +16,7 @@ READ COMMANDS (v0.1)
   sensors                Thermal pressure + (when available) temps/fan RPM (JSON).
   battery                Battery health: charge %, cycles, capacity, condition (JSON).
   displays               Displays with EDR headroom / extended-brightness capability (JSON).
-  permissions            Permission & privileged-helper status (JSON).
+  permissions            Permission & SMC write status (JSON).
 
 POWER
   awake [--display] [--seconds N]
@@ -24,21 +24,28 @@ POWER
                          Ctrl-C if --seconds is omitted. --display also keeps the
                          screen on.
 
-WRITE COMMANDS (planned / Pro — see docs/roadmap.md)
+WRITE COMMANDS
   brightness get                Read built-in display brightness (0.0–1.0)
-  brightness set <0.0-1.0>     Built-in display brightness          (v0.1)
-  extbright set <1.0-1.6>      Extended/EDR brightness multiplier   (v0.1)
-  dim set <0.15-1.0>           Software dim overlay                 (v0.1)
-  dim reset                    Remove all dim overlays              (v0.1)
-  warmth set <0.0-1.0>         Color temperature warmth (gamma)     (v0.1)
-  warmth reset                 Reset warmth to neutral              (v0.1)
-  restore                      Restore all overrides to defaults    (v0.1)
-  profile save <name>          Save current settings as a profile  (v0.1)
-  profile load <name>          Apply a saved profile               (v0.1)
-  profile list                 List saved profiles                 (v0.1)
-  profile delete <name>        Delete a saved profile              (v0.1)
-  fan set <0.0-1.0>            Fan speed fraction                   (Pro: needs helper)
-  battery-limit set <50-100>   Hold charge at target percent        (Pro: needs helper)
+  brightness set <0.0-1.0>     Built-in display brightness
+  extbright set <1.0-1.6>     Extended/EDR brightness multiplier
+  dim set <0.15-1.0>          Software dim overlay
+  dim reset                   Remove all dim overlays
+  warmth set <0.0-1.0>        Color temperature warmth (gamma)
+  warmth reset                Reset warmth to neutral
+  restore                     Restore all overrides to defaults
+  fan set <0.0-1.0>           Fan speed fraction (requires sudo)
+  fan auto                    Return fans to firmware automatic control
+  battery-limit set <50-100>  Hold charge at target percent (requires sudo)
+  battery-limit clear         Re-enable charging (requires sudo)
+  profile save <name>         Save current settings as a profile
+  profile load <name>         Apply a saved profile
+  profile list                List saved profiles
+  profile delete <name>       Delete a saved profile
+
+PRIVILEGED SMC WRITES
+  Fan and battery-limit commands write to the Apple SMC. They must be run as
+  root, e.g. `sudo symtune fan set 0.5`. Values are clamped to safe ranges and
+  original settings are restored on normal exit or Ctrl-C.
 
 AGENTS
   serve                  Run the MCP server over stdio.
@@ -234,6 +241,14 @@ func runStatus(_ args: [String], controller: TuneController) throws {
                 emit("- Extended EDR Brightness: \(String(format: "%.1f", edr))x")
                 anyOverride = true
             }
+            if let fan = o.fanFraction {
+                emit("- Fan: \(Int(fan * 100))%")
+                anyOverride = true
+            }
+            if let charge = o.chargeLimitPercent {
+                emit("- Charge Limit: \(charge)%")
+                anyOverride = true
+            }
             if !anyOverride {
                 emit("- None")
             }
@@ -324,11 +339,23 @@ private func runExtBright(_ rest: [String], controller: TuneController) throws {
 }
 
 private func runFan(_ rest: [String], controller: TuneController) throws {
-    try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
+    if rest.first == "auto" {
+        try controller.restoreFanAuto()
+        try emitJSON(ApplyResult(applied: true))
+    } else {
+        try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
+        try emitJSON(ApplyResult(applied: true))
+    }
 }
 
 private func runBatteryLimit(_ rest: [String], controller: TuneController) throws {
-    try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
+    if rest.first == "clear" {
+        try controller.clearChargeLimit()
+        try emitJSON(ApplyResult(applied: true))
+    } else {
+        try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
+        try emitJSON(ApplyResult(applied: true))
+    }
 }
 
 func runMain() -> Int32 {

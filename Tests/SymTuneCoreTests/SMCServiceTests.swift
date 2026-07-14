@@ -80,6 +80,39 @@ final class SMCServiceTests: XCTestCase {
         XCTAssertEqual(written.bytes, [0x02, 0x00])
     }
 
+    func testWriteKeyValueEncodesFloatBigEndian() {
+        let conn = FakeSMCConnection(isOpen: true)
+        let service = SMCService(connection: conn)
+
+        let success = service.writeKeyValue("F0Tg", value: 42.0, dataType: "flt ")
+        XCTAssertTrue(success)
+        let written = conn.writtenKeys.first!
+        XCTAssertEqual(written.key, "F0Tg")
+        XCTAssertEqual(written.dataType, smcEncodeKey("flt "))
+
+        var val: Float = 42.0
+        let raw = val.bitPattern.bigEndian
+        let expected = [
+            UInt8((raw >> 24) & 0xFF),
+            UInt8((raw >> 16) & 0xFF),
+            UInt8((raw >> 8) & 0xFF),
+            UInt8(raw & 0xFF)
+        ]
+        XCTAssertEqual(written.bytes, expected)
+    }
+
+    func testWriteKeyValueEncodesUInt32BigEndian() {
+        let conn = FakeSMCConnection(isOpen: true)
+        let service = SMCService(connection: conn)
+
+        let success = service.writeKeyValue("CHTE", value: 1, dataType: "ui32")
+        XCTAssertTrue(success)
+        let written = conn.writtenKeys.first!
+        XCTAssertEqual(written.key, "CHTE")
+        XCTAssertEqual(written.dataType, smcEncodeKey("ui32"))
+        XCTAssertEqual(written.bytes, [0, 0, 0, 1])
+    }
+
     func testWriteKeyValueUnknownTypeReturnsFalse() {
         let conn = FakeSMCConnection(isOpen: true)
         let service = SMCService(connection: conn)

@@ -1,13 +1,14 @@
 import Foundation
 
-/// Protocol defining the IPC surface for the privileged SMC helper.
+/// Protocol defining the IPC surface for a privileged SMC helper.
 /// The helper daemon (installed via `SMAppService`) implements this protocol;
 /// the core talks to it over XPC. The helper enforces clamp ranges and
 /// never disables firmware thermal protection.
 ///
-/// In v0.1 this protocol exists as a contract definition. The actual
-/// XPC helper is in a separate private Pro repository (see
-/// `docs/commercial-boundary.md`).
+/// In the current direct-write model this protocol is not used by the CLI.
+/// It remains as the contract for a future optional helper daemon that runs
+/// with elevated privileges so users do not have to run the whole `symtune`
+/// binary as root.
 ///
 /// The helper is installed/managed via `SMAppService`:
 /// - Bundle identifier: `com.symaira.symtune-helper`
