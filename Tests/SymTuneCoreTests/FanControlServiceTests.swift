@@ -132,7 +132,7 @@ final class FanControlServiceTests: XCTestCase {
     func testAppleSiliconFanControlRetriesAndFailsOnManualMode() {
         let keys = makeAppleSiliconFanKeys(mode: 3)
         let conn = FakeSMCConnection(isOpen: true, keys: keys)
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "F0Md" {
                 return true
             }
@@ -140,7 +140,7 @@ final class FanControlServiceTests: XCTestCase {
         }
         let smc = SMCService(connection: conn)
         let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
-        
+
         XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
             guard let fanError = error as? FanControlError else {
                 XCTFail("Expected FanControlError")
@@ -169,7 +169,7 @@ final class FanControlServiceTests: XCTestCase {
         }
         let smc = SMCService(connection: conn)
         let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
-        
+
         XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
             guard let fanError = error as? FanControlError else {
                 XCTFail("Expected FanControlError")
@@ -189,7 +189,7 @@ final class FanControlServiceTests: XCTestCase {
     func testIntelFanControlFailsOnTargetRPMWrite() {
         let keys = makeIntelFanKeys()
         let conn = FakeSMCConnection(isOpen: true, keys: keys)
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "F0Tg" {
                 return false
             }
@@ -197,7 +197,7 @@ final class FanControlServiceTests: XCTestCase {
         }
         let smc = SMCService(connection: conn)
         let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
-        
+
         XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
             guard let fanError = error as? FanControlError else {
                 XCTFail("Expected FanControlError")
@@ -215,7 +215,7 @@ final class FanControlServiceTests: XCTestCase {
     func testIntelFanControlFailsOnFSWrite() {
         let keys = makeIntelFanKeys()
         let conn = FakeSMCConnection(isOpen: true, keys: keys)
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "FS!" {
                 return false
             }
@@ -223,7 +223,7 @@ final class FanControlServiceTests: XCTestCase {
         }
         let smc = SMCService(connection: conn)
         let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
-        
+
         XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
             guard let fanError = error as? FanControlError else {
                 XCTFail("Expected FanControlError")
@@ -243,7 +243,7 @@ final class FanControlServiceTests: XCTestCase {
         XCTAssertEqual(FanPreset.quiet.displayName, "Quiet")
         XCTAssertEqual(FanPreset.auto.displayName, "Auto")
         XCTAssertEqual(FanPreset.cool.displayName, "Cool")
-        
+
         XCTAssertEqual(FanPreset.quiet.fanFraction, 0.15)
         XCTAssertEqual(FanPreset.auto.fanFraction, 0.5)
         XCTAssertEqual(FanPreset.cool.fanFraction, 0.85)
@@ -253,16 +253,16 @@ final class FanControlServiceTests: XCTestCase {
         let p1 = FanCurvePoint(temperatureC: 40, fraction: 0.1)
         let p2 = FanCurvePoint(temperatureC: 60, fraction: 0.3)
         let curve = FanCurve(name: "Test", points: [p2, p1])
-        
+
         XCTAssertEqual(curve.points[0].temperatureC, 40)
         XCTAssertEqual(curve.points[1].temperatureC, 60)
-        
+
         XCTAssertEqual(curve.fraction(at: 30), 0.1)
         XCTAssertEqual(curve.fraction(at: 40), 0.1)
         XCTAssertEqual(curve.fraction(at: 50), 0.2)
         XCTAssertEqual(curve.fraction(at: 60), 0.3)
         XCTAssertEqual(curve.fraction(at: 70), 0.3)
-        
+
         let emptyCurve = FanCurve(name: "Empty", points: [])
         XCTAssertEqual(emptyCurve.fraction(at: 50), 0.0)
     }

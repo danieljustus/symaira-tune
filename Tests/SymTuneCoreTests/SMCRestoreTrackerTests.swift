@@ -58,10 +58,10 @@ final class SMCRestoreTrackerTests: XCTestCase {
         let fan = FanControlService(smc: smc, sensors: SensorService(smc: smc))
         let charge = ChargeLimitService(smc: smc)
         let tracker = SMCRestoreTracker(smc: smc, fanControl: fan, chargeLimit: charge)
-        
+
         tracker.saveFanOriginal(fanIndex: 0)
         tracker.restoreAll()
-        
+
         let mode = conn.writtenKeys.first { $0.key == "F0Md" }
         XCTAssertEqual(mode?.bytes, [1])
         let target = conn.writtenKeys.first { $0.key == "F0Tg" }
@@ -76,10 +76,10 @@ final class SMCRestoreTrackerTests: XCTestCase {
         let fan = FanControlService(smc: smc, sensors: SensorService(smc: smc))
         let charge = ChargeLimitService(smc: smc)
         let tracker = SMCRestoreTracker(smc: smc, fanControl: fan, chargeLimit: charge)
-        
+
         tracker.saveChargeOriginal()
         tracker.restoreAll()
-        
+
         let ch0b = conn.writtenKeys.first { $0.key == "CH0B" }
         XCTAssertEqual(ch0b?.bytes, [0])
         let ch0c = conn.writtenKeys.first { $0.key == "CH0C" }
@@ -125,10 +125,10 @@ final class SMCRestoreTrackerTests: XCTestCase {
         let fan = FanControlService(smc: smc, sensors: SensorService(smc: smc))
         let charge = ChargeLimitService(smc: smc)
         let tracker = SMCRestoreTracker(smc: smc, fanControl: fan, chargeLimit: charge)
-        
+
         tracker.saveFanOriginal(fanIndex: 0)
         tracker.restoreAll()
-        
+
         let target = conn.writtenKeys.first { $0.key == "F0Tg" }
         XCTAssertEqual(target?.bytes, [0x0A, 0x00])
     }
@@ -139,10 +139,10 @@ final class SMCRestoreTrackerTests: XCTestCase {
         let fan = FanControlService(smc: smc, sensors: SensorService(smc: smc))
         let charge = ChargeLimitService(smc: smc)
         let tracker = SMCRestoreTracker(smc: smc, fanControl: fan, chargeLimit: charge)
-        
+
         tracker.saveChargeOriginal()
         tracker.restoreAll()
-        
+
         let chlc = conn.writtenKeys.first { $0.key == "CHLC" }
         XCTAssertEqual(chlc?.bytes, [0, 0])
     }
@@ -154,7 +154,7 @@ final class SMCRestoreTrackerTests: XCTestCase {
         let fan = FanControlService(smc: smc, sensors: SensorService(smc: smc))
         let charge = ChargeLimitService(smc: smc)
         let tracker = SMCRestoreTracker(smc: smc, fanControl: fan, chargeLimit: charge)
-        
+
         tracker.restoreAll()
         XCTAssertTrue(conn.writtenKeys.isEmpty)
     }

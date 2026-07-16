@@ -129,9 +129,9 @@ final class ChargeLimitServiceTests: XCTestCase {
         ])
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         try service.applyChargeLimit(percent: 80, config: TuneConfig())
-        
+
         XCTAssertTrue(conn.writtenKeys.contains { $0.key == "CH0B" && $0.bytes == [2] })
         XCTAssertTrue(conn.writtenKeys.contains { $0.key == "CH0C" && $0.bytes == [2] })
     }
@@ -141,13 +141,13 @@ final class ChargeLimitServiceTests: XCTestCase {
         let conn = FakeSMCConnection(isOpen: true, keys: [
             "CHTE": FakeSMCKeyResult(dataType: ui32, bytes: [0, 0, 0, 0])
         ])
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "CHTE" { return false }
             return true
         }
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertThrowsError(try service.applyChargeLimit(percent: 80, config: TuneConfig())) { error in
             XCTAssertEqual(error as? ChargeLimitError, ChargeLimitError.inhibitWriteFailed)
         }
@@ -158,13 +158,13 @@ final class ChargeLimitServiceTests: XCTestCase {
         let conn = FakeSMCConnection(isOpen: true, keys: [
             "CH0B": FakeSMCKeyResult(dataType: ui8, bytes: [0])
         ])
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "CH0B" { return false }
             return true
         }
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertThrowsError(try service.applyChargeLimit(percent: 80, config: TuneConfig())) { error in
             XCTAssertEqual(error as? ChargeLimitError, ChargeLimitError.inhibitWriteFailed)
         }
@@ -175,13 +175,13 @@ final class ChargeLimitServiceTests: XCTestCase {
         let conn = FakeSMCConnection(isOpen: true, keys: [
             "CHTE": FakeSMCKeyResult(dataType: ui32, bytes: [0, 0, 0, 1])
         ])
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "CHTE" { return false }
             return true
         }
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertThrowsError(try service.clearChargeLimit()) { error in
             XCTAssertEqual(error as? ChargeLimitError, ChargeLimitError.allowWriteFailed)
         }
@@ -194,9 +194,9 @@ final class ChargeLimitServiceTests: XCTestCase {
         ])
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertEqual(service.readInhibitState(), true)
-        
+
         conn.keys["CH0B"] = FakeSMCKeyResult(dataType: ui8, bytes: [0])
         XCTAssertEqual(service.readInhibitState(), false)
     }
@@ -208,13 +208,13 @@ final class ChargeLimitServiceTests: XCTestCase {
         let conn = FakeSMCConnection(isOpen: true, keys: [
             "CHLC": FakeSMCKeyResult(dataType: ui16, bytes: [0, 0])
         ])
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "CHLC" { return false }
             return true
         }
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertThrowsError(try service.applyChargeLimit(percent: 80, config: TuneConfig())) { error in
             XCTAssertEqual(error as? ChargeLimitError, ChargeLimitError.inhibitWriteFailed)
         }
@@ -225,13 +225,13 @@ final class ChargeLimitServiceTests: XCTestCase {
         let conn = FakeSMCConnection(isOpen: true, keys: [
             "CHLC": FakeSMCKeyResult(dataType: ui16, bytes: [0, 80])
         ])
-        conn.writeHandler = { key, dataType, bytes in
+        conn.writeHandler = { key, _, _ in
             if key == "CHLC" { return false }
             return true
         }
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertThrowsError(try service.clearChargeLimit()) { error in
             XCTAssertEqual(error as? ChargeLimitError, ChargeLimitError.allowWriteFailed)
         }
@@ -244,7 +244,7 @@ final class ChargeLimitServiceTests: XCTestCase {
         ])
         let smc = SMCService(connection: conn)
         let service = ChargeLimitService(smc: smc)
-        
+
         XCTAssertNil(service.readInhibitState())
     }
     #endif

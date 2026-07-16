@@ -16,7 +16,7 @@ final class FakeSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     var isOpen: Bool
     var keys: [String: FakeSMCKeyResult]
     var writtenKeys: [FakeSMCWrittenKey] = []
-    var writeHandler: (@Sendable (String, UInt32, [UInt8]) -> Bool)? = nil
+    var writeHandler: (@Sendable (String, UInt32, [UInt8]) -> Bool)?
 
     init(isOpen: Bool = true, keys: [String: FakeSMCKeyResult] = [:]) {
         self.isOpen = isOpen
