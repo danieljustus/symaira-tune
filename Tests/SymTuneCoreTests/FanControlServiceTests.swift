@@ -128,5 +128,149 @@ final class FanControlServiceTests: XCTestCase {
             XCTAssertTrue("\(error)".contains("thermal"))
         }
     }
+
+    func testAppleSiliconFanControlRetriesAndFailsOnManualMode() {
+        let keys = makeAppleSiliconFanKeys(mode: 3)
+        let conn = FakeSMCConnection(isOpen: true, keys: keys)
+        conn.writeHandler = { key, _, _ in
+            if key == "F0Md" {
+                return true
+            }
+            return true
+        }
+        let smc = SMCService(connection: conn)
+        let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
+
+        XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
+            guard let fanError = error as? FanControlError else {
+                XCTFail("Expected FanControlError")
+                return
+            }
+            switch fanError {
+            case .fanModeWriteRejected(let idx):
+                XCTAssertEqual(idx, 0)
+            default:
+                XCTFail("Expected fanModeWriteRejected error")
+            }
+        }
+    }
+
+    func testAppleSiliconFanControlFailsOnTargetRPMWrite() {
+        let keys = makeAppleSiliconFanKeys()
+        let conn = FakeSMCConnection(isOpen: true, keys: keys)
+        conn.writeHandler = { key, dataType, bytes in
+            if key == "F0Tg" {
+                return false
+            }
+            if key == "F0Md" {
+                conn.keys["F0Md"] = FakeSMCKeyResult(dataType: dataType, bytes: bytes)
+            }
+            return true
+        }
+        let smc = SMCService(connection: conn)
+        let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
+
+        XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
+            guard let fanError = error as? FanControlError else {
+                XCTFail("Expected FanControlError")
+                return
+            }
+            switch fanError {
+            case .targetRPMWriteFailed(let idx):
+                XCTAssertEqual(idx, 0)
+            default:
+                XCTFail("Expected targetRPMWriteFailed error")
+            }
+        }
+    }
     #endif
+
+    #if arch(x86_64)
+    func testIntelFanControlFailsOnTargetRPMWrite() {
+        let keys = makeIntelFanKeys()
+        let conn = FakeSMCConnection(isOpen: true, keys: keys)
+        conn.writeHandler = { key, _, _ in
+            if key == "F0Tg" {
+                return false
+            }
+            return true
+        }
+        let smc = SMCService(connection: conn)
+        let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
+
+        XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
+            guard let fanError = error as? FanControlError else {
+                XCTFail("Expected FanControlError")
+                return
+            }
+            switch fanError {
+            case .targetRPMWriteFailed(let idx):
+                XCTAssertEqual(idx, 0)
+            default:
+                XCTFail("Expected targetRPMWriteFailed error")
+            }
+        }
+    }
+
+    func testIntelFanControlFailsOnFSWrite() {
+        let keys = makeIntelFanKeys()
+        let conn = FakeSMCConnection(isOpen: true, keys: keys)
+        conn.writeHandler = { key, _, _ in
+            if key == "FS!" {
+                return false
+            }
+            return true
+        }
+        let smc = SMCService(connection: conn)
+        let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
+
+        XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
+            guard let fanError = error as? FanControlError else {
+                XCTFail("Expected FanControlError")
+                return
+            }
+            switch fanError {
+            case .targetRPMWriteFailed(let idx):
+                XCTAssertEqual(idx, 0)
+            default:
+                XCTFail("Expected targetRPMWriteFailed error")
+            }
+        }
+    }
+    #endif
+
+    func testFanPresetProperties() {
+        XCTAssertEqual(FanPreset.quiet.displayName, "Quiet")
+        XCTAssertEqual(FanPreset.auto.displayName, "Auto")
+        XCTAssertEqual(FanPreset.cool.displayName, "Cool")
+
+        XCTAssertEqual(FanPreset.quiet.fanFraction, 0.15)
+        XCTAssertEqual(FanPreset.auto.fanFraction, 0.5)
+        XCTAssertEqual(FanPreset.cool.fanFraction, 0.85)
+    }
+
+    func testFanCurvePointsAndFraction() {
+        let p1 = FanCurvePoint(temperatureC: 40, fraction: 0.1)
+        let p2 = FanCurvePoint(temperatureC: 60, fraction: 0.3)
+        let curve = FanCurve(name: "Test", points: [p2, p1])
+
+        XCTAssertEqual(curve.points[0].temperatureC, 40)
+        XCTAssertEqual(curve.points[1].temperatureC, 60)
+
+        XCTAssertEqual(curve.fraction(at: 30), 0.1)
+        XCTAssertEqual(curve.fraction(at: 40), 0.1)
+        XCTAssertEqual(curve.fraction(at: 50), 0.2)
+        XCTAssertEqual(curve.fraction(at: 60), 0.3)
+        XCTAssertEqual(curve.fraction(at: 70), 0.3)
+
+        let emptyCurve = FanCurve(name: "Empty", points: [])
+        XCTAssertEqual(emptyCurve.fraction(at: 50), 0.0)
+    }
+
+    func testFanControlErrorDescriptions() {
+        XCTAssertEqual("\(FanControlError.noFansDetected)", "no fans detected")
+        XCTAssertEqual("\(FanControlError.fanModeWriteRejected(1))", "fan 1 rejected manual mode")
+        XCTAssertEqual("\(FanControlError.targetRPMWriteFailed(2))", "fan 2 target RPM write failed")
+        XCTAssertEqual("\(FanControlError.unsupportedPlatform)", "unsupported platform")
+    }
 }
