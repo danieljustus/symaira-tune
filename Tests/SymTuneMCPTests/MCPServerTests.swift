@@ -1,6 +1,6 @@
 import XCTest
 @testable import SymTuneMCP
-import SymTuneCore
+@testable import SymTuneCore
 
 final class MCPServerToolSchemaTests: XCTestCase {
     private var server: MCPServer!
@@ -197,6 +197,66 @@ final class MCPServerToolCallTests: XCTestCase {
         }
     }
 
+    func testCallSetFanSuccess() throws {
+        let connection = MockSMCConnection()
+        let smcService = SMCService(connection: connection)
+        let batterySource = MockBatterySource()
+        let controller = TuneController(
+            smcService: smcService,
+            batterySource: batterySource
+        )
+        let customServer = MCPServer(controller: controller)
+
+        let result = try customServer.dispatch(
+            method: "tools/call",
+            params: ["name": "set_fan", "arguments": ["fraction": 0.5]]
+        )
+        XCTAssertEqual(result["isError"] as? Bool, false)
+
+        // Verify something was written to SMC connection
+        XCTAssertFalse(connection.writtenKeys.isEmpty)
+    }
+
+    func testCallSetChargeLimitSuccess() throws {
+        let connection = MockSMCConnection()
+        let smcService = SMCService(connection: connection)
+        let batterySource = MockBatterySource()
+        let controller = TuneController(
+            smcService: smcService,
+            batterySource: batterySource
+        )
+        let customServer = MCPServer(controller: controller)
+
+        let result = try customServer.dispatch(
+            method: "tools/call",
+            params: ["name": "set_charge_limit", "arguments": ["percent": 80]]
+        )
+        XCTAssertEqual(result["isError"] as? Bool, false)
+
+        // Verify something was written to SMC connection
+        XCTAssertFalse(connection.writtenKeys.isEmpty)
+    }
+
+    func testCallClearChargeLimitSuccess() throws {
+        let connection = MockSMCConnection()
+        let smcService = SMCService(connection: connection)
+        let batterySource = MockBatterySource()
+        let controller = TuneController(
+            smcService: smcService,
+            batterySource: batterySource
+        )
+        let customServer = MCPServer(controller: controller)
+
+        let result = try customServer.dispatch(
+            method: "tools/call",
+            params: ["name": "clear_charge_limit", "arguments": [:]]
+        )
+        XCTAssertEqual(result["isError"] as? Bool, false)
+
+        // Verify something was written to SMC connection
+        XCTAssertFalse(connection.writtenKeys.isEmpty)
+    }
+
     func testDispatchInitialize() throws {
         let result = try server.dispatch(method: "initialize", params: [:])
         XCTAssertNotNil(result["protocolVersion"])
@@ -267,5 +327,108 @@ final class MCPTransportBoundsTests: XCTestCase {
         let transport = MCPTransport(input: input, output: .nullDevice)
         let data = try transport.readMessage()
         XCTAssertEqual(data?.count, body.count)
+    }
+}
+
+// MARK: - Mocking helpers
+
+private final class MockBatterySource: BatterySource {
+    func readProperties() -> BatterySourceResult {
+        return .success(BatteryProperties(externalConnected: true))
+    }
+}
+
+private struct MockSMCWrittenKey {
+    let key: String
+    let dataType: UInt32
+    let bytes: [UInt8]
+}
+
+private final class MockSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
+    var isOpen: Bool = true
+    var keys: [String: (UInt32, [UInt8])] = [:]
+    var writtenKeys: [MockSMCWrittenKey] = []
+
+    init() {
+        // FNum: 1 fan
+        keys["FNum"] = (smcEncodeKey("ui8 "), [1])
+        #if arch(arm64)
+        // Apple Silicon uses flt for target / min / max RPM
+        keys["F0Mx"] = encodeFlt(6000.0)
+        keys["F0Mn"] = encodeFlt(1200.0)
+        keys["F0Md"] = encodeUi8(1)
+        keys["CHTE"] = encodeUi32(0) // non-nil for detection
+        keys["CH0B"] = encodeUi8(0) // non-nil for detection
+        #else
+        // Intel uses fpe2 / ui16
+        keys["F0Mx"] = encodeFpe2(6000.0)
+        keys["F0Mn"] = encodeFpe2(1200.0)
+        keys["FS!"] = encodeUi16(0)
+        keys["CHLC"] = encodeUi16(0) // non-nil for detection
+        #endif
+    }
+
+    func readKeyRaw(_ key: String) -> (dataType: UInt32, bytes: [UInt8])? {
+        return keys[key]
+    }
+
+    func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
+        writtenKeys.append(MockSMCWrittenKey(key: key, dataType: dataType, bytes: bytes))
+        #if arch(arm64)
+        if key == "F0Md" {
+            keys["F0Md"] = (dataType, bytes)
+        }
+        #endif
+        return true
+    }
+
+    private func encodeFlt(_ value: Float) -> (UInt32, [UInt8]) {
+        let raw = value.bitPattern
+        return (
+            smcEncodeKey("flt "),
+            [
+                UInt8((raw >> 24) & 0xFF),
+                UInt8((raw >> 16) & 0xFF),
+                UInt8((raw >> 8) & 0xFF),
+                UInt8(raw & 0xFF)
+            ]
+        )
+    }
+
+    private func encodeFpe2(_ value: Double) -> (UInt32, [UInt8]) {
+        let raw = UInt16((value * 256.0).rounded())
+        return (
+            smcEncodeKey("fpe2"),
+            [
+                UInt8((raw >> 8) & 0xFF),
+                UInt8(raw & 0xFF)
+            ]
+        )
+    }
+
+    private func encodeUi8(_ value: UInt8) -> (UInt32, [UInt8]) {
+        return (smcEncodeKey("ui8 "), [value])
+    }
+
+    private func encodeUi16(_ value: UInt16) -> (UInt32, [UInt8]) {
+        return (
+            smcEncodeKey("ui16"),
+            [
+                UInt8((value >> 8) & 0xFF),
+                UInt8(value & 0xFF)
+            ]
+        )
+    }
+
+    private func encodeUi32(_ value: UInt32) -> (UInt32, [UInt8]) {
+        return (
+            smcEncodeKey("ui32"),
+            [
+                UInt8((value >> 24) & 0xFF),
+                UInt8((value >> 16) & 0xFF),
+                UInt8((value >> 8) & 0xFF),
+                UInt8(value & 0xFF)
+            ]
+        )
     }
 }
