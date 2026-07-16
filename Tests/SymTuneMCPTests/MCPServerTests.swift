@@ -338,10 +338,16 @@ private final class MockBatterySource: BatterySource {
     }
 }
 
+private struct MockSMCWrittenKey {
+    let key: String
+    let dataType: UInt32
+    let bytes: [UInt8]
+}
+
 private final class MockSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     var isOpen: Bool = true
     var keys: [String: (UInt32, [UInt8])] = [:]
-    var writtenKeys: [(key: String, dataType: UInt32, bytes: [UInt8])] = []
+    var writtenKeys: [MockSMCWrittenKey] = []
 
     init() {
         // FNum: 1 fan
@@ -367,7 +373,7 @@ private final class MockSMCConnection: SMCConnectionProtocol, @unchecked Sendabl
     }
 
     func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
-        writtenKeys.append((key, dataType, bytes))
+        writtenKeys.append(MockSMCWrittenKey(key: key, dataType: dataType, bytes: bytes))
         #if arch(arm64)
         if key == "F0Md" {
             keys["F0Md"] = (dataType, bytes)
