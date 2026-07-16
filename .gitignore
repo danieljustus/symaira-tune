@@ -32,3 +32,4 @@ dist/
 .omo/run-continuation/
 .omo/notepads/
 coverage.html
+*.profraw
