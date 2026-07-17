@@ -6,7 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.3.0] — 2026-07-14
+## [0.3.0] — 2026-07-17
+
+### Added
+- Fan control and battery charge limiting now ship in the open Apache-2.0
+  core. New `fan set` / `fan auto` and `battery-limit set` /
+  `battery-limit clear` CLI commands, plus matching `set_fan`,
+  `set_charge_limit` and `clear_charge_limit` MCP tools. SMC writes require
+  `sudo`, are clamped by `SafetyPolicy`, never disable firmware thermal
+  protection, and restore the original SMC values on exit.
+- `SMCWritePolicy` validation and SMC restore tracking for the new write
+  paths, with unit tests across the controller, services and MCP tools
+  (`#140`, `#141`, `#142`, `#143`).
+
+### Fixed
+- Correct `flt` byte order and map SMC write errors to `TuneError` instead of
+  failing silently.
+- Anchor the menu-bar status popover correctly below the menu-bar icon.
+- Set the app delegate in the explicit main entry point of the menu-bar app.
+
+### Changed
+- `fan.control` and `battery.chargeLimit` are core-tier capabilities in
+  `symtune doctor`. The previously planned privileged-helper requirement
+  moved to an optional future convenience (see
+  `docs/commercial-boundary.md`).
 
 ## [0.2.0] — 2026-07-13
 
