@@ -17,13 +17,16 @@ what's available on your machine.
 | `display.dim.set` | All displays | All displays | Sub-minimum software dim overlay. Clamped >= 0.15 by `SafetyPolicy`. Ships in v0.1 (CLI; menu-bar UI in v0.2). |
 | `display.brightness.set` | Built-in displays (limitations) | Built-in displays | Hardware brightness get/set for the built-in panel. On Apple Silicon, the control path differs from Intel (CoreDisplay vs DisplayServices). Ships in v0.1. |
 | `power.keepAwake` | All | All | Prevent idle sleep via IOKit power assertion. Works on every Mac. Ships in v0.1. |
-| `fan.control` | Macs with fans | Macs with fans | **Pro tier**. Requires a privileged SMC helper. Not available on fanless models (MacBook Air). |
-| `battery.chargeLimit` | Apple Silicon notebooks | Some Intel notebooks | **Pro tier**. Requires a privileged SMC helper. The IOKit/SMC keys differ between architectures. |
+| `fan.control` | Macs with fans | Macs with fans | Core tier. SMC writes require root — run with `sudo`. Not available on fanless models (MacBook Air). |
+| `battery.chargeLimit` | Apple Silicon notebooks | Some Intel notebooks | Core tier. SMC writes require root — run with `sudo`. The IOKit/SMC keys differ between architectures. |
 
 ### Tier and status legend
 
 - **Core tier**. Ships in the Apache-2.0 licensed binary. No extra installation.
-- **Pro tier**. Requires a signed, notarized privileged helper installed separately.
+  Every shipped capability is core tier; there is no separate Pro tier for
+  hardware tuning (see [`docs/commercial-boundary.md`](commercial-boundary.md)).
+  Capabilities that write to the SMC (`fan.control`, `battery.chargeLimit`)
+  require root privileges — run the CLI with `sudo`.
 - **v0.1**. Available now.
 - **v0.2**. Planned for the next release cycle (app target needed for display
   overrides).
@@ -61,8 +64,8 @@ and equivalent keys on Apple Silicon.
   extensively.
 - **Apple Silicon**: The fan control keys are different. While the concept
   (manual override with a firmware floor) is the same, the exact key names and
-  the way minimum speeds are enforced diverged. The Pro helper abstracts both
-  behind a single interface.
+  the way minimum speeds are enforced diverged. `FanControlService` abstracts
+  both behind a single interface.
 
 On both architectures, `SafetyPolicy` guarantees that fan control can only
 *raise* the speed above the firmware's automatic curve, never silence it. The
@@ -74,7 +77,7 @@ firmware thermal protection always takes precedence.
   percentage) or via IOKit properties on newer models.
 - **Apple Silicon**: Charge limit is controlled through IOKit properties on
   the `AppleSmartBattery` service. The mechanism differs enough that separate
-  code paths are needed in the Pro helper.
+  code paths are needed in `ChargeLimitService`.
 
 `battery.read` (charge percentage, cycle count, health) works identically on
 both architectures. The difference is only in the *write* path for setting the
@@ -86,8 +89,8 @@ target.
   `DisplayServices` or CoreDisplay private APIs. On Apple Silicon, the same
   goal is achieved through CoreDisplay, but some internal function names and
   behaviours differ. symtune's `DisplayService` (v0.1) handles both paths.
-- **External monitors**: DDC/CI brightness control is being evaluated for the
-  Pro tier. It works over IOKit I2C on both architectures.
+- **External monitors**: DDC/CI brightness control is not implemented; it is
+  being evaluated. It works over IOKit I2C on both architectures.
 - **EDR/extended brightness**: Uses an AppKit on-screen EDR layer. This is an
   app-context feature (requires a GUI process) and is architecture-agnostic.
 
@@ -98,7 +101,7 @@ This has specific implications for symtune.
 
 | Area | What changes |
 |---|---|
-| `fan.control` | Reports `unsupported`. There is no fan hardware to control. `doctor` shows `available: false, tier: pro` with a clear message. |
+| `fan.control` | Reports `unsupported`. There is no fan hardware to control. `doctor` shows `available: false, tier: core` with a clear message. |
 | `sensors.smc` | No fan RPM to report, but die temperature sensors are still available. The RPM field in the sensor report is absent or zero. |
 | `sensors.thermalPressure` | Works normally. Fanless Macs rely entirely on passive cooling and throttling under sustained load. |
 | `display.*` | All display features work the same as on any other Mac with the same display hardware. |
@@ -182,16 +185,17 @@ need root or any entitlement beyond the standard AppKit sandbox exemption.
 | `display.dim.set` | GUI session, no elevated privileges (v0.1). |
 | `display.brightness.extended.set` | GUI session, no elevated privileges (v0.1). |
 | `display.brightness.set` | GUI session (v0.1). May need accessibility permissions on some macOS versions. |
-| `fan.control` | **Pro tier**. Privileged helper (`SMAppService`/`SMJobBless`) with Developer ID and notarization. |
-| `battery.chargeLimit` | **Pro tier**. Privileged helper (`SMAppService`/`SMJobBless`) with Developer ID and notarization. |
-| DDC/CI external brightness | **Pro tier**. Being evaluated. May follow the same helper path. |
+| `fan.control` | Core tier. Root privileges for the SMC write — run with `sudo`. |
+| `battery.chargeLimit` | Core tier. Root privileges for the SMC write — run with `sudo`. |
+| DDC/CI external brightness | Not implemented. Being evaluated. |
 
-### Pro tier helper
+### Optional future helper
 
-The privileged helper is a separate, signed, notarized tool installed via
-`SMAppService`. It runs as a Launch Daemon with the `com.apple.security.smc`
-and `com.apple.security.iokit-user-client-class` entitlements. The helper is
-never bundled in the Apache-2.0 binary. symtune communicates with it over XPC.
+Today, SMC writes run in the `symtune` process itself, which therefore needs
+root (`sudo`). An optional `symtune-helper` daemon (installed via
+`SMAppService`, communicating over XPC) may be added later so the main binary
+no longer has to run as root. It will ship from this same Apache-2.0
+repository as a convenience wrapper around the existing core logic — not as a
+separate product tier. `SMCHelperProtocol` already defines the XPC contract.
 
-`symtune permissions` reports whether the helper is installed and its current
-status.
+`symtune permissions` reports the current permission and SMC write status.

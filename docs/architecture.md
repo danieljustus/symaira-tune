@@ -27,7 +27,10 @@ The only target with logic or IOKit access.
 - `SensorService` — thermal pressure (`ProcessInfo.thermalState`) and, when
   available, detailed temps/fan RPM via `SMCService`.
 - `SMCService` — AppleSMC IOKit bridge for sensor reads (die temps, fan RPM;
-  unprivileged) and, via the Pro helper, fan writes (privileged).
+  unprivileged) and SMC writes (fan speed, charge limiting; requires root).
+  `FanControlService` and `ChargeLimitService` implement the two write paths
+  behind `SMCWritePolicy` validation, with `SMCRestoreTracker` restoring the
+  original SMC values on exit.
 - `BatteryService` — reads `AppleSmartBattery` from the IORegistry (unprivileged;
   Intel + Apple Silicon notebooks).
 - `DisplayService` — enumerates `NSScreen`s, reports EDR headroom (the signal
@@ -51,19 +54,26 @@ The only target with logic or IOKit access.
 
 ## Capability tiers
 
-Every capability is tagged `core` (this Apache-2.0 binary) or `pro` (needs the
-privileged SMC helper). `doctor` reports `available` + `tier` per capability so
-callers never guess. Honesty rule: unbuilt → `.notImplemented`; hardware/tier
-gated → `.unsupported`.
+Every shipped capability is tagged `core` — it lives in this Apache-2.0 binary;
+there is no separate Pro tier for hardware tuning (see
+[`docs/commercial-boundary.md`](commercial-boundary.md)). Capabilities that
+write to the SMC (`fan.control`, `battery.chargeLimit`) additionally require
+root privileges at runtime. `doctor` reports `available` + `tier` per
+capability so callers never guess. Honesty rule: unbuilt → `.notImplemented`;
+hardware/tier gated → `.unsupported`.
 
-## Why some writes need an app or a helper
+## Why some writes need elevated privileges
 
 - **Extended/EDR brightness**, **sub-minimum dimming**, **built-in brightness**,
   and **color temperature warmth** use on-screen EDR layers, overlay windows, and
   gamma LUTs. These work from the CLI today — no app target needed.
-- **Fan control** and **charge limiting** require SMC *writes*, which need a
-  privileged helper (`SMAppService`/`SMJobBless`) with a Developer ID. SMC
-  *reads* are unprivileged and ship in the core.
+- **Fan control** and **charge limiting** require SMC *writes*, which the kernel
+  only allows from a root process. The supported mode is running the CLI with
+  `sudo`; the same process clamps through `SafetyPolicy` and restores the
+  original SMC values on exit. An optional `symtune-helper` daemon
+  (`SMAppService` + XPC) may be added later as a convenience so the main binary
+  does not have to run as root — a wrapper around the same core logic, not a
+  requirement. SMC *reads* are unprivileged and ship in the core.
 
 ## Distribution
 
