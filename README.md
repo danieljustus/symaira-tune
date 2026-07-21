@@ -1,5 +1,9 @@
 # symaira-tune
 
+[![CI](https://github.com/danieljustus/symaira-tune/actions/workflows/ci.yml/badge.svg)](https://github.com/danieljustus/symaira-tune/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/danieljustus/symaira-tune)](https://github.com/danieljustus/symaira-tune/releases/latest)
+[![License](https://img.shields.io/github/license/danieljustus/symaira-tune)](LICENSE)
+
 > Tune your Mac — thermals, brightness, power — from the CLI and for AI agents.
 
 `symtune` is a small, native macOS utility that reads your Mac's thermal, power,
