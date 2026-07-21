@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report a bug in symtune
+labels: ["bug", "priority: medium"]
+body:
+  - type: textarea
+    id: observation
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        1. Run `symtune ...`
+        2. Observe ...
+        3. See error ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - macOS version:
+        - Mac model:
+        - symtune version: (`symtune --version`)
+    validations:
+      required: true
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: Initial diagnosis or evidence
+      description: Any relevant logs, error output, or `symtune doctor` output.
+    validations:
+      required: false
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety acknowledgment
+      options:
+        - label: This bug does not involve SMC writes or fan control (or I understand the risks of testing privileged features).
+          required: true
