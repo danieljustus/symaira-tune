@@ -10,6 +10,10 @@ struct MainStatusView: View {
     @State private var brightness: Double = 0.5
     @State private var dim: Double = 0.0
     @State private var warmth: Double = 0.0
+    @State private var extendedBrightness: Double = 1.0
+    @State private var fanFraction: Double = 0.0
+    @State private var isFanManualMode: Bool = false
+    @State private var fanError: String? = nil
 
     // Stats state
     @State private var batteryReport: BatteryReport?
@@ -93,6 +97,73 @@ struct MainStatusView: View {
                         try? controller.applyWarmth(warmth)
                     }
                     .tint(SymairaColors.goldPrimary)
+                }
+
+                // Extended Brightness
+                if isEDRCapable {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Label("Extended Brightness", systemImage: "sun.max.trianglebadge.exclamationmark.fill")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(SymairaColors.textSecondary)
+                            Spacer()
+                            Text("\(Int(extendedBrightness * 100))%")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(SymairaColors.goldSecondary)
+                        }
+                        Slider(value: $extendedBrightness, in: 1.0...1.6) { _ in
+                            try? controller.applyExtendedBrightness(extendedBrightness)
+                        }
+                        .tint(SymairaColors.goldPrimary)
+                    }
+                }
+            }
+            .padding(12)
+            .background(SymairaColors.bgPanel)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(SymairaColors.border, lineWidth: 1)
+            )
+
+            // Fan Control Card
+            VStack(spacing: 12) {
+                HStack {
+                    Label("Fan Control", systemImage: "fanblades.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(SymairaColors.textSecondary)
+                    Spacer()
+                    Toggle("", isOn: manualFanBinding)
+                        .toggleStyle(.switch)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Target Speed")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(isFanManualMode ? SymairaColors.textSecondary : SymairaColors.textMuted)
+                        Spacer()
+                        Text("\(Int(fanFraction * 100))%")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(isFanManualMode ? SymairaColors.goldSecondary : SymairaColors.textMuted)
+                    }
+                    Slider(value: $fanFraction, in: 0.0...1.0) { _ in
+                        do {
+                            try controller.applyFan(fraction: fanFraction)
+                            fanError = nil
+                        } catch {
+                            fanError = error.localizedDescription
+                        }
+                    }
+                    .tint(SymairaColors.goldPrimary)
+                    .disabled(!isFanManualMode)
+                }
+
+                if let errorMsg = fanError {
+                    Text(errorMsg)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(SymairaColors.danger)
+                        .padding(.top, 2)
                 }
             }
             .padding(12)
@@ -248,10 +319,48 @@ struct MainStatusView: View {
         self.dim = controller.getDimLevel()
         self.warmth = controller.getWarmthLevel()
 
+        let overrides = controller.activeOverrides()
+        if let activeEDR = overrides.edrBrightness {
+            self.extendedBrightness = activeEDR
+        } else {
+            self.extendedBrightness = 1.0
+        }
+
+        if let activeFan = overrides.fanFraction {
+            self.fanFraction = activeFan
+            self.isFanManualMode = true
+        } else {
+            self.isFanManualMode = false
+        }
+
         // Read sensor/battery reports
         self.batteryReport = controller.batteryReport()
         self.sensorReport = controller.sensors_report()
         self.displayReport = controller.displaysReport()
+    }
+
+    private var isEDRCapable: Bool {
+        displayReport?.displays.contains { $0.edrCapable } ?? false
+    }
+
+    private var manualFanBinding: Binding<Bool> {
+        Binding(
+            get: { self.isFanManualMode },
+            set: { newValue in
+                self.isFanManualMode = newValue
+                do {
+                    if newValue {
+                        try controller.applyFan(fraction: fanFraction)
+                    } else {
+                        try controller.restoreFanAuto()
+                    }
+                    fanError = nil
+                } catch {
+                    fanError = error.localizedDescription
+                    self.isFanManualMode = !newValue
+                }
+            }
+        )
     }
 
     private func getBatteryIcon() -> String {
