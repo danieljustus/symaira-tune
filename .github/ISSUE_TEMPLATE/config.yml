@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/danieljustus/symaira-tune/security/advisories/new
+    about: Report security vulnerabilities privately via GitHub's security tab.
+  - name: Discussions
+    url: https://github.com/danieljustus/symaira-tune/discussions
+    about: Ask questions or discuss ideas.
