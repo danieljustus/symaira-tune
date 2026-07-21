@@ -13,7 +13,7 @@ struct MainStatusView: View {
     @State private var extendedBrightness: Double = 1.0
     @State private var fanFraction: Double = 0.0
     @State private var isFanManualMode: Bool = false
-    @State private var fanError: String? = nil
+    @State private var fanError: String?
 
     // Stats state
     @State private var batteryReport: BatteryReport?
