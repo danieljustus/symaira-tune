@@ -83,11 +83,22 @@ final class MCPServerToolSchemaTests: XCTestCase {
 // MARK: - MCPTool dispatch (tools/call)
 
 final class MCPServerToolCallTests: XCTestCase {
+    private var tmpDir: URL!
     private var server: MCPServer!
 
     override func setUp() {
         super.setUp()
-        server = MCPServer()
+        tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("symtune-mcp-test-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        server = MCPServer(controller: controller)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tmpDir)
+        super.tearDown()
     }
 
     private func callTool(_ name: String, arguments: [String: Any] = [:]) throws -> [String: Any] {
@@ -175,6 +186,88 @@ final class MCPServerToolCallTests: XCTestCase {
     func testCallRestore() throws {
         let result = try callTool("restore")
         XCTAssertEqual(result["isError"] as? Bool, false)
+    }
+
+    func testCallKeepAwakeTool() throws {
+        let resultEnable = try callTool("keep_awake", arguments: ["enabled": true, "prevent_display_sleep": true])
+        XCTAssertEqual(resultEnable["isError"] as? Bool, false)
+
+        let resultDisable = try callTool("keep_awake", arguments: ["enabled": false])
+        XCTAssertEqual(resultDisable["isError"] as? Bool, false)
+    }
+
+    func testCallGetBrightnessTool() {
+        do {
+            let result = try callTool("get_brightness")
+            XCTAssertEqual(result["isError"] as? Bool, false)
+        } catch {
+            let msg = "\(error)"
+            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
+        }
+    }
+
+    func testCallSetBrightnessTool() {
+        do {
+            let result = try callTool("set_brightness", arguments: ["value": 0.75])
+            XCTAssertEqual(result["isError"] as? Bool, false)
+        } catch {
+            let msg = "\(error)"
+            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
+        }
+    }
+
+    func testCallSetExtendedBrightnessTool() {
+        do {
+            let result = try callTool("set_extended_brightness", arguments: ["value": 1.2])
+            XCTAssertEqual(result["isError"] as? Bool, false)
+        } catch {
+            XCTAssertFalse("\(error)".isEmpty)
+        }
+    }
+
+    func testCallSetWarmthAndResetWarmthTools() {
+        do {
+            let resultWarmth = try callTool("set_warmth", arguments: ["value": 0.4])
+            XCTAssertEqual(resultWarmth["isError"] as? Bool, false)
+        } catch {
+            let msg = "\(error)"
+            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
+        }
+
+        do {
+            let resultReset = try callTool("reset_warmth")
+            XCTAssertEqual(resultReset["isError"] as? Bool, false)
+        } catch {
+            let msg = "\(error)"
+            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
+        }
+    }
+
+    func testCallProfileTools() throws {
+        XCTAssertThrowsError(try callTool("save_profile")) { error in
+            guard case TuneError.usage = error else { return XCTFail("Expected .usage, got \(error)") }
+        }
+        XCTAssertThrowsError(try callTool("load_profile")) { error in
+            guard case TuneError.usage = error else { return XCTFail("Expected .usage, got \(error)") }
+        }
+        XCTAssertThrowsError(try callTool("delete_profile")) { error in
+            guard case TuneError.usage = error else { return XCTFail("Expected .usage, got \(error)") }
+        }
+
+        let saveResult = try callTool("save_profile", arguments: ["name": "reading_mode"])
+        XCTAssertEqual(saveResult["isError"] as? Bool, false)
+
+        let listResult = try callTool("list_profiles")
+        XCTAssertEqual(listResult["isError"] as? Bool, false)
+        let listContent = listResult["content"] as? [[String: Any]]
+        let listText = listContent?.first?["text"] as? String
+        XCTAssertTrue(listText?.contains("reading_mode") == true)
+
+        let loadResult = try callTool("load_profile", arguments: ["name": "reading_mode"])
+        XCTAssertEqual(loadResult["isError"] as? Bool, false)
+
+        let deleteResult = try callTool("delete_profile", arguments: ["name": "reading_mode"])
+        XCTAssertEqual(deleteResult["isError"] as? Bool, false)
     }
 
     func testCallSetFanRequiresSMCOrRoot() {
@@ -330,7 +423,14 @@ final class MCPTransportBoundsTests: XCTestCase {
     }
 }
 
-// MARK: - Mocking helpers
+private final class MockMCPDisplayWriteService: DisplayWriteServiceProtocol, @unchecked Sendable {
+    var brightness: Double = 0.8
+    func getBuiltinBrightness() throws -> Double { brightness }
+    func setBuiltinBrightness(_ value: Float) throws { brightness = Double(value) }
+    func applyWarmth(_ warmth: Float) throws {}
+    func resetWarmth() throws {}
+    func applyExtendedBrightness(_ multiplier: Double, displayID: UInt32?) throws {}
+}
 
 private final class MockBatterySource: BatterySource {
     func readProperties() -> BatterySourceResult {
