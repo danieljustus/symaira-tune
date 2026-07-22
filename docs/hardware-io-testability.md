@@ -23,7 +23,7 @@ Some services already expose protocol boundaries:
 | `BatterySource` | `BatterySource` protocol | Good — fake source tests exist |
 | `DisplayEnumerationSource` | `DisplayEnumerationSource` protocol | Good — fake enumeration tests exist |
 | `PowerAssertionSource` | `PowerAssertionSource` protocol | Good — fake assertion tests exist |
-| `EDROverlayService` | none | Poor — no tests exist |
+| `EDROverlayService` | `EDROverlayServiceProtocol` | Extracted — mock/fake overlay tests enabled |
 
 The existing protocol boundaries prove the pattern works: business logic is testable via fakes, while the hardware-facing implementations remain thin wrappers.
 

@@ -1,6 +1,15 @@
 @preconcurrency import AppKit
 import QuartzCore
 
+/// Protocol abstracting EDR (Extended Dynamic Range) overlay operations for testability.
+public protocol EDROverlayServiceProtocol: Sendable {
+    func applyExtendedBrightness(_ multiplier: Double, displayID: CGDirectDisplayID?) throws
+    func removeOverlay(for displayID: CGDirectDisplayID)
+    func removeAllOverlays()
+    func currentHeadroom(for displayID: CGDirectDisplayID) -> Double?
+    func systemEDRHeadroom(for displayID: CGDirectDisplayID) -> Double?
+}
+
 /// Per-display EDR (Extended Dynamic Range) overlay. Creates a nearly invisible
 /// on-screen layer with `wantsExtendedDynamicRangeContent = true` so that
 /// Core Animation drives the display's peak brightness to the requested
@@ -11,7 +20,7 @@ import QuartzCore
 /// The layer is sized to cover the target display and accepts mouse events.
 ///
 /// **Thread safety**: all window operations dispatch to `DispatchQueue.main`.
-public final class EDROverlayService: @unchecked Sendable {
+public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Sendable {
     /// Current EDR headroom per display (nil = no overlay active).
     nonisolated(unsafe) private var overlays: [CGDirectDisplayID: EDROverlay] = [:]
     private let lock = NSLock()
