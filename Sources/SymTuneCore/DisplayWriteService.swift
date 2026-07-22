@@ -25,11 +25,11 @@ public protocol DisplayWriteServiceProtocol: Sendable {
 /// Production implementation bridging to DisplayService and EDROverlayService.
 public struct HardwareDisplayWriteService: DisplayWriteServiceProtocol {
     private let displayService: DisplayService
-    private let edrOverlay: EDROverlayService
+    private let edrOverlay: any EDROverlayServiceProtocol
 
     public init(
         displayService: DisplayService = DisplayService(),
-        edrOverlay: EDROverlayService = EDROverlayService()
+        edrOverlay: any EDROverlayServiceProtocol = EDROverlayService()
     ) {
         self.displayService = displayService
         self.edrOverlay = edrOverlay
