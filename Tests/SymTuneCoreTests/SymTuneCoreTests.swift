@@ -306,6 +306,9 @@ final class MockDisplayWriteService: DisplayWriteServiceProtocol, @unchecked Sen
     var lastExtendedBrightness: Double?
     var lastExtendedDisplayID: UInt32?
     var resetWarmthCalled = false
+    var setBuiltinBrightnessError: Error?
+    var applyWarmthError: Error?
+    var resetWarmthError: Error?
     var applyExtendedBrightnessError: Error?
 
     func getBuiltinBrightness() throws -> Double {
@@ -313,21 +316,22 @@ final class MockDisplayWriteService: DisplayWriteServiceProtocol, @unchecked Sen
     }
 
     func setBuiltinBrightness(_ value: Float) throws {
+        if let error = setBuiltinBrightnessError { throw error }
         lastSetBrightness = value
     }
 
     func applyWarmth(_ warmth: Float) throws {
+        if let error = applyWarmthError { throw error }
         lastWarmth = warmth
     }
 
     func resetWarmth() throws {
+        if let error = resetWarmthError { throw error }
         resetWarmthCalled = true
     }
 
     func applyExtendedBrightness(_ multiplier: Double, displayID: UInt32?) throws {
-        if let error = applyExtendedBrightnessError {
-            throw error
-        }
+        if let error = applyExtendedBrightnessError { throw error }
         lastExtendedBrightness = multiplier
         lastExtendedDisplayID = displayID
     }
