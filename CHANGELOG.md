@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Update checking via `SymairaUpdateCheck` (from symaira-appkit): non-blocking GitHub release check with skip-version persistence. The menu-bar app (`SymTuneApp`) shows a subtle update card with Download/Skip buttons when a newer version is available; skipped versions are persisted via `UserDefaults` and never re-prompted (`#173`).
+- `SymairaUpdateCheck` SPM dependency: `symaira-appkit` (commit 019e506). Provides the high-level `AppUpdateChecker` ObservableObject with `SkippedVersionStore` protocol and `UserDefaultsSkippedVersionStore`.
+- `SymTuneApp` target in `Package.swift`: the menu-bar app can now be built directly with `swift build` and run with `swift run SymTuneApp`.
+
 ## [0.3.0] — 2026-07-17
 
 ### Added
