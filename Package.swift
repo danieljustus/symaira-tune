@@ -10,6 +10,10 @@ let package = Package(
         .library(name: "SymTuneCore", targets: ["SymTuneCore"]),
         .library(name: "SymTuneMCP", targets: ["SymTuneMCP"]),
         .executable(name: "symtune", targets: ["symtune"]),
+        .executable(name: "SymTuneApp", targets: ["SymTuneApp"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/danieljustus/symaira-appkit.git", revision: "019e506"),
     ],
     targets: [
         .target(
@@ -25,7 +29,21 @@ let package = Package(
         ),
         .executableTarget(
             name: "symtune",
-            dependencies: ["SymTuneCore", "SymTuneMCP"]
+            dependencies: [
+                "SymTuneCore",
+                "SymTuneMCP",
+                .product(name: "SymairaUpdateCheck", package: "symaira-appkit"),
+            ]
+        ),
+        .executableTarget(
+            name: "SymTuneApp",
+            dependencies: [
+                "SymTuneCore",
+                .product(name: "SymairaUpdateCheck", package: "symaira-appkit"),
+            ],
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+            ]
         ),
         .testTarget(
             name: "SymTuneCoreTests",

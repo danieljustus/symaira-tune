@@ -6,6 +6,11 @@ options:
   xcodeVersion: "16.0"
   generateEmptyDirectories: false
 
+packages:
+  symaira-appkit:
+    url: https://github.com/danieljustus/symaira-appkit.git
+    revision: 019e506
+
 targets:
   SymTuneCore:
     type: library.static
@@ -29,6 +34,8 @@ targets:
       - Sources/SymTuneApp
     dependencies:
       - target: SymTuneCore
+      - package: symaira-appkit
+        product: SymairaUpdateCheck
     settings:
       base:
         INFOPLIST_FILE: Sources/SymTuneApp/Info.plist

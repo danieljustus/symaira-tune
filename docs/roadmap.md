@@ -36,7 +36,7 @@ See [manual app verification](manual-app-verification.md).
 - [x] Homebrew cask generation installs the app bundle and links the CLI
 - [x] Documented real-host end-to-end verification checklist
 
-## v0.3 — SMC writes in the open core (current)
+## v0.3 — SMC writes in the open core (shipped)
 
 All previously planned "Pro" hardware-tuning features are now part of the open
 core. They require the process to run as root because they write to the Apple SMC.
@@ -50,6 +50,12 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Remove Core/Pro split from docs and capability model.
 - [x] Safety policy additions: `fanSpeedFloor`, thermal emergency threshold,
       AC adapter check for charge limits.
+
+## v0.3.1 — Update checking via appkit (current)
+
+- [x] Update checking via `SymairaUpdateCheck` from `symaira-appkit`: non-blocking
+      GitHub release check with skip-version persistence in the menu-bar app.
+      Shows a subtle update card with Download/Skip buttons (`#173`).
 
 ## Future / cross-cutting
 

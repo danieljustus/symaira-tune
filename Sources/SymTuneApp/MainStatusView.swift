@@ -1,10 +1,12 @@
 import SwiftUI
 import Combine
 import SymTuneCore
+import SymairaUpdateCheck
 
 @MainActor
 struct MainStatusView: View {
     let controller: TuneController
+    @ObservedObject var updateChecker: AppUpdateChecker
 
     // Sliders state
     @State private var brightness: Double = 0.5
@@ -229,6 +231,9 @@ struct MainStatusView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(SymairaColors.border, lineWidth: 1)
             )
+
+            // Update Notification Card
+            UpdateNotificationView(updateChecker: updateChecker)
 
             // Connected Displays Card
             VStack(spacing: 6) {
