@@ -9,7 +9,7 @@ options:
 packages:
   symaira-appkit:
     url: https://github.com/danieljustus/symaira-appkit.git
-    revision: 019e506
+    revision: "019e506"
 
 targets:
   SymTuneCore:
