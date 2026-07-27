@@ -160,7 +160,7 @@ public struct FanControlService: Sendable {
     public func restoreAuto() throws {
         guard smc.isAvailable else { return }
         let fanCount = smc.readKeyUInt("FNum").map { Int($0) } ?? 0
-        guard fanCount > 0 else { return }
+        guard fanCount > 0 else { throw FanControlError.noFansDetected }
 
         #if arch(arm64)
         for i in 0..<fanCount {
