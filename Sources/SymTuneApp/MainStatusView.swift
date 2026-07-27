@@ -22,6 +22,23 @@ struct MainStatusView: View {
     @State private var sensorReport: SensorReport?
     @State private var displayReport: DisplaysReport?
 
+    // Keep-awake session state
+    @State private var keepAwakeActive: Bool = false
+    @State private var keepAwakePreventDisplaySleep: Bool = false
+    @State private var keepAwakeDurationIndex: Int = 0 // 0 = indefinite
+    @State private var keepAwakeRemaining: String? = nil
+
+    /// Duration presets: indefinite + 15m, 30m, 1h, 2h, 4h, 8h
+    private let keepAwakePresets: [(label: String, seconds: TimeInterval?)] = [
+        ("Indefinite", nil),
+        ("15 minutes", 900),
+        ("30 minutes", 1800),
+        ("1 hour", 3600),
+        ("2 hours", 7200),
+        ("4 hours", 14400),
+        ("8 hours", 28800),
+    ]
+
     // Timer for periodic updates
     let timer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
@@ -126,6 +143,68 @@ struct MainStatusView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(SymairaColors.border, lineWidth: 1)
+            )
+
+            // Keep Awake Card
+            VStack(spacing: 10) {
+                HStack {
+                    Label("Keep Awake", systemImage: keepAwakeActive ? "lock.fill" : "lock.open.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(keepAwakeActive ? SymairaColors.goldPrimary : SymairaColors.textSecondary)
+                    Spacer()
+                    // Status indicator
+                    Circle()
+                        .fill(keepAwakeActive ? SymairaColors.success : SymairaColors.danger.opacity(0.4))
+                        .frame(width: 6, height: 6)
+                    Text(keepAwakeActive ? "Active" : "Inactive")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(keepAwakeActive ? SymairaColors.success : SymairaColors.textMuted)
+                    if keepAwakeActive, let remaining = keepAwakeRemaining {
+                        Text("· \(remaining)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(SymairaColors.goldSecondary)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    // Duration picker
+                    Picker("Duration", selection: $keepAwakeDurationIndex) {
+                        ForEach(0..<keepAwakePresets.count, id: \.self) { i in
+                            Text(keepAwakePresets[i].label).tag(i)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .disabled(keepAwakeActive)
+
+                    // Display sleep toggle
+                    Toggle(isOn: $keepAwakePreventDisplaySleep) {
+                        Text("Display")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(SymairaColors.textMuted)
+                    }
+                    .toggleStyle(.switch)
+                    .disabled(keepAwakeActive)
+                }
+
+                // Start / End button
+                Button(action: toggleKeepAwake) {
+                    Text(keepAwakeActive ? "End Session" : "Start Session")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(keepAwakeActive ? SymairaColors.danger : SymairaColors.bgDark)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(keepAwakeActive ? SymairaColors.danger.opacity(0.15) : SymairaColors.goldPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(SymairaColors.bgPanel)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(keepAwakeActive ? SymairaColors.goldPrimary.opacity(0.3) : SymairaColors.border, lineWidth: 1)
             )
 
             // Fan Control Card
@@ -316,6 +395,52 @@ struct MainStatusView: View {
 
     // MARK: - Helpers
 
+    /// Start or end a keep-awake session based on current UI state.
+    private func toggleKeepAwake() {
+        if keepAwakeActive {
+            controller.endKeepAwakeSession()
+            keepAwakeActive = false
+            keepAwakeRemaining = nil
+        } else {
+            let duration = keepAwakePresets[keepAwakeDurationIndex].seconds
+            do {
+                _ = try controller.beginKeepAwakeSession(
+                    duration: duration,
+                    preventDisplaySleep: keepAwakePreventDisplaySleep,
+                    reason: "SymairaTune menu bar"
+                )
+                keepAwakeActive = true
+                keepAwakeRemaining = formatRemaining()
+            } catch {
+                // If start fails, keep inactive.
+                keepAwakeActive = false
+            }
+        }
+    }
+
+    /// Refresh the keep-awake state from the controller.
+    private func refreshKeepAwakeStatus() {
+        let session = controller.keepAwakeSessionStatus()
+        keepAwakeActive = session.active
+        keepAwakePreventDisplaySleep = session.preventDisplaySleep
+        keepAwakeRemaining = formatRemaining()
+    }
+
+    /// Return a human-readable remaining time string, or nil if indefinite.
+    private func formatRemaining() -> String? {
+        let session = controller.keepAwakeSessionStatus()
+        guard session.active, let expiresAt = session.expiresAt else { return nil }
+        let remaining = expiresAt.timeIntervalSinceNow
+        if remaining <= 0 { return "expiring…" }
+        let hours = Int(remaining) / 3600
+        let minutes = (Int(remaining) % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+
     private func refreshData() {
         // Read initial controls state
         if let currentBrightness = try? controller.getBuiltinBrightness() {
@@ -342,6 +467,9 @@ struct MainStatusView: View {
         self.batteryReport = controller.batteryReport()
         self.sensorReport = controller.sensors_report()
         self.displayReport = controller.displaysReport()
+
+        // Refresh keep-awake session state
+        refreshKeepAwakeStatus()
     }
 
     private var isEDRCapable: Bool {

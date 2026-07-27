@@ -143,6 +143,7 @@ public final class MCPServer {
         BatteryTool(),
         ListDisplaysTool(),
         KeepAwakeTool(),
+        KeepAwakeStatusTool(),
         GetBrightnessTool(),
         SetBrightnessTool(),
         SetExtendedBrightnessTool(),
