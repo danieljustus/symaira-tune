@@ -47,7 +47,7 @@ struct ListDisplaysTool: MCPTool, @unchecked Sendable {
 
 struct KeepAwakeTool: MCPTool, @unchecked Sendable {
     let name = "keep_awake"
-    let description = "Start or stop a keep-awake session. Prevents idle/system sleep (and optionally display sleep). When enabled without duration_seconds the session runs indefinitely. Returns the full session state."
+    let description = "Start or stop a keep-awake session. Prevents idle/system sleep and optionally display sleep. Runs indefinitely without duration_seconds. Returns full session state."
 
     var inputSchema: [String: Any] {
         [

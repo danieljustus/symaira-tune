@@ -26,7 +26,7 @@ struct MainStatusView: View {
     @State private var keepAwakeActive: Bool = false
     @State private var keepAwakePreventDisplaySleep: Bool = false
     @State private var keepAwakeDurationIndex: Int = 0 // 0 = indefinite
-    @State private var keepAwakeRemaining: String? = nil
+    @State private var keepAwakeRemaining: String?
 
     /// Duration presets: indefinite + 15m, 30m, 1h, 2h, 4h, 8h
     private let keepAwakePresets: [(label: String, seconds: TimeInterval?)] = [
@@ -146,65 +146,14 @@ struct MainStatusView: View {
             )
 
             // Keep Awake Card
-            VStack(spacing: 10) {
-                HStack {
-                    Label("Keep Awake", systemImage: keepAwakeActive ? "lock.fill" : "lock.open.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(keepAwakeActive ? SymairaColors.goldPrimary : SymairaColors.textSecondary)
-                    Spacer()
-                    // Status indicator
-                    Circle()
-                        .fill(keepAwakeActive ? SymairaColors.success : SymairaColors.danger.opacity(0.4))
-                        .frame(width: 6, height: 6)
-                    Text(keepAwakeActive ? "Active" : "Inactive")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(keepAwakeActive ? SymairaColors.success : SymairaColors.textMuted)
-                    if keepAwakeActive, let remaining = keepAwakeRemaining {
-                        Text("· \(remaining)")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(SymairaColors.goldSecondary)
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    // Duration picker
-                    Picker("Duration", selection: $keepAwakeDurationIndex) {
-                        ForEach(0..<keepAwakePresets.count, id: \.self) { i in
-                            Text(keepAwakePresets[i].label).tag(i)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-                    .disabled(keepAwakeActive)
-
-                    // Display sleep toggle
-                    Toggle(isOn: $keepAwakePreventDisplaySleep) {
-                        Text("Display")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(SymairaColors.textMuted)
-                    }
-                    .toggleStyle(.switch)
-                    .disabled(keepAwakeActive)
-                }
-
-                // Start / End button
-                Button(action: toggleKeepAwake) {
-                    Text(keepAwakeActive ? "End Session" : "Start Session")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(keepAwakeActive ? SymairaColors.danger : SymairaColors.bgDark)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(keepAwakeActive ? SymairaColors.danger.opacity(0.15) : SymairaColors.goldPrimary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(12)
-            .background(SymairaColors.bgPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(keepAwakeActive ? SymairaColors.goldPrimary.opacity(0.3) : SymairaColors.border, lineWidth: 1)
+            KeepAwakeCard(
+                active: $keepAwakeActive,
+                preventDisplaySleep: $keepAwakePreventDisplaySleep,
+                durationIndex: $keepAwakeDurationIndex,
+                remaining: keepAwakeRemaining,
+                isInteractive: !keepAwakeActive,
+                presets: keepAwakePresets,
+                onToggle: toggleKeepAwake
             )
 
             // Fan Control Card
@@ -392,8 +341,11 @@ struct MainStatusView: View {
             refreshData()
         }
     }
+}
 
-    // MARK: - Helpers
+// MARK: - Helpers
+
+extension MainStatusView {
 
     /// Start or end a keep-awake session based on current UI state.
     private func toggleKeepAwake() {
