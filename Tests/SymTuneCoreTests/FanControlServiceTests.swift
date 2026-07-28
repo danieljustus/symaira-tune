@@ -105,6 +105,25 @@ final class FanControlServiceTests: XCTestCase {
     }
     #endif
 
+    func testRestoreAutoThrowsOnNoFans() {
+        let conn = FakeSMCConnection(isOpen: true, keys: [
+            "FNum": FakeSMCKeyResult(dataType: smcEncodeKey("ui8 "), bytes: [0]),
+        ])
+        let smc = SMCService(connection: conn)
+        let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
+
+        XCTAssertThrowsError(try service.restoreAuto()) { error in
+            guard let fanError = error as? FanControlError else {
+                XCTFail("Expected FanControlError, got \(type(of: error))")
+                return
+            }
+            switch fanError {
+            case .noFansDetected: break
+            default: XCTFail("Expected noFansDetected, got \(fanError)")
+            }
+        }
+    }
+
     func testFanControlRefusesWhenSMCUnavailable() {
         let conn = FakeSMCConnection(isOpen: false)
         let smc = SMCService(connection: conn)
