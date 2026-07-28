@@ -79,7 +79,7 @@ struct MainStatusView: View {
                             .foregroundStyle(SymairaColors.goldSecondary)
                     }
                     Slider(value: $dim, in: 0.0...0.85) { _ in
-                        try? controller.applyDim(dim)
+                        try? controller.applyDim(1.0 - dim)
                     }
                     .tint(SymairaColors.goldPrimary)
                 }
@@ -342,7 +342,7 @@ struct MainStatusView: View {
         if let currentBrightness = try? controller.getBuiltinBrightness() {
             self.brightness = currentBrightness
         }
-        self.dim = controller.getDimLevel()
+        self.dim = 1.0 - controller.getDimLevel()
         self.warmth = controller.getWarmthLevel()
 
         let overrides = controller.activeOverrides()
