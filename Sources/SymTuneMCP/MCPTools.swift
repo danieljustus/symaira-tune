@@ -43,40 +43,50 @@ struct ListDisplaysTool: MCPTool, @unchecked Sendable {
     }
 }
 
-// MARK: - Keep-awake
-
-struct KeepAwakeState: Encodable {
-    let enabled: Bool
-    let preventDisplaySleep: Bool
-}
+// MARK: - Keep-awake (session-level)
 
 struct KeepAwakeTool: MCPTool, @unchecked Sendable {
     let name = "keep_awake"
-    let description = "Prevent the Mac from idle-sleeping while the server runs."
-    let inputSchema: [String: Any] = [
-        "type": "object",
-        "properties": [
-            "enabled": ["type": "boolean"],
-            "prevent_display_sleep": ["type": "boolean", "default": false],
-        ],
-        "required": ["enabled"],
-    ]
+    let description = "Start or stop a keep-awake session. Prevents idle/system sleep and optionally display sleep. Runs indefinitely without duration_seconds. Returns full session state."
+
+    var inputSchema: [String: Any] {
+        [
+            "type": "object",
+            "properties": [
+                "enabled": ["type": "boolean", "description": "Set to true to start a session, false to end it."],
+                "prevent_display_sleep": ["type": "boolean", "default": false, "description": "When true, also prevent display sleep."],
+                "duration_seconds": ["type": "number", "description": "Optional session duration in seconds. Omit for an indefinite session."],
+            ],
+            "required": ["enabled"],
+        ]
+    }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         let enabled = arguments["enabled"] as? Bool ?? false
         let preventDisplaySleep = arguments["prevent_display_sleep"] as? Bool ?? false
+
         if enabled {
-            if keepAwakeToken == nil {
-                keepAwakeToken = try controller.beginKeepAwake(
-                    reason: "symtune MCP keep_awake",
-                    preventDisplaySleep: preventDisplaySleep
-                )
-            }
-        } else if let token = keepAwakeToken {
-            controller.endKeepAwake(token)
-            keepAwakeToken = nil
+            let duration = arguments["duration_seconds"] as? Double
+            return try controller.beginKeepAwakeSession(
+                duration: duration,
+                preventDisplaySleep: preventDisplaySleep,
+                reason: "symtune MCP keep_awake"
+            )
+        } else {
+            controller.endKeepAwakeSession()
+            return KeepAwakeSession.inactive
         }
-        return KeepAwakeState(enabled: keepAwakeToken != nil, preventDisplaySleep: preventDisplaySleep)
+    }
+}
+
+struct KeepAwakeStatusTool: MCPTool, @unchecked Sendable {
+    let name = "keep_awake_status"
+    let description = "Return the current keep-awake session state (active, type, remaining time, reason)."
+
+    let inputSchema: [String: Any] = [:]
+
+    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
+        controller.keepAwakeSessionStatus()
     }
 }
 

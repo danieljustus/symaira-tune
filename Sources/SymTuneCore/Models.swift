@@ -202,6 +202,39 @@ public struct StatusReport: Codable, Sendable {
     }
 }
 
+// MARK: - Keep-Awake Session
+
+public struct KeepAwakeSession: Codable, Sendable, Equatable {
+    public let active: Bool
+    public let preventDisplaySleep: Bool
+    public let startedAt: Date
+    public let expiresAt: Date?
+    public let reason: String
+
+    public init(
+        active: Bool,
+        preventDisplaySleep: Bool,
+        startedAt: Date,
+        expiresAt: Date?,
+        reason: String
+    ) {
+        self.active = active
+        self.preventDisplaySleep = preventDisplaySleep
+        self.startedAt = startedAt
+        self.expiresAt = expiresAt
+        self.reason = reason
+    }
+
+    /// Convenience: an inactive (ended) session.
+    public static let inactive = KeepAwakeSession(
+        active: false,
+        preventDisplaySleep: false,
+        startedAt: Date(),
+        expiresAt: nil,
+        reason: ""
+    )
+}
+
 // MARK: - History Event
 
 public struct HistoryEvent: Codable, Sendable, Equatable {

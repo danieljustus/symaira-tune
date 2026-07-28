@@ -18,6 +18,7 @@ public final class TuneController: Sendable {
     private let fanControl: FanControlService
     private let chargeLimit: ChargeLimitService
     private let smcRestoreTracker: SMCRestoreTracker
+    private let keepAwakeCoordinator: KeepAwakeCoordinator
     nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public let dataDir: URL
@@ -30,7 +31,8 @@ public final class TuneController: Sendable {
         displayWrite: (any DisplayWriteServiceProtocol)? = nil,
         smcService: SMCService? = nil,
         batterySource: (any BatterySource)? = nil,
-        dataDir: URL? = nil
+        dataDir: URL? = nil,
+        keepAwakeSource: (any PowerAssertionSource)? = nil
     ) {
         self.config = config
         self.displayWrite = displayWrite ?? HardwareDisplayWriteService(
@@ -53,6 +55,7 @@ public final class TuneController: Sendable {
             }
         )
         self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
+        self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
         self.restoreTracker = OverrideTracker(
             displayService: displays,
             edrOverlay: edrOverlay,
@@ -62,6 +65,7 @@ public final class TuneController: Sendable {
     }
 
     deinit {
+        keepAwakeCoordinator.end()
         restoreTracker.restoreAll()
         smcRestoreTracker.restoreAll()
         dimOverlay.removeAllOverlays()
@@ -195,6 +199,34 @@ public final class TuneController: Sendable {
         powerLock.lock()
         defer { powerLock.unlock() }
         return activeTokensCount > 0
+    }
+
+    // MARK: - Keep-awake sessions (high-level coordinator)
+
+    /// Begin a session-level keep-awake period.  At most one session is active;
+    /// calling `beginKeepAwakeSession` again while a session is running returns
+    /// the current session unchanged.
+    @discardableResult
+    public func beginKeepAwakeSession(
+        duration: TimeInterval?,
+        preventDisplaySleep: Bool = false,
+        reason: String = "symtune keep-awake session"
+    ) throws -> KeepAwakeSession {
+        try keepAwakeCoordinator.begin(
+            duration: duration,
+            preventDisplaySleep: preventDisplaySleep,
+            reason: reason
+        )
+    }
+
+    /// End the current keep-awake session.  Idempotent.
+    public func endKeepAwakeSession() {
+        keepAwakeCoordinator.end()
+    }
+
+    /// Return a snapshot of the current keep-awake session.
+    public func keepAwakeSessionStatus() -> KeepAwakeSession {
+        keepAwakeCoordinator.status()
     }
 
     // MARK: - Status Snapshot & Active Overrides

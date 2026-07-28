@@ -22,6 +22,23 @@ struct MainStatusView: View {
     @State private var sensorReport: SensorReport?
     @State private var displayReport: DisplaysReport?
 
+    // Keep-awake session state
+    @State private var keepAwakeActive: Bool = false
+    @State private var keepAwakePreventDisplaySleep: Bool = false
+    @State private var keepAwakeDurationIndex: Int = 0 // 0 = indefinite
+    @State private var keepAwakeRemaining: String?
+
+    /// Duration presets: indefinite + 15m, 30m, 1h, 2h, 4h, 8h
+    private let keepAwakePresets: [(label: String, seconds: TimeInterval?)] = [
+        ("Indefinite", nil),
+        ("15 minutes", 900),
+        ("30 minutes", 1800),
+        ("1 hour", 3600),
+        ("2 hours", 7200),
+        ("4 hours", 14400),
+        ("8 hours", 28800),
+    ]
+
     // Timer for periodic updates
     let timer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
@@ -126,6 +143,17 @@ struct MainStatusView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(SymairaColors.border, lineWidth: 1)
+            )
+
+            // Keep Awake Card
+            KeepAwakeCard(
+                active: $keepAwakeActive,
+                preventDisplaySleep: $keepAwakePreventDisplaySleep,
+                durationIndex: $keepAwakeDurationIndex,
+                remaining: keepAwakeRemaining,
+                isInteractive: !keepAwakeActive,
+                presets: keepAwakePresets,
+                onToggle: toggleKeepAwake
             )
 
             // Fan Control Card
@@ -334,8 +362,57 @@ struct MainStatusView: View {
             refreshData()
         }
     }
+}
 
-    // MARK: - Helpers
+// MARK: - Helpers
+
+extension MainStatusView {
+
+    /// Start or end a keep-awake session based on current UI state.
+    private func toggleKeepAwake() {
+        if keepAwakeActive {
+            controller.endKeepAwakeSession()
+            keepAwakeActive = false
+            keepAwakeRemaining = nil
+        } else {
+            let duration = keepAwakePresets[keepAwakeDurationIndex].seconds
+            do {
+                _ = try controller.beginKeepAwakeSession(
+                    duration: duration,
+                    preventDisplaySleep: keepAwakePreventDisplaySleep,
+                    reason: "SymairaTune menu bar"
+                )
+                keepAwakeActive = true
+                keepAwakeRemaining = formatRemaining()
+            } catch {
+                // If start fails, keep inactive.
+                keepAwakeActive = false
+            }
+        }
+    }
+
+    /// Refresh the keep-awake state from the controller.
+    private func refreshKeepAwakeStatus() {
+        let session = controller.keepAwakeSessionStatus()
+        keepAwakeActive = session.active
+        keepAwakePreventDisplaySleep = session.preventDisplaySleep
+        keepAwakeRemaining = formatRemaining()
+    }
+
+    /// Return a human-readable remaining time string, or nil if indefinite.
+    private func formatRemaining() -> String? {
+        let session = controller.keepAwakeSessionStatus()
+        guard session.active, let expiresAt = session.expiresAt else { return nil }
+        let remaining = expiresAt.timeIntervalSinceNow
+        if remaining <= 0 { return "expiring…" }
+        let hours = Int(remaining) / 3600
+        let minutes = (Int(remaining) % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
 
     private func refreshData() {
         // Read initial controls state
@@ -363,6 +440,9 @@ struct MainStatusView: View {
         self.batteryReport = controller.batteryReport()
         self.sensorReport = controller.sensors_report()
         self.displayReport = controller.displaysReport()
+
+        // Refresh keep-awake session state
+        refreshKeepAwakeStatus()
     }
 
     private var isEDRCapable: Bool {

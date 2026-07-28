@@ -20,9 +20,17 @@ READ COMMANDS
 
 POWER
   awake [--display] [--seconds N]
-                         Prevent idle sleep. Holds until N seconds elapse, or until
-                         Ctrl-C if --seconds is omitted. --display also keeps the
-                         screen on.
+                         Blocking mode: prevent idle sleep until N seconds
+                         elapse, or until Ctrl-C if --seconds is omitted.
+                         --display also keeps the screen on.
+  awake --for <duration>
+                         Blocking mode: keep awake for a parsed duration
+                         (e.g. 30m, 2h, 1.5h).
+  awake --until HH:MM
+                         Blocking mode: keep awake until the given time
+                         (24-hour clock, e.g. 14:30).
+  awake status           Print the current keep-awake session state as JSON.
+  awake off              End the current keep-awake session.
 
 WRITE COMMANDS
   brightness get                Read built-in display brightness (0.0–1.0)
@@ -104,8 +112,21 @@ func parseInt(_ args: [String], command: String) throws -> Int {
 }
 
 func runAwake(_ args: [String], controller: TuneController) throws {
+    // Handle subcommands first.
+    if let subcommand = args.first, subcommand == "status" || subcommand == "off" {
+        if subcommand == "status" {
+            try emitJSON(controller.keepAwakeSessionStatus())
+        } else {
+            controller.endKeepAwakeSession()
+            try emitJSON(KeepAwakeSession.inactive)
+        }
+        return
+    }
+
     var seconds: Double?
     var preventDisplaySleep = false
+    var forDuration: String?
+    var untilTime: String?
     var index = 0
     while index < args.count {
         switch args[index] {
@@ -117,21 +138,80 @@ func runAwake(_ args: [String], controller: TuneController) throws {
                 throw TuneError.usage("awake --seconds requires a number.")
             }
             seconds = value
+        case "--for":
+            index += 1
+            guard index < args.count else {
+                throw TuneError.usage("awake --for requires a duration, e.g. 30m, 2h.")
+            }
+            forDuration = args[index]
+        case "--until":
+            index += 1
+            guard index < args.count else {
+                throw TuneError.usage("awake --until requires a time in HH:MM format.")
+            }
+            untilTime = args[index]
         default:
             throw TuneError.usage("awake: unknown option '\(args[index])'.")
         }
         index += 1
     }
 
+    // Resolve duration from --for or --until.
+    if let forDuration {
+        seconds = try DurationParser.parse(forDuration)
+    }
+    if let untilTime {
+        seconds = try parseUntilTime(untilTime)
+    }
+
     let token = try controller.beginKeepAwake(reason: "symtune awake", preventDisplaySleep: preventDisplaySleep)
     defer { controller.endKeepAwake(token) }
+
     if let seconds {
         emitErr("symtune: holding wake assertion for \(seconds)s…")
-        Thread.sleep(forTimeInterval: seconds)
+        // Double-check: don't block beyond a reasonable maximum.
+        let capped = min(seconds, 86_400) // 24 hours max
+        if capped != seconds {
+            emitErr("symtune: duration capped to 24 hours (86400s)")
+        }
+        Thread.sleep(forTimeInterval: capped)
     } else {
         emitErr("symtune: holding wake assertion (Ctrl-C to release)…")
         RunLoop.current.run()
     }
+}
+
+/// Parse HH:MM into seconds from now. Returns nil if the time has already passed
+/// (the computed seconds would be negative).
+private func parseUntilTime(_ raw: String) throws -> TimeInterval {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    let parts = trimmed.split(separator: ":", maxSplits: 1)
+    guard parts.count == 2,
+          let hour = Int(parts[0]),
+          let minute = Int(parts[1]),
+          hour >= 0, hour <= 23,
+          minute >= 0, minute <= 59
+    else {
+        throw TuneError.usage("awake --until: expected HH:MM (24-hour), got '\(trimmed)'.")
+    }
+
+    let now = Date()
+    let cal = Calendar.current
+    var components = cal.dateComponents([.year, .month, .day], from: now)
+    components.hour = hour
+    components.minute = minute
+    components.second = 0
+
+    guard var target = cal.date(from: components) else {
+        throw TuneError.usage("awake --until: could not compute target date from \(hour):\(minute).")
+    }
+
+    // If the time has already passed today, schedule for tomorrow.
+    if target <= now {
+        target = target.addingTimeInterval(86_400)
+    }
+
+    return target.timeIntervalSince(now)
 }
 
 func runProfile(_ args: [String], controller: TuneController) throws {
