@@ -3,7 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+  schedule:
+    - cron: '43 5 * * 1'  # weekly Monday 05:43 UTC — full suite incl. app build
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -50,6 +62,7 @@ jobs:
         run: swift test -v
 
   build-app:
+    if: github.event_name != 'pull_request'  # PR gate = lint + SPM build-test; xcodebuild app on main/schedule
     runs-on: macos-latest
     permissions:
       contents: read
