@@ -96,7 +96,7 @@ struct MainStatusView: View {
                             .foregroundStyle(SymairaColors.goldSecondary)
                     }
                     Slider(value: $dim, in: 0.0...0.85) { _ in
-                        try? controller.applyDim(dim)
+                        try? controller.applyDim(1.0 - dim)
                     }
                     .tint(SymairaColors.goldPrimary)
                 }
@@ -157,52 +157,73 @@ struct MainStatusView: View {
             )
 
             // Fan Control Card
-            VStack(spacing: 12) {
-                HStack {
-                    Label("Fan Control", systemImage: "fanblades.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(SymairaColors.textSecondary)
-                    Spacer()
-                    Toggle("", isOn: manualFanBinding)
-                        .toggleStyle(.switch)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
+            if hasFans {
+                VStack(spacing: 12) {
                     HStack {
-                        Text("Target Speed")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(isFanManualMode ? SymairaColors.textSecondary : SymairaColors.textMuted)
+                        Label("Fan Control", systemImage: "fanblades.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(SymairaColors.textSecondary)
                         Spacer()
-                        Text("\(Int(fanFraction * 100))%")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(isFanManualMode ? SymairaColors.goldSecondary : SymairaColors.textMuted)
+                        Toggle("", isOn: manualFanBinding)
+                            .toggleStyle(.switch)
                     }
-                    Slider(value: $fanFraction, in: 0.0...1.0) { _ in
-                        do {
-                            try controller.applyFan(fraction: fanFraction)
-                            fanError = nil
-                        } catch {
-                            fanError = error.localizedDescription
-                        }
-                    }
-                    .tint(SymairaColors.goldPrimary)
-                    .disabled(!isFanManualMode)
-                }
 
-                if let errorMsg = fanError {
-                    Text(errorMsg)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(SymairaColors.danger)
-                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Target Speed")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(isFanManualMode ? SymairaColors.textSecondary : SymairaColors.textMuted)
+                            Spacer()
+                            Text("\(Int(fanFraction * 100))%")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(isFanManualMode ? SymairaColors.goldSecondary : SymairaColors.textMuted)
+                        }
+                        Slider(value: $fanFraction, in: 0.0...1.0) { _ in
+                            do {
+                                try controller.applyFan(fraction: fanFraction)
+                                fanError = nil
+                            } catch {
+                                fanError = error.localizedDescription
+                            }
+                        }
+                        .tint(SymairaColors.goldPrimary)
+                        .disabled(!isFanManualMode)
+                    }
+
+                    if let errorMsg = fanError {
+                        Text(errorMsg)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(SymairaColors.danger)
+                            .padding(.top, 2)
+                    }
                 }
+                .padding(12)
+                .background(SymairaColors.bgPanel)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(SymairaColors.border, lineWidth: 1)
+                )
+            } else {
+                VStack(spacing: 6) {
+                    HStack {
+                        Label("Fan Control", systemImage: "fanblades.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(SymairaColors.textSecondary)
+                        Spacer()
+                    }
+                    Text("Not available on this Mac")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(SymairaColors.textMuted)
+                }
+                .padding(12)
+                .background(SymairaColors.bgPanel)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(SymairaColors.border, lineWidth: 1)
+                )
             }
-            .padding(12)
-            .background(SymairaColors.bgPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(SymairaColors.border, lineWidth: 1)
-            )
 
             // System Status Card
             VStack(spacing: 8) {
@@ -398,7 +419,7 @@ extension MainStatusView {
         if let currentBrightness = try? controller.getBuiltinBrightness() {
             self.brightness = currentBrightness
         }
-        self.dim = controller.getDimLevel()
+        self.dim = 1.0 - controller.getDimLevel()
         self.warmth = controller.getWarmthLevel()
 
         let overrides = controller.activeOverrides()
@@ -426,6 +447,11 @@ extension MainStatusView {
 
     private var isEDRCapable: Bool {
         displayReport?.displays.contains { $0.edrCapable } ?? false
+    }
+
+    private var hasFans: Bool {
+        guard let fans = sensorReport?.fans else { return true }
+        return !fans.isEmpty
     }
 
     private var manualFanBinding: Binding<Bool> {

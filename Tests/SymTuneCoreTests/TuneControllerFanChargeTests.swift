@@ -84,6 +84,16 @@ final class TuneControllerFanChargeTests: XCTestCase {
         XCTAssertNoThrow(try controller.restoreFanAuto())
     }
 
+    func testRestoreFanAutoNoFans() {
+        let controller = makeController(keys: [
+            "FNum": ui8(0),
+        ])
+        XCTAssertThrowsError(try controller.restoreFanAuto()) { error in
+            let message = "\(error)"
+            XCTAssertTrue(message.contains("no fans") || message.contains("unsupported"), "unexpected: \(message)")
+        }
+    }
+
     func testApplyChargeLimitSuccess() {
         let controller = makeController(
             keys: ["CHTE": ui32(0)],
