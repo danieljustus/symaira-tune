@@ -37,6 +37,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         setupPopover()
         checkForUpdatesOnLaunch()
         startMetricsRefresh()
+        registerSleepWakeNotifications()
     }
 
     // MARK: - Update checking
@@ -82,8 +83,11 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private func refreshMetricsDisplay() {
         guard let button = statusItem.button else { return }
 
-        let ordered = orderedVisibleMetrics()
         let report = controller.metricsReport()
+        // Feed the rolling history buffer for sparkline rendering
+        controller.recordMetricsHistory(report)
+
+        let ordered = orderedVisibleMetrics()
         let available = ordered.filter { metricHasData($0, report: report) }
 
         if available.isEmpty {
@@ -307,5 +311,21 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         // Slow down the refresh timer when the popover closes
         startMetricsRefresh()
+    }
+
+    // MARK: - Sleep/Wake gap markers
+
+    private func registerSleepWakeNotifications() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(
+            self,
+            selector: #selector(handleWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleWake() {
+        controller.recordWakeGap()
     }
 }

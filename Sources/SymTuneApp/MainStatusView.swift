@@ -23,6 +23,13 @@ struct MainStatusView: View {
     @State private var batteryReport: BatteryReport?
     @State private var sensorReport: SensorReport?
     @State private var displayReport: DisplaysReport?
+    @State private var metricsReport: SystemMetricsReport?
+
+    // Metrics history for sparklines
+    @State private var metricsHistoryCPU: [MetricSample] = []
+    @State private var metricsHistoryMemory: [MetricSample] = []
+    @State private var metricsHistoryDisk: [MetricSample] = []
+    @State private var metricsHistoryNetwork: [MetricSample] = []
 
     // Keep-awake session state
     @State private var keepAwakeActive: Bool = false
@@ -286,6 +293,13 @@ struct MainStatusView: View {
             // Update Notification Card
             UpdateNotificationView(updateChecker: updateChecker)
 
+            // System Metrics History Card (sparklines)
+            MetricsHistoryCard(
+                controller: controller,
+                preferencesManager: preferencesManager,
+                metricsReport: metricsReport
+            )
+
             // Connected Displays Card
             VStack(spacing: 6) {
                 HStack {
@@ -457,6 +471,13 @@ extension MainStatusView {
         self.batteryReport = controller.batteryReport()
         self.sensorReport = controller.sensors_report()
         self.displayReport = controller.displaysReport()
+        self.metricsReport = controller.metricsReport()
+
+        // Pull latest history samples for each enabled metric
+        self.metricsHistoryCPU = controller.metricsHistorySamples(for: .cpu)
+        self.metricsHistoryMemory = controller.metricsHistorySamples(for: .memory)
+        self.metricsHistoryDisk = controller.metricsHistorySamples(for: .disk)
+        self.metricsHistoryNetwork = controller.metricsHistorySamples(for: .network)
 
         // Refresh keep-awake session state
         refreshKeepAwakeStatus()
