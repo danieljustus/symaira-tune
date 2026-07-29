@@ -130,7 +130,14 @@ public struct PermissionStatus: Codable, Sendable {
     /// True when the SMC connection is open. Fan and charge-limit writes still
     /// require the process to run with root privileges.
     public let privilegedHelperInstalled: Bool
+    public let mcpMode: String?
     public let notes: [String]
+
+    public init(privilegedHelperInstalled: Bool, mcpMode: String? = nil, notes: [String]) {
+        self.privilegedHelperInstalled = privilegedHelperInstalled
+        self.mcpMode = mcpMode
+        self.notes = notes
+    }
 }
 
 public struct CapabilityReport: Codable, Sendable {

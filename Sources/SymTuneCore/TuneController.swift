@@ -107,13 +107,20 @@ public final class TuneController: Sendable {
 
     public func permissions() -> PermissionStatus {
         let smcWritable = smc.isAvailable
+        var notes: [String] = [
+            smcWritable
+                ? "SMC write access available. Fan and charge-limit writes require root (run with sudo)."
+                : "SMC write access unavailable. Fan and charge-limit features require a real Mac and root privileges.",
+        ]
+        if config.isMCPReadOnly {
+            notes.append("MCP server mode is read-only (write tools hidden from tools/list).")
+        } else {
+            notes.append("MCP server mode is full (all write tools available).")
+        }
         return PermissionStatus(
             privilegedHelperInstalled: smcWritable,
-            notes: [
-                smcWritable
-                    ? "SMC write access available. Fan and charge-limit writes require root (run with sudo)."
-                    : "SMC write access unavailable. Fan and charge-limit features require a real Mac and root privileges.",
-            ]
+            mcpMode: config.mcpMode,
+            notes: notes
         )
     }
 
