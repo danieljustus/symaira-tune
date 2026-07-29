@@ -422,6 +422,120 @@ private func runWriteCommand(_ cmd: WriteCommand, rest: [String], controller: Tu
     try emitJSON(ApplyResult(applied: true))
 }
 
+/// Dispatch to the appropriate command handler and run it.
+/// Separated from runMain to keep cyclomatic complexity under the lint threshold.
+private func dispatchCommand(_ command: String, rest: [String], controller: TuneController) throws -> Int32? {
+    switch command {
+    case "serve":
+        try MCPServer(controller: controller).run()
+    case "status":
+        try runStatus(rest, controller: controller)
+    case "history":
+        try runHistory(rest, controller: controller)
+    case "doctor":
+        try emitJSON(controller.capabilities())
+    case "sensors":
+        try emitJSON(controller.sensors_report())
+    case "battery":
+        try emitJSON(controller.batteryReport())
+    case "displays":
+        try emitJSON(controller.displaysReport())
+    case "permissions":
+        try emitJSON(controller.permissions())
+    case "awake":
+        try runAwake(rest, controller: controller)
+    case "brightness":
+        if rest.first == "get" || rest.isEmpty {
+            let brightness = try controller.getBuiltinBrightness()
+            try emitJSON(BrightnessReadback(brightness: brightness))
+        } else if let cmd = writeCommandByPrefix["brightness set"] {
+            try runWriteCommand(cmd, rest: rest, controller: controller)
+        } else {
+            throw TuneError.usage("brightness: expected 'get' or 'set <value>'.")
+        }
+    case "extbright":
+        if let cmd = writeCommandByPrefix["extbright set"] {
+            try runWriteCommand(cmd, rest: rest, controller: controller)
+        } else {
+            throw TuneError.usage("extbright: expected 'set <value>'.")
+        }
+    case "dim":
+        try runDimSubcommand(rest, controller: controller)
+    case "warmth":
+        try runWarmthSubcommand(rest, controller: controller)
+    case "restore":
+        if let cmd = writeCommandByPrefix["restore"] {
+            try runWriteCommand(cmd, rest: rest, controller: controller)
+        }
+    case "profile":
+        try runProfile(rest, controller: controller)
+    case "fan":
+        try runFanSubcommand(rest, controller: controller)
+    case "battery-limit":
+        try runBatteryLimitSubcommand(rest, controller: controller)
+    case "version", "--version", "-v":
+        runVersion(checkForUpdates: rest.contains("--check-for-updates"))
+    case "help", "--help", "-h":
+        emit(usage)
+    default:
+        return nil // unknown
+    }
+    return ExitCode.ok.rawValue
+}
+
+private func runDimSubcommand(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune dim set <0.15-1.0>")
+        emit("       symtune dim reset")
+    } else if rest.first == "reset", let cmd = writeCommandByPrefix["dim reset"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else if let cmd = writeCommandByPrefix["dim set"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else {
+        throw TuneError.usage("dim: expected 'set <value>' or 'reset'.")
+    }
+}
+
+private func runWarmthSubcommand(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune warmth set <0.0-1.0>")
+        emit("       symtune warmth reset")
+    } else if rest.first == "reset", let cmd = writeCommandByPrefix["warmth reset"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else if let cmd = writeCommandByPrefix["warmth set"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else {
+        throw TuneError.usage("warmth: expected 'set <value>' or 'reset'.")
+    }
+}
+
+private func runFanSubcommand(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune fan set <0.0-1.0>")
+        emit("       symtune fan auto")
+    } else if rest.first == "auto" {
+        try controller.restoreFanAuto()
+        try emitJSON(ApplyResult(applied: true))
+    } else if let cmd = writeCommandByPrefix["fan set"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else {
+        throw TuneError.usage("fan: expected 'set <value>' or 'auto'.")
+    }
+}
+
+private func runBatteryLimitSubcommand(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune battery-limit set <50-100>")
+        emit("       symtune battery-limit clear")
+    } else if rest.first == "clear", let cmd = writeCommandByPrefix["battery-limit clear"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else if let cmd = writeCommandByPrefix["battery-limit set"] {
+        try runWriteCommand(cmd, rest: rest, controller: controller)
+    } else {
+        throw TuneError.usage("battery-limit: expected 'set <value>' or 'clear'.")
+    }
+}
+
 func runMain() -> Int32 {
     guard let command = CommandLine.arguments.dropFirst().first else {
         emit(usage)
@@ -430,121 +544,44 @@ func runMain() -> Int32 {
     let rest = Array(CommandLine.arguments.dropFirst(2))
     let controller = TuneController(config: ConfigPaths().loadConfig())
 
+    let result: Int32
     do {
-        switch command {
-        case "serve":
-            try MCPServer(controller: controller).run()
-        case "status":
-            try runStatus(rest, controller: controller)
-        case "history":
-            try runHistory(rest, controller: controller)
-        case "doctor":
-            try emitJSON(controller.capabilities())
-        case "sensors":
-            try emitJSON(controller.sensors_report())
-        case "battery":
-            try emitJSON(controller.batteryReport())
-        case "displays":
-            try emitJSON(controller.displaysReport())
-        case "permissions":
-            try emitJSON(controller.permissions())
-        case "awake":
-            try runAwake(rest, controller: controller)
-        case "brightness":
-            if rest.first == "get" || rest.isEmpty {
-                let brightness = try controller.getBuiltinBrightness()
-                try emitJSON(BrightnessReadback(brightness: brightness))
-            } else if let cmd = writeCommandByPrefix["brightness set"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else {
-                throw TuneError.usage("brightness: expected 'get' or 'set <value>'.")
-            }
-        case "extbright":
-            if let cmd = writeCommandByPrefix["extbright set"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else {
-                throw TuneError.usage("extbright: expected 'set <value>'.")
-            }
-        case "dim":
-            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-                emit("Usage: symtune dim set <0.15-1.0>")
-                emit("       symtune dim reset")
-            } else if rest.first == "reset", let cmd = writeCommandByPrefix["dim reset"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else if let cmd = writeCommandByPrefix["dim set"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else {
-                throw TuneError.usage("dim: expected 'set <value>' or 'reset'.")
-            }
-        case "warmth":
-            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-                emit("Usage: symtune warmth set <0.0-1.0>")
-                emit("       symtune warmth reset")
-            } else if rest.first == "reset", let cmd = writeCommandByPrefix["warmth reset"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else if let cmd = writeCommandByPrefix["warmth set"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else {
-                throw TuneError.usage("warmth: expected 'set <value>' or 'reset'.")
-            }
-        case "restore":
-            if let cmd = writeCommandByPrefix["restore"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            }
-        case "profile":
-            try runProfile(rest, controller: controller)
-        case "fan":
-            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-                emit("Usage: symtune fan set <0.0-1.0>")
-                emit("       symtune fan auto")
-            } else if rest.first == "auto" {
-                try controller.restoreFanAuto()
-                try emitJSON(ApplyResult(applied: true))
-            } else if let cmd = writeCommandByPrefix["fan set"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else {
-                throw TuneError.usage("fan: expected 'set <value>' or 'auto'.")
-            }
-        case "battery-limit":
-            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-                emit("Usage: symtune battery-limit set <50-100>")
-                emit("       symtune battery-limit clear")
-            } else if rest.first == "clear", let cmd = writeCommandByPrefix["battery-limit clear"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else if let cmd = writeCommandByPrefix["battery-limit set"] {
-                try runWriteCommand(cmd, rest: rest, controller: controller)
-            } else {
-                throw TuneError.usage("battery-limit: expected 'set <value>' or 'clear'.")
-            }
-        case "version", "--version", "-v":
-            runVersion(checkForUpdates: rest.contains("--check-for-updates"))
-        case "help", "--help", "-h":
-            emit(usage)
-        default:
+        if let code = try dispatchCommand(command, rest: rest, controller: controller) {
+            result = code
+        } else {
             emitErr("symtune: unknown command '\(command)'")
             emit(usage)
             return ExitCode.usage.rawValue
         }
-        return ExitCode.ok.rawValue
     } catch let error as TuneError {
         emitErr("symtune: \(error.description)")
         return error.exitCode
     } catch {
-        let report = ErrorReport(
-            error: "\(type(of: error))",
-            message: ProcessInfo.processInfo.environment["SYMTUNE_DEBUG"] != nil
-                ? String(reflecting: error)
-                : error.localizedDescription,
-            localized: error.localizedDescription
-        )
-        if let json = try? JSONEncoder().encode(report),
-           let string = String(data: json, encoding: .utf8) {
-            emitErr("symtune: \(string)")
-        } else {
-            emitErr("symtune: \(String(reflecting: error))")
-        }
-        return ExitCode.error.rawValue
+        result = handleNonTuneError(error)
     }
+    return result
+}
+
+/// Handle a non-TuneError by building a structured error report.
+private func handleNonTuneError(_ error: Error) -> Int32 {
+    let message: String
+    if ProcessInfo.processInfo.environment["SYMTUNE_DEBUG"] != nil {
+        message = String(reflecting: error)
+    } else {
+        message = error.localizedDescription
+    }
+    let report = ErrorReport(
+        error: "\(type(of: error))",
+        message: message,
+        localized: error.localizedDescription
+    )
+    if let json = try? JSONEncoder().encode(report),
+       let string = String(data: json, encoding: .utf8) {
+        emitErr("symtune: \(string)")
+    } else {
+        emitErr("symtune: \(String(reflecting: error))")
+    }
+    return ExitCode.error.rawValue
 }
 
 struct ErrorReport: Codable {
