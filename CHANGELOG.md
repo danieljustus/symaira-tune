@@ -6,10 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-29
+
 ### Added
+- Keep-awake sessions with timer-based expiry, duration presets, display-sleep toggle and remaining-time display. New CLI `symtune awake --for <duration>`, `--until HH:MM`, `status`, `off`. Extended MCP `keep_awake` tool and app Keep Awake card (`#178`).
 - Update checking via `SymairaUpdateCheck` (from symaira-appkit): non-blocking GitHub release check with skip-version persistence. The menu-bar app (`SymTuneApp`) shows a subtle update card with Download/Skip buttons when a newer version is available; skipped versions are persisted via `UserDefaults` and never re-prompted (`#173`).
 - `SymairaUpdateCheck` SPM dependency: `symaira-appkit` (commit 019e506). Provides the high-level `AppUpdateChecker` ObservableObject with `SkippedVersionStore` protocol and `UserDefaultsSkippedVersionStore`.
 - `SymTuneApp` target in `Package.swift`: the menu-bar app can now be built directly with `swift build` and run with `swift run SymTuneApp`.
+- CI workflow split: fast PR gate (lint + ubuntu tests) on PRs, full suite on main pushes + weekly schedule, CodeQL reduced to weekly schedule.
+
+### Fixed
+- Software Dimming slider conversion between view dim amount and core brightness multiplier scale (`#175`).
+- Fan control `restoreAuto()` now correctly throws `noFansDetected` when no fans are present, matching `applyFan` behavior. Fan Control card in the app is gated on fan availability (`#176`, `#177`).
+
+## [0.3.1] — 2026-07-24
+
+(This version was prepared but not released — content folded into 0.4.0.)
 
 ## [0.3.0] — 2026-07-17
 

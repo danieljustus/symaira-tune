@@ -51,11 +51,18 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Safety policy additions: `fanSpeedFloor`, thermal emergency threshold,
       AC adapter check for charge limits.
 
-## v0.3.1 — Update checking via appkit (current)
+## v0.3.1 — Update checking via appkit (shipped)
 
 - [x] Update checking via `SymairaUpdateCheck` from `symaira-appkit`: non-blocking
       GitHub release check with skip-version persistence in the menu-bar app.
       Shows a subtle update card with Download/Skip buttons (`#173`).
+
+## v0.4.0 — Keep-awake sessions + CI split (current)
+
+- [x] Keep-awake sessions with timer-based expiry, duration presets, display-sleep toggle and remaining-time display (`#178`).
+- [x] Fan Control card gated on fan availability (`#176`, `#177`).
+- [x] Dim slider amount ↔ multiplier conversion fix (`#175`).
+- [x] CI workflow split: fast PR gate on PRs, full suite on main + weekly schedule. CodeQL reduced to weekly.
 
 ## Future / cross-cutting
 

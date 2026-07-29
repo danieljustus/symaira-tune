@@ -4,6 +4,8 @@
 [![Latest Release](https://img.shields.io/github/v/release/danieljustus/symaira-tune)](https://github.com/danieljustus/symaira-tune/releases/latest)
 [![License](https://img.shields.io/github/license/danieljustus/symaira-tune)](LICENSE)
 
+![Symaira Tune social preview](docs/assets/social-preview.png)
+
 > Tune your Mac — thermals, brightness, power — from the CLI and for AI agents.
 
 `symtune` is a small, native macOS utility that reads your Mac's thermal, power,
@@ -15,7 +17,7 @@ e.g. "this render is running hot, ramp the fans and dim the screen."
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
 (Apache-2.0).
 
-> **Status: v0.3 core + standalone menu-bar app.** The current release includes
+> **Status: v0.4 core + standalone menu-bar app.** The current release includes
 > fan control and battery charge limiting directly in the open core. SMC writes
 > require `sudo`. Homebrew installs both the app and the CLI from the generated
 > cask (`brew install danieljustus/tap/symtune`).
