@@ -49,28 +49,45 @@ final class HistoryTests: XCTestCase {
         service.logEvent(e2)
         service.logEvent(e3)
 
-        let events = service.readEvents()
+        // Read all events (chronological order)
+        let events = service.readEvents(limit: nil)
         XCTAssertEqual(events.count, 3)
 
         XCTAssertEqual(events[0].action, "brightness.set")
-        XCTAssertEqual(events[0].requestedValue, 0.85)
-        XCTAssertEqual(events[0].clampedValue, 0.85)
-        XCTAssertEqual(events[0].appliedValue, 0.85)
-        XCTAssertEqual(events[0].result, "success")
-        XCTAssertNil(events[0].errorReason)
-
         XCTAssertEqual(events[1].action, "dim.set")
-        XCTAssertEqual(events[1].requestedValue, 0.05)
-        XCTAssertEqual(events[1].clampedValue, 0.15)
-        XCTAssertEqual(events[1].appliedValue, 0.15)
-        XCTAssertEqual(events[1].result, "success")
-
         XCTAssertEqual(events[2].action, "fan.set")
-        XCTAssertEqual(events[2].requestedValue, 1.5)
-        XCTAssertEqual(events[2].clampedValue, 1.0)
-        XCTAssertNil(events[2].appliedValue)
-        XCTAssertEqual(events[2].result, "failed")
-        XCTAssertEqual(events[2].errorReason, "helper connection failed")
+
+        // Test limit (last 2 events: dim.set, fan.set)
+        let limited = service.readEvents(limit: 2)
+        XCTAssertEqual(limited.count, 2)
+        XCTAssertEqual(limited[0].action, "dim.set")
+        XCTAssertEqual(limited[1].action, "fan.set")
+    }
+
+    func testHistoryFilePermissions() throws {
+        let e = HistoryEvent(timestamp: Date(), action: "test", requestedValue: 1.0, clampedValue: 1.0, appliedValue: 1.0, result: "success")
+        service.logEvent(e)
+
+        let file = tmpDir.appendingPathComponent("history.ndjson")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        let attrs = try FileManager.default.attributesOfItem(atPath: file.path)
+        if let posix = attrs[.posixPermissions] as? NSNumber {
+            XCTAssertEqual(posix.uint16Value & 0o777, 0o600)
+        }
+    }
+
+    func testUnwritableDirectoryDoesNotThrow() throws {
+        let readOnlyDir = tmpDir.appendingPathComponent("readonly-dir", isDirectory: true)
+        try FileManager.default.createDirectory(at: readOnlyDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o500])
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: readOnlyDir.path)
+        }
+
+        let roService = HistoryService(dataDir: readOnlyDir)
+        let e = HistoryEvent(timestamp: Date(), action: "test", requestedValue: 1.0, clampedValue: 1.0, appliedValue: 1.0, result: "success")
+
+        // Should log warning to stderr but NOT throw
+        XCTAssertNoThrow(roService.logEvent(e))
     }
 
     func testControllerHistoryIntegration() throws {

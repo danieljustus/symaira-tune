@@ -119,6 +119,7 @@ public final class TuneController: Sendable {
         }
         return PermissionStatus(
             privilegedHelperInstalled: smcWritable,
+            historyWritable: historyService.isWritable,
             mcpMode: config.mcpMode,
             notes: notes
         )
@@ -447,8 +448,8 @@ public final class TuneController: Sendable {
         try profiles.removeRule(id: id)
     }
 
-    public func getHistory() -> [HistoryEvent] {
-        historyService.readEvents()
+    public func getHistory(limit: Int? = 100) -> [HistoryEvent] {
+        historyService.readEvents(limit: limit)
     }
 
     static var architecture: String {

@@ -10,13 +10,22 @@ public struct ConfigPaths: Sendable {
 
     public init(
         env: [String: String] = ProcessInfo.processInfo.environment,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser
+        home: URL? = nil
     ) {
+        let effectiveHome: URL
+        if let home {
+            effectiveHome = home
+        } else if geteuid() == 0, let sudoUser = env["SUDO_USER"], let pwd = getpwnam(sudoUser) {
+            effectiveHome = URL(fileURLWithPath: String(cString: pwd.pointee.pw_dir), isDirectory: true)
+        } else {
+            effectiveHome = FileManager.default.homeDirectoryForCurrentUser
+        }
+
         func base(_ envKey: String, _ fallback: String) -> URL {
             if let value = env[envKey], !value.isEmpty {
                 return URL(fileURLWithPath: value, isDirectory: true)
             }
-            return home.appendingPathComponent(fallback, isDirectory: true)
+            return effectiveHome.appendingPathComponent(fallback, isDirectory: true)
         }
         self.configDir = base("XDG_CONFIG_HOME", ".config")
             .appendingPathComponent("symtune", isDirectory: true)

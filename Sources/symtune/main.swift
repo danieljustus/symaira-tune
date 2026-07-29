@@ -338,15 +338,26 @@ func runStatus(_ args: [String], controller: TuneController) throws {
 
 func runHistory(_ args: [String], controller: TuneController) throws {
     var isJson = false
-    for arg in args {
-        if arg == "--json" {
+    var limit: Int? = 100
+
+    var index = 0
+    while index < args.count {
+        switch args[index] {
+        case "--json":
             isJson = true
-        } else {
-            throw TuneError.usage("history: unknown option '\(arg)'")
+        case "--limit", "-n":
+            index += 1
+            guard index < args.count, let val = Int(args[index]) else {
+                throw TuneError.usage("history: --limit requires an integer value")
+            }
+            limit = val
+        default:
+            throw TuneError.usage("history: unknown option '\(args[index])'")
         }
+        index += 1
     }
 
-    let events = controller.getHistory()
+    let events = controller.getHistory(limit: limit)
     if isJson {
         try emitJSON(events)
     } else {
