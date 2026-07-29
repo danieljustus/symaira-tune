@@ -48,12 +48,66 @@ public struct ConfigPaths: Sendable {
     }
 }
 
+// MARK: - Metric Identifiers
+
+/// Identifies a system metric category.
+/// The four base categories map to fields of ``SystemMetricsReport``.
+public struct MetricIdentifier: RawRepresentable, Hashable, Codable, Sendable, CaseIterable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let cpu = MetricIdentifier(rawValue: "cpu")
+    public static let memory = MetricIdentifier(rawValue: "memory")
+    public static let disk = MetricIdentifier(rawValue: "disk")
+    public static let network = MetricIdentifier(rawValue: "network")
+
+    public static var allCases: [MetricIdentifier] { [.cpu, .memory, .disk, .network] }
+
+    public var displayName: String {
+        switch self {
+        case .cpu: return "CPU"
+        case .memory: return "Memory"
+        case .disk: return "Disk"
+        case .network: return "Network"
+        default: return rawValue
+        }
+    }
+}
+
+/// Unit preference for network throughput display.
+public enum NetworkUnit: String, CaseIterable, Sendable {
+    case bytesPerSecond = "bytes_per_second"
+    case bitsPerSecond = "bits_per_second"
+
+    public var displayName: String {
+        switch self {
+        case .bytesPerSecond: return "Bytes/s"
+        case .bitsPerSecond: return "Bits/s"
+        }
+    }
+}
+
+/// Unit preference for temperature display.
+public enum TemperatureUnit: String, CaseIterable, Sendable {
+    case celsius
+    case fahrenheit
+
+    public var displayName: String {
+        switch self {
+        case .celsius: return "°C"
+        case .fahrenheit: return "°F"
+        }
+    }
+}
+
 // MARK: - TuneConfig
 
 /// User-tunable configuration for symtune, loaded from `config.toml` with
 /// `SYMTUNE_*` env overrides taking precedence over file values. Defaults
 /// match `SafetyPolicy` constants.
 public struct TuneConfig: Equatable, Sendable {
+    // MARK: - Brightness / Fan / Charge bounds
+
     public let extendedBrightnessMin: Double
     public let extendedBrightnessMax: Double
     public let dimMin: Double
@@ -66,6 +120,32 @@ public struct TuneConfig: Equatable, Sendable {
     public let chargeLimitMax: Int
     public let defaultProfile: String
     public let mcpMode: String
+
+    // MARK: - Metrics preferences
+
+    /// Refresh interval in seconds. Clamped to a documented minimum of 1.0 s.
+    public let metricsRefreshInterval: TimeInterval
+
+    /// Which metrics the service should sample.
+    public let enabledMetrics: Set<MetricIdentifier>
+
+    /// Which metrics to show in the menu bar / popover.
+    public let visibleMetrics: Set<MetricIdentifier>
+
+    /// Display order for visible metrics (menu bar / popover).
+    public let metricOrder: [MetricIdentifier]
+
+    /// Network throughput display unit.
+    public let networkUnit: NetworkUnit
+
+    /// Temperature display unit.
+    public let temperatureUnit: TemperatureUnit
+
+    /// Documented minimum refresh interval (seconds).
+    public static let minimumRefreshInterval: TimeInterval = 1.0
+
+    /// Default metrics order.
+    public static let defaultMetricOrder: [MetricIdentifier] = MetricIdentifier.allCases
 
     public var isMCPReadOnly: Bool {
         let mode = mcpMode.lowercased()
@@ -84,7 +164,13 @@ public struct TuneConfig: Equatable, Sendable {
         chargeLimitMin: Int = SafetyPolicy.chargeLimitMin,
         chargeLimitMax: Int = SafetyPolicy.chargeLimitMax,
         defaultProfile: String = "default",
-        mcpMode: String = "full"
+        mcpMode: String = "full",
+        metricsRefreshInterval: TimeInterval = 3.0,
+        enabledMetrics: Set<MetricIdentifier> = Set(MetricIdentifier.allCases),
+        visibleMetrics: Set<MetricIdentifier> = Set(MetricIdentifier.allCases),
+        metricOrder: [MetricIdentifier] = MetricIdentifier.allCases,
+        networkUnit: NetworkUnit = .bytesPerSecond,
+        temperatureUnit: TemperatureUnit = .celsius
     ) {
         self.extendedBrightnessMin = extendedBrightnessMin
         self.extendedBrightnessMax = extendedBrightnessMax
@@ -98,6 +184,12 @@ public struct TuneConfig: Equatable, Sendable {
         self.chargeLimitMax = chargeLimitMax
         self.defaultProfile = defaultProfile
         self.mcpMode = mcpMode
+        self.metricsRefreshInterval = max(metricsRefreshInterval, TuneConfig.minimumRefreshInterval)
+        self.enabledMetrics = enabledMetrics
+        self.visibleMetrics = visibleMetrics
+        self.metricOrder = metricOrder
+        self.networkUnit = networkUnit
+        self.temperatureUnit = temperatureUnit
     }
 
     // MARK: - Loading
@@ -136,6 +228,30 @@ public struct TuneConfig: Equatable, Sendable {
             return fallback
         }
 
+        /// Parse a set of `MetricIdentifier` from TOML (array or comma-separated string).
+        func metricSetVal(_ section: String, _ key: String,
+                          _ fallback: [MetricIdentifier]) -> Set<MetricIdentifier> {
+            Self.parseMetricSet(table: table, section: section, key: key, fallback: fallback)
+        }
+
+        /// Parse an ordered list of `MetricIdentifier` from TOML.
+        func metricOrderVal(_ section: String, _ key: String,
+                            _ fallback: [MetricIdentifier]) -> [MetricIdentifier] {
+            Self.parseMetricOrder(table: table, section: section, key: key, fallback: fallback)
+        }
+
+        /// Parse a `NetworkUnit` from string value.
+        func networkUnitVal(_ section: String, _ key: String,
+                            _ fallback: NetworkUnit) -> NetworkUnit {
+            Self.parseNetworkUnit(table: table, section: section, key: key, fallback: fallback)
+        }
+
+        /// Parse a `TemperatureUnit` from string value.
+        func temperatureUnitVal(_ section: String, _ key: String,
+                                _ fallback: TemperatureUnit) -> TemperatureUnit {
+            Self.parseTemperatureUnit(table: table, section: section, key: key, fallback: fallback)
+        }
+
         var config = TuneConfig(
             extendedBrightnessMin: doubleVal(
                 "brightness", "extended_brightness_min",
@@ -172,7 +288,16 @@ public struct TuneConfig: Equatable, Sendable {
                 "SYMTUNE_DEFAULT_PROFILE", "default"),
             mcpMode: stringVal(
                 "mcp", "mode",
-                "SYMTUNE_MCP_MODE", "full")
+                "SYMTUNE_MCP_MODE", "full"),
+            // --- Metrics preferences ---
+            metricsRefreshInterval: doubleVal(
+                "metrics", "refresh_interval_seconds",
+                "SYMTUNE_METRICS_INTERVAL", 3.0),
+            enabledMetrics: metricSetVal("metrics", "enabled", MetricIdentifier.allCases),
+            visibleMetrics: metricSetVal("metrics", "visible", MetricIdentifier.allCases),
+            metricOrder: metricOrderVal("metrics", "order", MetricIdentifier.allCases),
+            networkUnit: networkUnitVal("metrics", "network_unit", .bytesPerSecond),
+            temperatureUnit: temperatureUnitVal("metrics", "temperature_unit", .celsius)
         )
 
         // Clamp user-defined bounds to the non-negotiable SafetyPolicy hard limits.
@@ -188,7 +313,13 @@ public struct TuneConfig: Equatable, Sendable {
             chargeLimitMin: max(config.chargeLimitMin, SafetyPolicy.chargeLimitMin),
             chargeLimitMax: min(config.chargeLimitMax, SafetyPolicy.chargeLimitMax),
             defaultProfile: config.defaultProfile,
-            mcpMode: config.mcpMode
+            mcpMode: config.mcpMode,
+            metricsRefreshInterval: config.metricsRefreshInterval,
+            enabledMetrics: config.enabledMetrics,
+            visibleMetrics: config.visibleMetrics,
+            metricOrder: config.metricOrder,
+            networkUnit: config.networkUnit,
+            temperatureUnit: config.temperatureUnit
         )
 
         // Validate min < max for each range; fall back to defaults on inversion.
@@ -205,5 +336,53 @@ public struct TuneConfig: Equatable, Sendable {
         }
 
         return config
+    }
+
+    // MARK: - Parse helpers (static, extracted to keep `load` body under limit)
+
+    private static func parseMetricSet(
+        table: TOMLTable, section: String, key: String,
+        fallback: [MetricIdentifier]
+    ) -> Set<MetricIdentifier> {
+        if let arr = table[section, key]?.stringArrayValue {
+            let values = arr.compactMap { MetricIdentifier(rawValue: $0) }
+            if values.isEmpty { return Set(fallback) }
+            return Set(values)
+        }
+        return Set(fallback)
+    }
+
+    private static func parseMetricOrder(
+        table: TOMLTable, section: String, key: String,
+        fallback: [MetricIdentifier]
+    ) -> [MetricIdentifier] {
+        if let arr = table[section, key]?.stringArrayValue {
+            let values = arr.compactMap { MetricIdentifier(rawValue: $0) }
+            if values.isEmpty { return fallback }
+            return values
+        }
+        return fallback
+    }
+
+    private static func parseNetworkUnit(
+        table: TOMLTable, section: String, key: String,
+        fallback: NetworkUnit
+    ) -> NetworkUnit {
+        if let raw = table[section, key]?.stringValue,
+           let unit = NetworkUnit(rawValue: raw) {
+            return unit
+        }
+        return fallback
+    }
+
+    private static func parseTemperatureUnit(
+        table: TOMLTable, section: String, key: String,
+        fallback: TemperatureUnit
+    ) -> TemperatureUnit {
+        if let raw = table[section, key]?.stringValue,
+           let unit = TemperatureUnit(rawValue: raw) {
+            return unit
+        }
+        return fallback
     }
 }

@@ -7,6 +7,8 @@ import SymairaUpdateCheck
 struct MainStatusView: View {
     let controller: TuneController
     @ObservedObject var updateChecker: AppUpdateChecker
+    @ObservedObject var preferencesManager: PreferencesManager
+    let openPreferences: () -> Void
 
     // Sliders state
     @State private var brightness: Double = 0.5
@@ -333,6 +335,21 @@ struct MainStatusView: View {
 
             // Footer
             HStack {
+                Button(action: openPreferences) {
+                    Text("Preferences\u{2026}")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(SymairaColors.textSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(SymairaColors.bgPanel)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(SymairaColors.border, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
                 Button(
                     action: {
