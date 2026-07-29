@@ -4,7 +4,10 @@ import Darwin
 public struct CPUStatistics: Sendable, Equatable {
     public let total: [UInt64]
     public let perCore: [[UInt64]]
-    public init(total: [UInt64], perCore: [[UInt64]]) { self.total = total; self.perCore = perCore }
+    public init(total: [UInt64], perCore: [[UInt64]]) {
+        self.total = total
+        self.perCore = perCore
+    }
 }
 
 public struct MemoryStatistics: Sendable, Equatable {
@@ -13,7 +16,19 @@ public struct MemoryStatistics: Sendable, Equatable {
     public let wiredBytes: UInt64?
     public let compressedBytes: UInt64?
     public let pressure: String?
-    public init(usedBytes: UInt64?, freeBytes: UInt64?, wiredBytes: UInt64?, compressedBytes: UInt64?, pressure: String?) { self.usedBytes = usedBytes; self.freeBytes = freeBytes; self.wiredBytes = wiredBytes; self.compressedBytes = compressedBytes; self.pressure = pressure }
+    public init(
+        usedBytes: UInt64?,
+        freeBytes: UInt64?,
+        wiredBytes: UInt64?,
+        compressedBytes: UInt64?,
+        pressure: String?
+    ) {
+        self.usedBytes = usedBytes
+        self.freeBytes = freeBytes
+        self.wiredBytes = wiredBytes
+        self.compressedBytes = compressedBytes
+        self.pressure = pressure
+    }
     public static let empty = MemoryStatistics(usedBytes: nil, freeBytes: nil, wiredBytes: nil, compressedBytes: nil, pressure: nil)
 }
 
@@ -21,7 +36,11 @@ public struct DiskStatistics: Sendable, Equatable {
     public let capacityBytes: UInt64
     public let usedBytes: UInt64
     public let freeBytes: UInt64
-    public init(capacityBytes: UInt64, usedBytes: UInt64, freeBytes: UInt64) { self.capacityBytes = capacityBytes; self.usedBytes = usedBytes; self.freeBytes = freeBytes }
+    public init(capacityBytes: UInt64, usedBytes: UInt64, freeBytes: UInt64) {
+        self.capacityBytes = capacityBytes
+        self.usedBytes = usedBytes
+        self.freeBytes = freeBytes
+    }
 }
 
 public struct NetworkInterfaceStatistics: Sendable, Equatable {
@@ -37,7 +56,19 @@ public struct SystemMetricsSnapshot: Sendable, Equatable {
     public let memory: MemoryStatistics
     public let disk: DiskStatistics?
     public let network: [NetworkInterfaceStatistics]
-    public init(timestamp: TimeInterval = 0, cpu: CPUStatistics, memory: MemoryStatistics, disk: DiskStatistics?, network: [NetworkInterfaceStatistics]) { self.timestamp = timestamp; self.cpu = cpu; self.memory = memory; self.disk = disk; self.network = network }
+    public init(
+        timestamp: TimeInterval = 0,
+        cpu: CPUStatistics,
+        memory: MemoryStatistics,
+        disk: DiskStatistics?,
+        network: [NetworkInterfaceStatistics]
+    ) {
+        self.timestamp = timestamp
+        self.cpu = cpu
+        self.memory = memory
+        self.disk = disk
+        self.network = network
+    }
     public static let empty = SystemMetricsSnapshot(timestamp: 0, cpu: .init(total: [], perCore: []), memory: .empty, disk: nil, network: [])
 }
 
