@@ -273,3 +273,20 @@ public struct HistoryEvent: Codable, Sendable, Equatable {
         self.errorReason = errorReason
     }
 }
+
+
+// MARK: - System Metrics
+
+public struct CPUReport: Codable, Sendable { public let totalUtilization: Double?; public let perCoreUtilization: [Double] }
+public struct MemoryReport: Codable, Sendable { public let usedBytes: UInt64?; public let freeBytes: UInt64?; public let wiredBytes: UInt64?; public let compressedBytes: UInt64?; public let pressure: String? }
+public struct DiskReport: Codable, Sendable { public let capacityBytes: UInt64; public let usedBytes: UInt64; public let freeBytes: UInt64 }
+public struct NetworkInterfaceReport: Codable, Sendable { public let name: String; public let bytesIn: UInt64; public let bytesOut: UInt64; public let bytesInPerSecond: Double?; public let bytesOutPerSecond: Double? }
+public struct NetworkReport: Codable, Sendable { public let interfaces: [NetworkInterfaceReport]; public let aggregateBytesIn: UInt64; public let aggregateBytesOut: UInt64; public let aggregateBytesInPerSecond: Double?; public let aggregateBytesOutPerSecond: Double? }
+public struct SystemMetricsReport: Codable, Sendable {
+    public let cpu: CPUReport
+    public let memory: MemoryReport
+    public let disk: DiskReport?
+    public let network: NetworkReport
+    public let notes: [String]
+    public init(cpu: CPUReport, memory: MemoryReport, disk: DiskReport?, network: NetworkReport, notes: [String] = []) { self.cpu = cpu; self.memory = memory; self.disk = disk; self.network = network; self.notes = notes }
+}
