@@ -94,7 +94,7 @@ struct KeepAwakeStatusTool: MCPTool, @unchecked Sendable {
     }
 }
 
-// MARK: - Brightness / warmth / dim tools
+// MARK: - Brightness / warmth / dim tools (read-only)
 
 struct GetBrightnessTool: MCPTool, @unchecked Sendable {
     let name = "get_brightness"
@@ -107,87 +107,51 @@ struct GetBrightnessTool: MCPTool, @unchecked Sendable {
     }
 }
 
-struct SetBrightnessTool: MCPTool, @unchecked Sendable {
-    let name = "set_brightness"
-    let description = "Set built-in display brightness (0.0–1.0)."
-    let inputSchema: [String: Any] = numberProperty(name: "value", minimum: 0.0, maximum: 1.0)
+// MARK: - Generic write tool (driven by WriteCommand descriptor)
 
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.applyBuiltinBrightness(requireDouble(arguments["value"], name: "value"))
-        return ApplyResult(applied: true)
+struct WriteCommandTool: MCPTool, @unchecked Sendable {
+    let descriptor: WriteCommand
+
+    var name: String { descriptor.mcpName }
+    var description: String { descriptor.description }
+    var isReadOnly: Bool { false }
+
+    var inputSchema: [String: Any] {
+        guard descriptor.isContinuous, let min = descriptor.minimum, let max = descriptor.maximum else {
+            return [:]
+        }
+        let argName = descriptor.mcpArgName
+        if descriptor.valueType == .integer {
+            return [
+                "type": "object",
+                "properties": [
+                    argName: ["type": "integer", "minimum": Int(min), "maximum": Int(max)],
+                ],
+                "required": [argName],
+            ]
+        } else {
+            return [
+                "type": "object",
+                "properties": [
+                    argName: ["type": "number", "minimum": min, "maximum": max],
+                ],
+                "required": [argName],
+            ]
+        }
     }
-}
-
-struct SetExtendedBrightnessTool: MCPTool, @unchecked Sendable {
-    let name = "set_extended_brightness"
-    let description = "Set extended/EDR brightness multiplier (1.0–1.6) via on-screen EDR layer."
-    let inputSchema: [String: Any] = numberProperty(
-        name: "value",
-        minimum: SafetyPolicy.extendedBrightnessMin,
-        maximum: SafetyPolicy.extendedBrightnessMax
-    )
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.applyExtendedBrightness(requireDouble(arguments["value"], name: "value"))
-        return ApplyResult(applied: true)
-    }
-}
-
-struct SetWarmthTool: MCPTool, @unchecked Sendable {
-    let name = "set_warmth"
-    let description = "Set color temperature warmth (0.0=neutral, 1.0=max warm). Uses gamma LUT."
-    let inputSchema: [String: Any] = numberProperty(name: "value", minimum: 0.0, maximum: 1.0)
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.applyWarmth(requireDouble(arguments["value"], name: "value"))
-        return ApplyResult(applied: true)
-    }
-}
-
-struct ResetWarmthTool: MCPTool, @unchecked Sendable {
-    let name = "reset_warmth"
-    let description = "Reset color temperature warmth to neutral (identity gamma)."
-    let inputSchema: [String: Any] = [:]
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.resetWarmth()
-        return ApplyResult(applied: true)
-    }
-}
-
-struct SetDimTool: MCPTool, @unchecked Sendable {
-    let name = "set_dim"
-    let description = "Set software dim overlay (0.15=max dim, 1.0=no dim)."
-    let inputSchema: [String: Any] = numberProperty(
-        name: "value",
-        minimum: SafetyPolicy.dimMin,
-        maximum: SafetyPolicy.dimMax
-    )
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.applyDim(requireDouble(arguments["value"], name: "value"))
-        return ApplyResult(applied: true)
-    }
-}
-
-struct ResetDimTool: MCPTool, @unchecked Sendable {
-    let name = "reset_dim"
-    let description = "Remove all dim overlays."
-    let inputSchema: [String: Any] = [:]
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        controller.resetDim()
-        return ApplyResult(applied: true)
-    }
-}
-
-struct RestoreTool: MCPTool, @unchecked Sendable {
-    let name = "restore"
-    let description = "Restore all overrides to system defaults."
-    let inputSchema: [String: Any] = [:]
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        controller.restoreAll()
+        if descriptor.isContinuous {
+            if descriptor.valueType == .integer {
+                let intVal = try requireInt(arguments[descriptor.mcpArgName], name: descriptor.mcpArgName)
+                try descriptor.apply(controller, Double(intVal))
+            } else {
+                let doubleVal = try requireDouble(arguments[descriptor.mcpArgName], name: descriptor.mcpArgName)
+                try descriptor.apply(controller, doubleVal)
+            }
+        } else {
+            try descriptor.apply(controller, 0)
+        }
         return ApplyResult(applied: true)
     }
 }
@@ -267,52 +231,7 @@ struct DeleteProfileTool: MCPTool, @unchecked Sendable {
     }
 }
 
-// MARK: - Fan and charge-limit tools
-
-struct SetFanTool: MCPTool, @unchecked Sendable {
-    let name = "set_fan"
-    let description = "Set fan speed as a fraction 0.0–1.0. Requires root/SMC write access."
-    let inputSchema: [String: Any] = [
-        "type": "object",
-        "properties": [
-            "fraction": ["type": "number", "minimum": SafetyPolicy.fanFractionMin, "maximum": SafetyPolicy.fanFractionMax],
-        ],
-        "required": ["fraction"],
-    ]
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.applyFan(fraction: requireDouble(arguments["fraction"], name: "fraction"))
-        return ApplyResult(applied: true)
-    }
-}
-
-struct SetChargeLimitTool: MCPTool, @unchecked Sendable {
-    let name = "set_charge_limit"
-    let description = "Hold battery charge at a target percent (50–100). Requires root/SMC write access."
-    let inputSchema: [String: Any] = [
-        "type": "object",
-        "properties": [
-            "percent": ["type": "integer", "minimum": SafetyPolicy.chargeLimitMin, "maximum": SafetyPolicy.chargeLimitMax],
-        ],
-        "required": ["percent"],
-    ]
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.applyChargeLimit(percent: requireInt(arguments["percent"], name: "percent"))
-        return ApplyResult(applied: true)
-    }
-}
-
-struct ClearChargeLimitTool: MCPTool, @unchecked Sendable {
-    let name = "clear_charge_limit"
-    let description = "Clear battery charge limit and re-enable charging. Requires root/SMC write access."
-    let inputSchema: [String: Any] = [:]
-
-    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        try controller.clearChargeLimit()
-        return ApplyResult(applied: true)
-    }
-}
+// MARK: - Status / history tools
 
 struct GetStatusTool: MCPTool, @unchecked Sendable {
     let name = "get_status"
@@ -342,16 +261,4 @@ struct GetHistoryTool: MCPTool, @unchecked Sendable {
         let limit = arguments["limit"] as? Int ?? 100
         return controller.getHistory(limit: limit)
     }
-}
-
-// MARK: - Schema helpers
-
-private func numberProperty(name: String, minimum: Double, maximum: Double) -> [String: Any] {
-    [
-        "type": "object",
-        "properties": [
-            name: ["type": "number", "minimum": minimum, "maximum": maximum],
-        ],
-        "required": [name],
-    ]
 }
