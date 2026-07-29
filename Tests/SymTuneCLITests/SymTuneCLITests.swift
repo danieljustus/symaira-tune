@@ -19,7 +19,7 @@ final class SymTuneCLITests: XCTestCase {
         fatalError("Could not locate the products directory — not running within an XCTest bundle?")
     }
 
-    // MARK: --help / -h on subcommands
+    // MARK: - --help / -h on subcommands
 
     func testFanHelp() throws {
         let output = try runCommand(args: ["fan", "--help"])
