@@ -7,6 +7,7 @@ struct CapabilitiesTool: MCPTool, @unchecked Sendable {
     let name = "get_capabilities"
     let description = "Report tool version, host info, and which tuning capabilities are available."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         controller.capabilities()
@@ -17,6 +18,7 @@ struct SensorsTool: MCPTool, @unchecked Sendable {
     let name = "get_sensors"
     let description = "Read thermal pressure and (when available) temperatures and fan RPM."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         controller.sensors_report()
@@ -27,6 +29,7 @@ struct BatteryTool: MCPTool, @unchecked Sendable {
     let name = "get_battery"
     let description = "Read battery health: charge %, cycle count, capacity, condition."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         controller.batteryReport()
@@ -37,6 +40,7 @@ struct ListDisplaysTool: MCPTool, @unchecked Sendable {
     let name = "list_displays"
     let description = "List displays with EDR headroom (extended-brightness capability)."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         controller.displaysReport()
@@ -82,8 +86,8 @@ struct KeepAwakeTool: MCPTool, @unchecked Sendable {
 struct KeepAwakeStatusTool: MCPTool, @unchecked Sendable {
     let name = "keep_awake_status"
     let description = "Return the current keep-awake session state (active, type, remaining time, reason)."
-
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         controller.keepAwakeSessionStatus()
@@ -96,6 +100,7 @@ struct GetBrightnessTool: MCPTool, @unchecked Sendable {
     let name = "get_brightness"
     let description = "Read the built-in display brightness (0.0–1.0)."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         BrightnessReadback(brightness: try controller.getBuiltinBrightness())
@@ -237,6 +242,7 @@ struct ListProfilesTool: MCPTool, @unchecked Sendable {
     let name = "list_profiles"
     let description = "List all saved profiles."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         ProfileList(profiles: controller.listProfiles())
@@ -312,6 +318,7 @@ struct GetStatusTool: MCPTool, @unchecked Sendable {
     let name = "get_status"
     let description = "Get the consolidated health status snapshot of the system, including score, recommendations, overrides, and raw reports."
     let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
         controller.statusReport()

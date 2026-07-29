@@ -7,6 +7,7 @@ protocol MCPTool: Sendable {
     var name: String { get }
     var description: String { get }
     var inputSchema: [String: Any] { get }
+    var isReadOnly: Bool { get }
 
     /// Invoke the tool with parsed arguments.
     /// - Parameters:
@@ -19,6 +20,10 @@ protocol MCPTool: Sendable {
         controller: TuneController,
         keepAwakeToken: inout KeepAwakeToken?
     ) throws -> Encodable
+}
+
+extension MCPTool {
+    var isReadOnly: Bool { false }
 }
 
 /// Registry that maps tool names to implementations and renders the `tools/list`

@@ -19,14 +19,16 @@ public final class MCPServer {
     private let registry: MCPToolRegistry
     private var keepAwakeToken: KeepAwakeToken?
 
-    public convenience init(controller: TuneController = TuneController()) {
-        self.init(controller: controller, transport: MCPTransport())
+    public convenience init(controller: TuneController = TuneController(), config: TuneConfig? = nil) {
+        let loadedConfig = config ?? ConfigPaths().loadConfig()
+        self.init(controller: controller, transport: MCPTransport(), config: loadedConfig)
     }
 
-    init(controller: TuneController = TuneController(), transport: MCPTransportProtocol) {
+    init(controller: TuneController = TuneController(), transport: MCPTransportProtocol, config: TuneConfig = TuneConfig()) {
         self.controller = controller
         self.transport = transport
-        self.registry = MCPToolRegistry(tools: MCPServer.defaultTools)
+        let availableTools = config.isMCPReadOnly ? MCPServer.defaultTools.filter(\.isReadOnly) : MCPServer.defaultTools
+        self.registry = MCPToolRegistry(tools: availableTools)
         encoder.outputFormatting = [.sortedKeys]
         encoder.keyEncodingStrategy = .convertToSnakeCase
     }

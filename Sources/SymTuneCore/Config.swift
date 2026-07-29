@@ -65,6 +65,12 @@ public struct TuneConfig: Equatable, Sendable {
     public let chargeLimitMin: Int
     public let chargeLimitMax: Int
     public let defaultProfile: String
+    public let mcpMode: String
+
+    public var isMCPReadOnly: Bool {
+        let mode = mcpMode.lowercased()
+        return mode == "read-only" || mode == "read_only" || mode == "readonly"
+    }
 
     public init(
         extendedBrightnessMin: Double = SafetyPolicy.extendedBrightnessMin,
@@ -77,7 +83,8 @@ public struct TuneConfig: Equatable, Sendable {
         fanFractionMax: Double = SafetyPolicy.fanFractionMax,
         chargeLimitMin: Int = SafetyPolicy.chargeLimitMin,
         chargeLimitMax: Int = SafetyPolicy.chargeLimitMax,
-        defaultProfile: String = "default"
+        defaultProfile: String = "default",
+        mcpMode: String = "full"
     ) {
         self.extendedBrightnessMin = extendedBrightnessMin
         self.extendedBrightnessMax = extendedBrightnessMax
@@ -90,6 +97,7 @@ public struct TuneConfig: Equatable, Sendable {
         self.chargeLimitMin = chargeLimitMin
         self.chargeLimitMax = chargeLimitMax
         self.defaultProfile = defaultProfile
+        self.mcpMode = mcpMode
     }
 
     // MARK: - Loading
@@ -161,7 +169,10 @@ public struct TuneConfig: Equatable, Sendable {
                 "SYMTUNE_CHARGE_MAX", SafetyPolicy.chargeLimitMax),
             defaultProfile: stringVal(
                 "general", "default_profile",
-                "SYMTUNE_DEFAULT_PROFILE", "default")
+                "SYMTUNE_DEFAULT_PROFILE", "default"),
+            mcpMode: stringVal(
+                "mcp", "mode",
+                "SYMTUNE_MCP_MODE", "full")
         )
 
         // Clamp user-defined bounds to the non-negotiable SafetyPolicy hard limits.
@@ -176,7 +187,8 @@ public struct TuneConfig: Equatable, Sendable {
             fanFractionMax: min(config.fanFractionMax, SafetyPolicy.fanFractionMax),
             chargeLimitMin: max(config.chargeLimitMin, SafetyPolicy.chargeLimitMin),
             chargeLimitMax: min(config.chargeLimitMax, SafetyPolicy.chargeLimitMax),
-            defaultProfile: config.defaultProfile
+            defaultProfile: config.defaultProfile,
+            mcpMode: config.mcpMode
         )
 
         // Validate min < max for each range; fall back to defaults on inversion.
