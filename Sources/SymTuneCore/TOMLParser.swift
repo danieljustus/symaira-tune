@@ -2,12 +2,13 @@ import Foundation
 
 // MARK: - Value type
 
-/// A single TOML value: string, integer, double, or boolean.
+/// A single TOML value: string, integer, double, boolean, or array.
 public enum TOMLValue: Equatable, Sendable {
     case string(String)
     case integer(Int)
     case double(Double)
     case boolean(Bool)
+    case array([TOMLValue])
 
     public var stringValue: String? {
         if case .string(let s) = self { return s }
@@ -29,6 +30,19 @@ public enum TOMLValue: Equatable, Sendable {
 
     public var boolValue: Bool? {
         if case .boolean(let b) = self { return b }
+        return nil
+    }
+
+    /// Array of string values. Supports TOML array syntax `["a","b"]` and
+    /// comma-separated bare-string fallback `"a,b,c"`.
+    public var stringArrayValue: [String]? {
+        if case .array(let vals) = self {
+            return vals.compactMap(\.stringValue)
+        }
+        if case .string(let s) = self {
+            let parts = s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            return parts.isEmpty ? nil : parts
+        }
         return nil
     }
 }
@@ -128,6 +142,15 @@ public struct TOMLParser: Sendable {
             return .string(inner)
         }
 
+        // Array — inline only: ["a", "b", 42]
+        if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+            let inner = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+            if inner.isEmpty { return .array([]) }
+            let elements = splitArrayElements(inner)
+            let values = elements.compactMap { parseValue($0) }
+            return .array(values)
+        }
+
         // Integer
         if let i = Int(trimmed) { return .integer(i) }
 
@@ -136,5 +159,37 @@ public struct TOMLParser: Sendable {
 
         // Bare (unquoted) string — not standard TOML but useful for defaults
         return .string(trimmed)
+    }
+
+    /// Split a comma-separated array body, respecting nested brackets and quotes.
+    private func splitArrayElements(_ body: String) -> [String] {
+        var elements: [String] = []
+        var current = ""
+        var depth = 0
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var escaped = false
+
+        for ch in body {
+            if escaped { escaped = false; current.append(ch); continue }
+            if ch == "\\" && (inSingleQuote || inDoubleQuote) { escaped = true; current.append(ch); continue }
+            if ch == "'" && !inDoubleQuote { inSingleQuote.toggle(); current.append(ch); continue }
+            if ch == "\"" && !inSingleQuote { inDoubleQuote.toggle(); current.append(ch); continue }
+
+            if !inSingleQuote && !inDoubleQuote {
+                if ch == "[" { depth += 1; current.append(ch); continue }
+                if ch == "]" { depth -= 1; current.append(ch); continue }
+                if ch == "," && depth == 0 {
+                    elements.append(current.trimmingCharacters(in: .whitespaces))
+                    current = ""
+                    continue
+                }
+            }
+            current.append(ch)
+        }
+
+        let trimmed = current.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { elements.append(trimmed) }
+        return elements
     }
 }

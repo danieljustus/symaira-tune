@@ -12,6 +12,9 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
     private let controller = TuneController()
+    let preferencesManager: PreferencesManager
+    private var preferencesWindow: NSWindow?
+
     let updateChecker = AppUpdateChecker(
         checker: UpdateChecker(owner: "danieljustus", repo: "symaira-tune"),
         store: UserDefaultsSkippedVersionStore(key: "com.symaira.tune.updateSkippedTag"),
@@ -20,6 +23,7 @@ final class StatusBarController: NSObject {
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.preferencesManager = PreferencesManager(config: TuneConfig())
         super.init()
         configureButton()
         setupPopover()
@@ -65,7 +69,12 @@ final class StatusBarController: NSObject {
     }
 
     private func setupPopover() {
-        let hosting = NSHostingController(rootView: MainStatusView(controller: controller, updateChecker: updateChecker))
+        let hosting = NSHostingController(rootView: MainStatusView(
+            controller: controller,
+            updateChecker: updateChecker,
+            preferencesManager: preferencesManager,
+            openPreferences: { [weak self] in self?.openPreferences() }
+        ))
         // Without preferredContentSize sizing, the SwiftUI content reports its
         // height only after the popover is shown (and again on every periodic
         // refresh), so the popover window gets anchored with a stale frame and
@@ -88,5 +97,28 @@ final class StatusBarController: NSObject {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    /// Open the Preferences window.
+    func openPreferences() {
+        if let window = preferencesWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let prefsView = PreferencesView(manager: preferencesManager)
+        let hosting = NSHostingController(rootView: prefsView)
+
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "SymairaTune Preferences"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.setContentSize(NSSize(width: 420, height: 480))
+        window.isReleasedWhenClosed = false
+        window.center()
+
+        self.preferencesWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
