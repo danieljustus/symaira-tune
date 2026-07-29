@@ -47,6 +47,17 @@ final class SymTuneCLITests: XCTestCase {
         XCTAssert(output.contains("Usage: symtune battery-limit"))
     }
 
+    func testMetricsHelp() throws {
+        let output = try runCommand(args: ["metrics", "--help"])
+        XCTAssert(output.contains("Usage: symtune metrics"))
+        XCTAssert(output.contains("system metrics"))
+    }
+
+    func testMetricsHelpShort() throws {
+        let output = try runCommand(args: ["metrics", "-h"])
+        XCTAssert(output.contains("Usage: symtune metrics"))
+    }
+
     // MARK: Unknown-flag rejection
 
     func testFanUnknownFlag() throws {
@@ -71,6 +82,19 @@ final class SymTuneCLITests: XCTestCase {
         let output = try runCommand(args: ["battery-limit", "--unknown"], expectFailure: true)
         XCTAssert(output.contains("unexpected argument"))
         XCTAssert(output.contains("--unknown"))
+    }
+
+    func testMetricsUnknownFlag() throws {
+        let output = try runCommand(args: ["metrics", "--bogus"], expectFailure: true)
+        XCTAssert(output.contains("unexpected argument"))
+        XCTAssert(output.contains("--bogus"))
+    }
+
+    func testMetricsJSON() throws {
+        let output = try runCommand(args: ["metrics"])
+        XCTAssert(output.contains("cpu"))
+        XCTAssert(output.contains("memory"))
+        XCTAssert(output.contains("network"))
     }
 
     // MARK: - Helpers

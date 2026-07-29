@@ -19,6 +19,7 @@ public final class TuneController: Sendable {
     private let chargeLimit: ChargeLimitService
     private let smcRestoreTracker: SMCRestoreTracker
     private let keepAwakeCoordinator: KeepAwakeCoordinator
+    private let metricsService: SystemMetricsService
     nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public let dataDir: URL
@@ -32,7 +33,8 @@ public final class TuneController: Sendable {
         smcService: SMCService? = nil,
         batterySource: (any BatterySource)? = nil,
         dataDir: URL? = nil,
-        keepAwakeSource: (any PowerAssertionSource)? = nil
+        keepAwakeSource: (any PowerAssertionSource)? = nil,
+        metricsSource: (any SystemMetricsSource)? = nil
     ) {
         self.config = config
         self.displayWrite = displayWrite ?? HardwareDisplayWriteService(
@@ -56,6 +58,7 @@ public final class TuneController: Sendable {
         )
         self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
         self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
+        self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource())
         self.restoreTracker = OverrideTracker(
             displayService: displays,
             edrOverlay: edrOverlay,
@@ -100,6 +103,8 @@ public final class TuneController: Sendable {
     public func sensors_report() -> SensorReport { sensors.read() }
 
     public func sensorsReport() -> SensorReport { sensors_report() }
+
+    public func metricsReport() -> SystemMetricsReport { metricsService.read() }
 
     public func batteryReport() -> BatteryReport { battery.read() }
 

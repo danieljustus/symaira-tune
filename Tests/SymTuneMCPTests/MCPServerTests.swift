@@ -193,6 +193,16 @@ final class MCPServerToolCallTests: XCTestCase {
         XCTAssertNotNil(content?.first?["text"])
     }
 
+    func testCallGetSystemMetrics() throws {
+        let result = try callTool("get_system_metrics")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+        let text = content?.first?["text"] as? String
+        XCTAssertTrue(text?.contains("cpu") == true)
+        XCTAssertTrue(text?.contains("memory") == true)
+        XCTAssertTrue(text?.contains("network") == true)
+    }
+
     func testCallSetDim() throws {
         let result = try callTool("set_dim", arguments: ["value": 0.5])
         XCTAssertEqual(result["isError"] as? Bool, false)
