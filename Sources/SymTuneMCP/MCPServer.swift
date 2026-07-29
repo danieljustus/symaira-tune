@@ -139,31 +139,29 @@ public final class MCPServer {
 
     // MARK: - Tool registry
 
-    private static let defaultTools: [MCPTool] = [
-        CapabilitiesTool(),
-        SensorsTool(),
-        BatteryTool(),
-        ListDisplaysTool(),
-        KeepAwakeTool(),
-        KeepAwakeStatusTool(),
-        GetBrightnessTool(),
-        SetBrightnessTool(),
-        SetExtendedBrightnessTool(),
-        SetWarmthTool(),
-        ResetWarmthTool(),
-        SetDimTool(),
-        ResetDimTool(),
-        RestoreTool(),
-        SaveProfileTool(),
-        LoadProfileTool(),
-        ListProfilesTool(),
-        DeleteProfileTool(),
-        SetFanTool(),
-        SetChargeLimitTool(),
-        ClearChargeLimitTool(),
-        GetStatusTool(),
-        GetHistoryTool(),
-    ]
+    private static let defaultTools: [MCPTool] = {
+        // Read / session / profile / status tools
+        var tools: [MCPTool] = [
+            CapabilitiesTool(),
+            SensorsTool(),
+            BatteryTool(),
+            ListDisplaysTool(),
+            KeepAwakeTool(),
+            KeepAwakeStatusTool(),
+            GetBrightnessTool(),
+            SaveProfileTool(),
+            LoadProfileTool(),
+            ListProfilesTool(),
+            DeleteProfileTool(),
+            GetStatusTool(),
+            GetHistoryTool(),
+        ]
+        // Write tools — generated from the shared WriteCommand table
+        for cmd in WriteCommand.all {
+            tools.append(WriteCommandTool(descriptor: cmd))
+        }
+        return tools
+    }()
 }
 
 /// Type-erasing wrapper so heterogeneous `Encodable` payloads share one encode path.

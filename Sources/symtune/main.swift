@@ -398,79 +398,28 @@ func runHistory(_ args: [String], controller: TuneController) throws {
     }
 }
 
-private func runBrightness(_ rest: [String], controller: TuneController) throws {
-    if rest.first == "get" || rest.isEmpty {
-        let brightness = try controller.getBuiltinBrightness()
-        try emitJSON(BrightnessReadback(brightness: brightness))
-    } else {
-        try controller.applyBuiltinBrightness(try parseValue(rest, command: "brightness"))
-        try emitJSON(ApplyResult(applied: true))
-    }
-}
+// MARK: - Write command framework (driven by WriteCommand.all)
 
-private func runDim(_ rest: [String], controller: TuneController) throws {
-    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-        emit("Usage: symtune dim set <0.15-1.0>")
-        emit("       symtune dim reset")
-        return
-    }
-    if rest.first == "reset" {
-        controller.resetDim()
-        try emitJSON(ApplyResult(applied: true))
-    } else {
-        try controller.applyDim(try parseValue(rest, command: "dim"))
-        try emitJSON(ApplyResult(applied: true))
-    }
-}
+/// Lookup table from CLI prefix (e.g. "brightness set") to WriteCommand descriptor.
+private let writeCommandByPrefix: [String: WriteCommand] = {
+    Dictionary(uniqueKeysWithValues: WriteCommand.all.map { ($0.cliPrefix, $0) })
+}()
 
-private func runWarmth(_ rest: [String], controller: TuneController) throws {
-    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-        emit("Usage: symtune warmth set <0.0-1.0>")
-        emit("       symtune warmth reset")
-        return
-    }
-    if rest.first == "reset" {
-        try controller.resetWarmth()
-        try emitJSON(ApplyResult(applied: true))
+/// Run a write command through its descriptor, parse the value from the
+/// remaining CLI args, apply it, and emit a JSON result.
+private func runWriteCommand(_ cmd: WriteCommand, rest: [String], controller: TuneController) throws {
+    if cmd.isContinuous {
+        if cmd.valueType == .integer {
+            let value = try parseInt(rest, command: cmd.cliPrefix)
+            try cmd.apply(controller, Double(value))
+        } else {
+            let value = try parseValue(rest, command: cmd.cliPrefix)
+            try cmd.apply(controller, value)
+        }
     } else {
-        try controller.applyWarmth(try parseValue(rest, command: "warmth"))
-        try emitJSON(ApplyResult(applied: true))
+        try cmd.apply(controller, 0)
     }
-}
-
-private func runExtBright(_ rest: [String], controller: TuneController) throws {
-    try controller.applyExtendedBrightness(try parseValue(rest, command: "extbright"))
     try emitJSON(ApplyResult(applied: true))
-}
-
-private func runFan(_ rest: [String], controller: TuneController) throws {
-    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-        emit("Usage: symtune fan set <0.0-1.0>")
-        emit("       symtune fan auto")
-        return
-    }
-    if rest.first == "auto" {
-        try controller.restoreFanAuto()
-        try emitJSON(ApplyResult(applied: true))
-    } else {
-        try controller.applyFan(fraction: try parseValue(rest, command: "fan"))
-        try emitJSON(ApplyResult(applied: true))
-    }
-}
-
-private func runBatteryLimit(_ rest: [String], controller: TuneController) throws {
-    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
-        emit("Usage: symtune battery-limit set <50-100>")
-        emit("       symtune battery-limit clear")
-        return
-    }
-    if rest.first == "clear" {
-        try controller.clearChargeLimit()
-        try emitJSON(ApplyResult(applied: true))
-    } else {
-        try controller.applyChargeLimit(percent: try parseInt(rest, command: "battery-limit"))
-        try emitJSON(ApplyResult(applied: true))
-    }
 }
 
 func runMain() -> Int32 {
@@ -502,22 +451,71 @@ func runMain() -> Int32 {
         case "awake":
             try runAwake(rest, controller: controller)
         case "brightness":
-            try runBrightness(rest, controller: controller)
+            if rest.first == "get" || rest.isEmpty {
+                let brightness = try controller.getBuiltinBrightness()
+                try emitJSON(BrightnessReadback(brightness: brightness))
+            } else if let cmd = writeCommandByPrefix["brightness set"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else {
+                throw TuneError.usage("brightness: expected 'get' or 'set <value>'.")
+            }
         case "extbright":
-            try runExtBright(rest, controller: controller)
+            if let cmd = writeCommandByPrefix["extbright set"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else {
+                throw TuneError.usage("extbright: expected 'set <value>'.")
+            }
         case "dim":
-            try runDim(rest, controller: controller)
+            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+                emit("Usage: symtune dim set <0.15-1.0>")
+                emit("       symtune dim reset")
+            } else if rest.first == "reset", let cmd = writeCommandByPrefix["dim reset"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else if let cmd = writeCommandByPrefix["dim set"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else {
+                throw TuneError.usage("dim: expected 'set <value>' or 'reset'.")
+            }
         case "warmth":
-            try runWarmth(rest, controller: controller)
+            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+                emit("Usage: symtune warmth set <0.0-1.0>")
+                emit("       symtune warmth reset")
+            } else if rest.first == "reset", let cmd = writeCommandByPrefix["warmth reset"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else if let cmd = writeCommandByPrefix["warmth set"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else {
+                throw TuneError.usage("warmth: expected 'set <value>' or 'reset'.")
+            }
         case "restore":
-            controller.restoreAll()
-            try emitJSON(ApplyResult(applied: true))
+            if let cmd = writeCommandByPrefix["restore"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            }
         case "profile":
             try runProfile(rest, controller: controller)
         case "fan":
-            try runFan(rest, controller: controller)
+            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+                emit("Usage: symtune fan set <0.0-1.0>")
+                emit("       symtune fan auto")
+            } else if rest.first == "auto" {
+                try controller.restoreFanAuto()
+                try emitJSON(ApplyResult(applied: true))
+            } else if let cmd = writeCommandByPrefix["fan set"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else {
+                throw TuneError.usage("fan: expected 'set <value>' or 'auto'.")
+            }
         case "battery-limit":
-            try runBatteryLimit(rest, controller: controller)
+            if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+                emit("Usage: symtune battery-limit set <50-100>")
+                emit("       symtune battery-limit clear")
+            } else if rest.first == "clear", let cmd = writeCommandByPrefix["battery-limit clear"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else if let cmd = writeCommandByPrefix["battery-limit set"] {
+                try runWriteCommand(cmd, rest: rest, controller: controller)
+            } else {
+                throw TuneError.usage("battery-limit: expected 'set <value>' or 'clear'.")
+            }
         case "version", "--version", "-v":
             runVersion(checkForUpdates: rest.contains("--check-for-updates"))
         case "help", "--help", "-h":
