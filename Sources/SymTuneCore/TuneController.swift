@@ -20,6 +20,7 @@ public final class TuneController: Sendable {
     private let smcRestoreTracker: SMCRestoreTracker
     private let keepAwakeCoordinator: KeepAwakeCoordinator
     private let metricsService: SystemMetricsService
+    public let metricsHistory: MetricsHistoryService
     nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public let dataDir: URL
@@ -59,6 +60,9 @@ public final class TuneController: Sendable {
         self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
         self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
         self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource())
+        self.metricsHistory = MetricsHistoryService(capacity: 120)
+        // Sync enabled metrics from config into the history buffers
+        metricsHistory.ensureBuffers(for: config.enabledMetrics)
         self.restoreTracker = OverrideTracker(
             displayService: displays,
             edrOverlay: edrOverlay,
@@ -99,12 +103,31 @@ public final class TuneController: Sendable {
     }
 
     // MARK: - Reads
-
     public func sensors_report() -> SensorReport { sensors.read() }
 
-    public func sensorsReport() -> SensorReport { sensors_report() }
+    // MARK: - Metrics History (delegates to MetricsHistoryService)
 
     public func metricsReport() -> SystemMetricsReport { metricsService.read() }
+
+    /// Persist the latest metric snapshot into the bounded ring buffers. Disabled
+    /// metrics receive no samples. If any enabled metric is unavailable in the
+    /// report, a gap marker is inserted so renderers produce a visible break
+    /// instead of an interpolated stretch across sleep.
+    public func recordMetricsHistory(_ report: SystemMetricsReport) { metricsHistory.record(report) }
+
+    /// Insert a gap marker into every active buffer after wake from sleep, producing
+    /// a visible break instead of an interpolated stretch across sleep.
+    public func recordWakeGap() { metricsHistory.recordWakeGap() }
+
+    /// Synchronise the history buffers with a new set of enabled metrics.
+    /// Disabled metrics have their buffers dropped immediately.
+    public func syncEnabledMetrics(_ enabled: Set<MetricIdentifier>) { metricsHistory.ensureBuffers(for: enabled) }
+
+    /// Snapshot of sample history for one metric.
+    public func metricsHistorySamples(for id: MetricIdentifier) -> [MetricSample] { metricsHistory.samples(for: id) }
+
+    /// Current, min, and max for one metric, or `nil` if no value samples exist.
+    public func metricsHistoryStats(for id: MetricIdentifier) -> MetricStats? { metricsHistory.stats(for: id) }
 
     public func batteryReport() -> BatteryReport { battery.read() }
 

@@ -16,7 +16,7 @@ final class TuneControllerSensorsKeepAwakeTests: XCTestCase {
     /// and the expected field shape.
     func testSensorsReportReturnsValidReport() {
         let controller = TuneController()
-        let report = controller.sensorsReport()
+        let report = controller.sensors_report()
 
         // Thermal pressure must be one of the known labels
         let knownLabels = ["nominal", "fair", "serious", "critical", "unknown"]
