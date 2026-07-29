@@ -57,10 +57,18 @@ core. They require the process to run as root because they write to the Apple SM
       GitHub release check with skip-version persistence in the menu-bar app.
       Shows a subtle update card with Download/Skip buttons (`#173`).
 
-## v0.4.0 — Keep-awake sessions + CI split (current)
+## v0.4.0 — Keep-awake sessions + CI split (shipped)
 
 - [x] Keep-awake sessions with timer-based expiry, duration presets, display-sleep toggle and remaining-time display (`#178`).
 - [x] Fan Control card gated on fan availability (`#176`, `#177`).
+
+## v0.5.0 — System metrics + live menu bar (current)
+
+- [x] System metrics service for CPU, memory, disk, and network utilization (`#195`, `#201`).
+- [x] CLI `symtune metrics` and MCP `get_system_metrics` tool (`#196`, `#203`).
+- [x] Preferences surface for metric selection, ordering, refresh interval and units (`#199`, `#204`).
+- [x] Live menu bar metric readout with monospaced digits and update-badge coexistence (`#197`, `#205`).
+- [x] Rolling metric history with sparkline trends in the popover (`#200`, `#206`).
 - [x] Dim slider amount ↔ multiplier conversion fix (`#175`).
 - [x] CI workflow split: fast PR gate on PRs, full suite on main + weekly schedule. CodeQL reduced to weekly.
 
