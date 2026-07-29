@@ -38,7 +38,7 @@ The safety model addresses:
 
 1. **Malformed or extreme input** from a user, script, profile, or AI agent.
 2. **An over-permissioned local MCP client** invoking a write tool without a
-   human in the loop.
+   human in the loop (mitigated by explicit `SYMTUNE_MCP_MODE=read-only` / `[mcp] mode = "read-only"` gating in [`Config.swift`](Sources/SymTuneCore/Config.swift) and [`MCPServer.swift`](Sources/SymTuneMCP/MCPServer.swift)).
 3. **Stale process state**, where a temporary override would otherwise remain
    after `symtune` exits.
 4. **Unsupported hardware or missing privileges**, where pretending that a
@@ -64,10 +64,12 @@ not authorization.
 
 ### MCP boundary
 
-The MCP server exposes both read and write tools. A connected MCP client can
+The MCP server exposes read tools and (optionally) write tools. A connected MCP client can
 request display changes, load a profile, keep the Mac awake, control fans, set a
-charge limit, or call `restore`. The server does not silently approve values
-outside the documented ranges:
+charge limit, or call `restore`. Write tools can be completely disabled at server startup via
+`SYMTUNE_MCP_MODE=read-only` or `[mcp] mode = "read-only"` in `config.toml`, which filters
+write tools out of `tools/list` and rejects direct `tools/call` attempts on write tools.
+When write tools are enabled (`SYMTUNE_MCP_MODE=full`, default):
 
 - MCP schemas publish minimum and maximum values for numeric inputs;
 - the controller clamps again before applying a write;

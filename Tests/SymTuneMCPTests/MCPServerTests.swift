@@ -105,6 +105,26 @@ final class MCPServerToolCallTests: XCTestCase {
         try server.dispatch(method: "tools/call", params: ["name": name, "arguments": arguments])
     }
 
+    func testReadOnlyModeHidesWriteToolsAndRejectsCall() throws {
+        let config = TuneConfig(mcpMode: "read-only")
+        let readOnlyServer = MCPServer(controller: TuneController(), config: config)
+
+        let listResult = try readOnlyServer.dispatch(method: "tools/list", params: [:])
+        guard let tools = listResult["tools"] as? [[String: Any]] else {
+            XCTFail("tools/list did not return array")
+            return
+        }
+
+        let names = tools.compactMap { $0["name"] as? String }
+        XCTAssertTrue(names.contains("get_capabilities"))
+        XCTAssertTrue(names.contains("get_brightness"))
+        XCTAssertFalse(names.contains("set_brightness"))
+        XCTAssertFalse(names.contains("set_fan"))
+        XCTAssertFalse(names.contains("keep_awake"))
+
+        XCTAssertThrowsError(try readOnlyServer.dispatch(method: "tools/call", params: ["name": "set_brightness", "arguments": ["value": 0.5]]))
+    }
+
     func testCallToolReturnsContentArray() throws {
         let result = try callTool("get_capabilities")
         XCTAssertNotNil(result["content"])
