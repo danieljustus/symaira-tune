@@ -113,8 +113,29 @@ public struct HardwareSystemMetricsSource: SystemMetricsSource, Sendable {
         let wired = UInt64(vmStats.wire_count) * pageSize
         let compressed = UInt64(vmStats.compressor_page_count) * pageSize
         let active = UInt64(vmStats.active_count) * pageSize
+        let available = free &+ inactive &+ speculative
         let used = active &+ wired &+ compressed
-        return MemoryStatistics(usedBytes: used, freeBytes: free &+ inactive &+ speculative, wiredBytes: wired, compressedBytes: compressed, pressure: nil)
+        return MemoryStatistics(
+            usedBytes: used,
+            freeBytes: available,
+            wiredBytes: wired,
+            compressedBytes: compressed,
+            pressure: pressureLevel(availableBytes: available)
+        )
+    }
+
+    private func pressureLevel(availableBytes: UInt64) -> String? {
+        let physicalMemory = ProcessInfo.processInfo.physicalMemory
+        guard physicalMemory > 0 else { return nil }
+        let availableRatio = Double(availableBytes) / Double(physicalMemory)
+        switch availableRatio {
+        case ..<0.05:
+            return "critical"
+        case ..<0.10:
+            return "warning"
+        default:
+            return "nominal"
+        }
     }
 
     private func readDisk() -> DiskStatistics? {
