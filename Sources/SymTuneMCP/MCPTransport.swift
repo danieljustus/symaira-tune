@@ -60,13 +60,15 @@ struct MCPTransport {
 
     private func readHeader() throws -> Data? {
         var data = Data()
+        let terminator = Data([13, 10, 13, 10])
         while data.count < maxHeaderSize {
-            guard let byte = try input.read(upToCount: 1), !byte.isEmpty else {
+            let chunkSize = min(4096, maxHeaderSize - data.count)
+            guard let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty else {
                 return data.isEmpty ? nil : data
             }
-            data.append(byte)
-            if data.count >= 4, let range = data.range(of: Data([13, 10, 13, 10])) {
-                return data[data.startIndex..<range.upperBound]
+            data.append(chunk)
+            if data.range(of: terminator) != nil {
+                return data
             }
         }
         throw TuneError.failed("MCP header exceeded \(maxHeaderSize) bytes without terminator.")
