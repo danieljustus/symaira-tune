@@ -98,15 +98,19 @@ func runVersion(checkForUpdates: Bool) {
 /// Pull the first parseable Double out of the remaining args (accepts an
 /// optional leading `set`), e.g. `extbright set 1.4` or `dim 0.5`.
 func parseValue(_ args: [String], command: String) throws -> Double {
-    for arg in args where arg != "set" {
+    for arg in args {
+        if arg == "set" { continue }
         if let value = Double(arg) { return value }
+        throw TuneError.usage("\(command): unexpected argument '\(arg)'")
     }
     throw TuneError.usage("\(command): expected a numeric value, e.g. `symtune \(command) set 1.4`")
 }
 
 func parseInt(_ args: [String], command: String) throws -> Int {
-    for arg in args where arg != "set" {
+    for arg in args {
+        if arg == "set" { continue }
         if let value = Int(arg) { return value }
+        throw TuneError.usage("\(command): unexpected argument '\(arg)'")
     }
     throw TuneError.usage("\(command): expected an integer value, e.g. `symtune \(command) set 80`")
 }
@@ -405,6 +409,11 @@ private func runBrightness(_ rest: [String], controller: TuneController) throws 
 }
 
 private func runDim(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune dim set <0.15-1.0>")
+        emit("       symtune dim reset")
+        return
+    }
     if rest.first == "reset" {
         controller.resetDim()
         try emitJSON(ApplyResult(applied: true))
@@ -415,6 +424,11 @@ private func runDim(_ rest: [String], controller: TuneController) throws {
 }
 
 private func runWarmth(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune warmth set <0.0-1.0>")
+        emit("       symtune warmth reset")
+        return
+    }
     if rest.first == "reset" {
         try controller.resetWarmth()
         try emitJSON(ApplyResult(applied: true))
@@ -430,6 +444,11 @@ private func runExtBright(_ rest: [String], controller: TuneController) throws {
 }
 
 private func runFan(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune fan set <0.0-1.0>")
+        emit("       symtune fan auto")
+        return
+    }
     if rest.first == "auto" {
         try controller.restoreFanAuto()
         try emitJSON(ApplyResult(applied: true))
@@ -440,6 +459,11 @@ private func runFan(_ rest: [String], controller: TuneController) throws {
 }
 
 private func runBatteryLimit(_ rest: [String], controller: TuneController) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune battery-limit set <50-100>")
+        emit("       symtune battery-limit clear")
+        return
+    }
     if rest.first == "clear" {
         try controller.clearChargeLimit()
         try emitJSON(ApplyResult(applied: true))
@@ -508,20 +532,13 @@ func runMain() -> Int32 {
         emitErr("symtune: \(error.description)")
         return error.exitCode
     } catch {
-        let report: ErrorReport
-        if FileHandle.standardOutput.isTty {
-            report = ErrorReport(
-                error: "\(type(of: error))",
-                message: String(reflecting: error),
-                localized: error.localizedDescription
-            )
-        } else {
-            report = ErrorReport(
-                error: "\(type(of: error))",
-                message: String(reflecting: error),
-                localized: error.localizedDescription
-            )
-        }
+        let report = ErrorReport(
+            error: "\(type(of: error))",
+            message: ProcessInfo.processInfo.environment["SYMTUNE_DEBUG"] != nil
+                ? String(reflecting: error)
+                : error.localizedDescription,
+            localized: error.localizedDescription
+        )
         if let json = try? JSONEncoder().encode(report),
            let string = String(data: json, encoding: .utf8) {
             emitErr("symtune: \(string)")
@@ -536,16 +553,6 @@ struct ErrorReport: Codable {
     let error: String
     let message: String
     let localized: String
-}
-
-extension FileHandle {
-    fileprivate var isTty: Bool {
-        isStandardOutput() && isatty(fileno(stdout)) == 1
-    }
-
-    fileprivate func isStandardOutput() -> Bool {
-        self === FileHandle.standardOutput
-    }
 }
 
 exit(runMain())
