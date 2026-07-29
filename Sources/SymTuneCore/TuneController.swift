@@ -109,6 +109,7 @@ public final class TuneController: Sendable {
         let smcWritable = smc.isAvailable
         return PermissionStatus(
             privilegedHelperInstalled: smcWritable,
+            historyWritable: historyService.isWritable,
             notes: [
                 smcWritable
                     ? "SMC write access available. Fan and charge-limit writes require root (run with sudo)."
@@ -440,8 +441,8 @@ public final class TuneController: Sendable {
         try profiles.removeRule(id: id)
     }
 
-    public func getHistory() -> [HistoryEvent] {
-        historyService.readEvents()
+    public func getHistory(limit: Int? = 100) -> [HistoryEvent] {
+        historyService.readEvents(limit: limit)
     }
 
     static var architecture: String {

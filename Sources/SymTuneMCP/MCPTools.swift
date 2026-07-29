@@ -321,10 +321,19 @@ struct GetStatusTool: MCPTool, @unchecked Sendable {
 struct GetHistoryTool: MCPTool, @unchecked Sendable {
     let name = "get_history"
     let description = "Retrieve the write operations history log."
-    let inputSchema: [String: Any] = [:]
+    var inputSchema: [String: Any] {
+        [
+            "type": "object",
+            "properties": [
+                "limit": ["type": "integer", "description": "Maximum number of events to return (default 100)."],
+            ],
+        ]
+    }
+    var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        controller.getHistory()
+        let limit = arguments["limit"] as? Int ?? 100
+        return controller.getHistory(limit: limit)
     }
 }
 

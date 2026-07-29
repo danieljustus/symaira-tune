@@ -71,7 +71,7 @@ public final class ProfileService: @unchecked Sendable {
 
     public init(dataDir: URL) {
         self.dataDir = dataDir
-        try? FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        try? StateFilePermissions.ensureDirectory(dataDir)
     }
 
     private func makeEncoder() -> JSONEncoder {
@@ -91,6 +91,7 @@ public final class ProfileService: @unchecked Sendable {
         let file = dataDir.appendingPathComponent("profile-\(profile.name).json")
         let data = try makeEncoder().encode(profile)
         try data.write(to: file, options: .atomic)
+        StateFilePermissions.applyFilePermissions(at: file)
     }
 
     public func loadProfile(name: String) throws -> TuneProfile {
@@ -130,6 +131,7 @@ public final class ProfileService: @unchecked Sendable {
         let file = dataDir.appendingPathComponent("rules.json")
         let data = try makeEncoder().encode(rules)
         try data.write(to: file, options: .atomic)
+        StateFilePermissions.applyFilePermissions(at: file)
     }
 
     public func loadRules() -> [TuneRule] {
