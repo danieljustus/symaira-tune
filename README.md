@@ -61,6 +61,7 @@ symtune sensors                       # thermal pressure + temps/fan RPM via App
 symtune battery                       # charge %, cycles, capacity, health, condition (JSON)
 symtune displays                      # displays + EDR headroom / extended-brightness capability
 symtune permissions                   # permission & SMC write status
+symtune metrics                      # system metrics: CPU, memory, disk, network (JSON)
 symtune awake [--display] [--seconds N]   # prevent idle sleep (like caffeinate)
 symtune brightness get                # read built-in display brightness (0.0–1.0)
 symtune brightness set <0.0-1.0>      # built-in display brightness
@@ -115,7 +116,7 @@ OpenCode, …). Example fragment:
 ```
 
 Tools exposed: `get_capabilities`, `get_sensors`, `get_battery`, `list_displays`,
-`keep_awake`, `get_brightness`, `set_brightness`, `set_extended_brightness`,
+`get_system_metrics`, `keep_awake`, `get_brightness`, `set_brightness`, `set_extended_brightness`,
 `set_warmth`, `reset_warmth`, `set_dim`, `reset_dim`, `set_fan`,
 `set_charge_limit`, `clear_charge_limit`, `restore`, `save_profile`,
 `load_profile`, `list_profiles`, `delete_profile`, `get_status`, `get_history`.

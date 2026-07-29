@@ -17,6 +17,7 @@ READ COMMANDS
   battery                Battery health: charge %, cycles, capacity, condition (JSON).
   displays               Displays with EDR headroom / extended-brightness capability (JSON).
   permissions            Permission & SMC write status (JSON).
+  metrics                System metrics: CPU, memory, disk, network (JSON).
 
 POWER
   awake [--display] [--seconds N]
@@ -398,6 +399,20 @@ func runHistory(_ args: [String], controller: TuneController) throws {
     }
 }
 
+func runMetrics(_ args: [String], controller: TuneController) throws {
+    if args.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emit("Usage: symtune metrics")
+        emit("")
+        emit("Print system metrics: CPU utilization, memory pressure, disk usage,")
+        emit("and network throughput. All values are read-only snapshots.")
+        return
+    }
+    for arg in args {
+        throw TuneError.usage("metrics: unexpected argument '\(arg)'")
+    }
+    try emitJSON(controller.metricsReport())
+}
+
 // MARK: - Write command framework (driven by WriteCommand.all)
 
 /// Lookup table from CLI prefix (e.g. "brightness set") to WriteCommand descriptor.
@@ -442,6 +457,8 @@ private func dispatchCommand(_ command: String, rest: [String], controller: Tune
         try emitJSON(controller.displaysReport())
     case "permissions":
         try emitJSON(controller.permissions())
+    case "metrics":
+        try runMetrics(rest, controller: controller)
     case "awake":
         try runAwake(rest, controller: controller)
     case "brightness":

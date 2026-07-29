@@ -47,6 +47,17 @@ struct ListDisplaysTool: MCPTool, @unchecked Sendable {
     }
 }
 
+struct MetricsTool: MCPTool, @unchecked Sendable {
+    let name = "get_system_metrics"
+    let description = "Read system metrics: CPU utilization, memory pressure, disk usage, and network throughput."
+    let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
+
+    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
+        controller.metricsReport()
+    }
+}
+
 // MARK: - Keep-awake (session-level)
 
 struct KeepAwakeTool: MCPTool, @unchecked Sendable {
