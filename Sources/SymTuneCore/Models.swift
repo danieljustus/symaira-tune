@@ -34,7 +34,7 @@ public struct FanReading: Codable, Sendable, Equatable {
     }
 }
 
-public struct SensorReport: Codable, Sendable {
+public struct SensorReport: Codable, Sendable, Equatable {
     /// `nominal` | `fair` | `serious` | `critical` | `unknown`
     public let thermalPressure: String
     public let smcSupported: Bool
@@ -45,7 +45,7 @@ public struct SensorReport: Codable, Sendable {
 
 // MARK: - Battery
 
-public struct BatteryReport: Codable, Sendable {
+public struct BatteryReport: Codable, Sendable, Equatable {
     public let present: Bool
     public let charging: Bool?
     public let externalConnected: Bool?
@@ -64,7 +64,7 @@ public struct BatteryReport: Codable, Sendable {
 
 // MARK: - Displays
 
-public struct DisplayInfo: Codable, Sendable {
+public struct DisplayInfo: Codable, Sendable, Equatable {
     public let name: String
     public let displayID: UInt32
     public let isBuiltin: Bool?
@@ -76,7 +76,7 @@ public struct DisplayInfo: Codable, Sendable {
     public let backingScaleFactor: Double
 }
 
-public struct DisplaysReport: Codable, Sendable {
+public struct DisplaysReport: Codable, Sendable, Equatable {
     public let displays: [DisplayInfo]
     public let notes: [String]
 }
@@ -276,12 +276,12 @@ public struct HistoryEvent: Codable, Sendable, Equatable {
 
 // MARK: - System Metrics
 
-public struct CPUReport: Codable, Sendable {
+public struct CPUReport: Codable, Sendable, Equatable {
     public let totalUtilization: Double?
     public let perCoreUtilization: [Double]
 }
 
-public struct MemoryReport: Codable, Sendable {
+public struct MemoryReport: Codable, Sendable, Equatable {
     public let usedBytes: UInt64?
     public let freeBytes: UInt64?
     public let wiredBytes: UInt64?
@@ -289,13 +289,13 @@ public struct MemoryReport: Codable, Sendable {
     public let pressure: String?
 }
 
-public struct DiskReport: Codable, Sendable {
+public struct DiskReport: Codable, Sendable, Equatable {
     public let capacityBytes: UInt64
     public let usedBytes: UInt64
     public let freeBytes: UInt64
 }
 
-public struct NetworkInterfaceReport: Codable, Sendable {
+public struct NetworkInterfaceReport: Codable, Sendable, Equatable {
     public let name: String
     public let bytesIn: UInt64
     public let bytesOut: UInt64
@@ -303,14 +303,14 @@ public struct NetworkInterfaceReport: Codable, Sendable {
     public let bytesOutPerSecond: Double?
 }
 
-public struct NetworkReport: Codable, Sendable {
+public struct NetworkReport: Codable, Sendable, Equatable {
     public let interfaces: [NetworkInterfaceReport]
     public let aggregateBytesIn: UInt64
     public let aggregateBytesOut: UInt64
     public let aggregateBytesInPerSecond: Double?
     public let aggregateBytesOutPerSecond: Double?
 }
-public struct SystemMetricsReport: Codable, Sendable {
+public struct SystemMetricsReport: Codable, Sendable, Equatable {
     public let cpu: CPUReport
     public let memory: MemoryReport
     public let disk: DiskReport?

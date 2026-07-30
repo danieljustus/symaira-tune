@@ -129,10 +129,23 @@ public final class MetricsRingBuffer: @unchecked Sendable, Codable {
 
     /// The minimum and maximum values (across value samples only).
     /// Returns `nil` when there are no value samples.
+    ///
+    /// Computed in a single pass over the storage — the previous version built
+    /// two intermediate arrays and then scanned twice more, which is wasteful
+    /// on a path the status UI hits for every metric on every refresh.
     public var currentMinMax: (min: Double, max: Double)? {
-        let vals = valueSamples.compactMap(\.value)
-        guard let mn = vals.min(), let mx = vals.max() else { return nil }
-        return (mn, mx)
+        lock.lock()
+        defer { lock.unlock() }
+        var mn = Double.infinity
+        var mx = -Double.infinity
+        var found = false
+        for sample in storage {
+            guard let value = sample.value else { continue }
+            found = true
+            if value < mn { mn = value }
+            if value > mx { mx = value }
+        }
+        return found ? (mn, mx) : nil
     }
 
     /// The time span covered by stored samples, from earliest to latest timestamp.

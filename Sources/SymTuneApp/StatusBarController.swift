@@ -1,4 +1,5 @@
 @preconcurrency import AppKit
+import Combine
 import SymTuneCore
 import SwiftUI
 import SymairaUpdateCheck
@@ -8,20 +9,40 @@ import SymairaUpdateCheck
 /// Clicking the status icon displays the custom SwiftUI-based popover panel
 /// containing controls and system readouts.
 ///
-/// When metrics are enabled in Preferences, the status item displays live
-/// system metrics (CPU, memory, disk, network) that update on the configured
-/// interval. When no metrics are selected or all are unavailable, the app
-/// falls back to the slider icon.
+/// Polling is owned by ``TuneViewModel``, which the status item and the popover
+/// share. The controller only reacts to text changes, and only touches the
+/// status button when the rendered text actually differs — rewriting the
+/// attributed title forces a menu-bar re-layout, so doing it on every tick was
+/// pure overhead.
 @MainActor
 final class StatusBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
     private let controller = TuneController()
     let preferencesManager: PreferencesManager
+    private let model: TuneViewModel
     private var preferencesWindow: NSWindow?
+    private var cancellables: Set<AnyCancellable> = []
 
-    /// Timer that drives the periodic metrics refresh in the menu bar.
-    private var metricsRefreshTimer: Timer?
+    /// Last text rendered into the status button, to skip redundant updates.
+    private var renderedTitle: String?
+    /// Whether the button currently shows the icon fallback.
+    private var showingIconFallback = false
+
+    /// Cached attributes — building these per refresh allocated for nothing.
+    private static let titleAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+        .foregroundColor: NSColor.labelColor,
+    ]
+    private static let badgeAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 10, weight: .bold),
+        .baselineOffset: 1.0,
+        .foregroundColor: NSColor.systemYellow,
+    ]
+    private static let iconBadgeAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 9, weight: .bold),
+        .baselineOffset: 8.0,
+    ]
 
     /// Auto-update preference store for toggling check-on-launch behaviour.
     let autoPrefs = UserDefaultsAutoUpdatePreferenceStore(keyPrefix: "com.symaira.symtune")
@@ -35,13 +56,23 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        self.preferencesManager = PreferencesManager(config: TuneConfig())
+        let preferences = PreferencesManager(config: TuneConfig())
+        self.preferencesManager = preferences
+        self.model = TuneViewModel(controller: controller, preferences: preferences)
         super.init()
         configureButton()
         setupPopover()
+        observePreferences()
+        model.onStatusItemTextChanged = { [weak self] text in
+            self?.renderStatusItem(text: text)
+        }
+        model.start()
         checkForUpdatesOnLaunch()
-        startMetricsRefresh()
         registerSleepWakeNotifications()
+    }
+
+    deinit {
+        MainActor.assumeIsolated { model.stop() }
     }
 
     // MARK: - Update checking
@@ -49,193 +80,71 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private func checkForUpdatesOnLaunch() {
         Task {
             await updateChecker.checkOnLaunchIfEnabled()
-            await MainActor.run { refreshMetricsDisplay() }
+            renderStatusItem(text: model.statusItemText, force: true)
         }
     }
 
-    // MARK: - Metrics display
+    // MARK: - Preferences
 
-    /// Start or restart the metrics refresh timer at the appropriate interval.
-    private func startMetricsRefresh() {
-        metricsRefreshTimer?.invalidate()
-        let interval = effectiveRefreshInterval()
-        metricsRefreshTimer = Timer.scheduledTimer(
-            withTimeInterval: interval,
-            repeats: true
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.refreshMetricsDisplay()
+    /// Re-sync the history buffers when the user changes which metrics are on.
+    private func observePreferences() {
+        preferencesManager.$enabledMetrics
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.model.syncEnabledMetrics() }
             }
-        }
-        // Fire immediately so the menu bar is never stale on launch.
-        refreshMetricsDisplay()
+            .store(in: &cancellables)
     }
 
-    /// Return the effective refresh interval: fast when the popover is open,
-    /// slow when it is closed to conserve CPU.
-    private func effectiveRefreshInterval() -> TimeInterval {
-        if popover.isShown {
-            let configured = preferencesManager.metricsRefreshInterval
-            return max(configured, TuneConfig.minimumRefreshInterval)
-        }
-        return 10.0
-    }
+    // MARK: - Status item rendering
 
-    /// Read current metrics from the controller and render them into the status
-    /// item button's attributed title. Falls back to the app icon when no
-    /// visible metrics are selected or all are unavailable.
-    private func refreshMetricsDisplay() {
+    /// Render `text` into the status button. Skips the work when nothing
+    /// changed, which is the common case between refreshes.
+    private func renderStatusItem(text: String, force: Bool = false) {
         guard let button = statusItem.button else { return }
+        let updateAvailable = { if case .available = updateChecker.status { return true } else { return false } }()
 
-        let report = controller.metricsReport()
-        // Feed the rolling history buffer for sparkline rendering
-        controller.recordMetricsHistory(report)
+        guard force || text != renderedTitle else { return }
+        renderedTitle = text
 
-        let ordered = orderedVisibleMetrics()
-        let available = ordered.filter { metricHasData($0, report: report) }
-
-        if available.isEmpty {
-            renderIconFallback(button: button)
+        guard !text.isEmpty else {
+            renderIconFallback(button: button, updateAvailable: updateAvailable)
             return
         }
 
-        // Metrics mode: hide the icon image, show text
-        button.image = nil
-
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        let color = NSColor.labelColor
-
-        let text = formatMetrics(report: report, identifiers: available)
-        let attributed = NSMutableAttributedString(string: text, attributes: [
-            .font: font,
-            .foregroundColor: color,
-        ])
-
-        // Append update-available badge if needed
-        if case .available = updateChecker.status {
-            attributed.append(NSAttributedString(
-                string: " \u{26A0}\u{FE0F}",
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: 10, weight: .bold),
-                    .baselineOffset: 1.0,
-                    .foregroundColor: NSColor.systemYellow,
-                ]
-            ))
+        if showingIconFallback || button.image != nil {
+            button.image = nil
+            showingIconFallback = false
         }
 
+        let attributed = NSMutableAttributedString(string: text, attributes: Self.titleAttributes)
+        if updateAvailable {
+            attributed.append(NSAttributedString(
+                string: " \u{26A0}\u{FE0F}",
+                attributes: Self.badgeAttributes
+            ))
+        }
         button.attributedTitle = attributed
     }
 
-    /// Render the fallback icon (and update badge) when no metrics are available.
-    private func renderIconFallback(button: NSStatusBarButton) {
-        // Restore the icon image
-        if let image = NSImage(
-            systemSymbolName: "slider.horizontal.3",
-            accessibilityDescription: "SymairaTune"
-        ) {
-            image.isTemplate = true
-            button.image = image
-        } else {
-            button.title = "ST"
-        }
-
-        // Show update badge if available
-        if case .available = updateChecker.status {
-            button.attributedTitle = NSAttributedString(
-                string: "\u{26A0}\u{FE0F}",
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: 9, weight: .bold),
-                    .baselineOffset: 8.0,
-                ]
-            )
-        } else {
-            button.attributedTitle = NSAttributedString(string: "")
-        }
-    }
-
-    /// Return the ordered list of visible metric identifiers.
-    /// Falls back to CPU + Memory when nothing is configured.
-    private func orderedVisibleMetrics() -> [MetricIdentifier] {
-        let order = preferencesManager.metricOrder
-        let visible = preferencesManager.visibleMetrics
-        guard !visible.isEmpty, !order.isEmpty else {
-            return [.cpu, .memory]
-        }
-        return order.filter { visible.contains($0) }
-    }
-
-    /// Check whether a metric identifier has usable data in the report.
-    private func metricHasData(
-        _ id: MetricIdentifier,
-        report: SystemMetricsReport
-    ) -> Bool {
-        switch id {
-        case .cpu: return report.cpu.totalUtilization != nil
-        case .memory: return report.memory.usedBytes != nil
-        case .disk: return report.disk != nil
-        case .network:
-            return report.network.aggregateBytesInPerSecond != nil
-                || report.network.aggregateBytesOutPerSecond != nil
-        default: return false
-        }
-    }
-
-    /// Format a list of metrics into a compact single-line string for the menu bar.
-    private func formatMetrics(
-        report: SystemMetricsReport,
-        identifiers: [MetricIdentifier]
-    ) -> String {
-        var parts: [String] = []
-        for id in identifiers {
-            switch id {
-            case .cpu:
-                if let util = report.cpu.totalUtilization {
-                    parts.append("CPU \(String(format: "%2d%%", Int(util * 100)))")
-                }
-            case .memory:
-                if let used = report.memory.usedBytes {
-                    parts.append("RAM \(formatMemBytes(used))")
-                }
-            case .disk:
-                if let d = report.disk {
-                    let gb = Double(d.usedBytes) / 1_073_741_824.0
-                    parts.append(String(format: "💾%.0fG", gb))
-                }
-            case .network:
-                let down = report.network.aggregateBytesInPerSecond
-                let up = report.network.aggregateBytesOutPerSecond
-                if down != nil || up != nil {
-                    var s = ""
-                    if let d = down { s += "↓\(formatNetRate(d))" }
-                    if let u = up {
-                        if !s.isEmpty { s += " " }
-                        s += "↑\(formatNetRate(u))"
-                    }
-                    parts.append(s)
-                }
-            default: break
+    /// Render the fallback icon (and update badge) when no metrics are visible.
+    private func renderIconFallback(button: NSStatusBarButton, updateAvailable: Bool) {
+        if !showingIconFallback {
+            if let image = NSImage(
+                systemSymbolName: "slider.horizontal.3",
+                accessibilityDescription: "SymairaTune"
+            ) {
+                image.isTemplate = true
+                button.image = image
+            } else {
+                button.title = "ST"
             }
+            showingIconFallback = true
         }
-        return parts.isEmpty ? "" : parts.joined(separator: "  ")
-    }
 
-    // MARK: - Value formatters
-
-    private func formatMemBytes(_ bytes: UInt64) -> String {
-        if bytes >= 1_073_741_824 {
-            return String(format: "%.1fG", Double(bytes) / 1_073_741_824.0)
-        }
-        return String(format: "%.0fM", Double(bytes) / 1_048_576.0)
-    }
-
-    private func formatNetRate(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond >= 1_048_576 {
-            return String(format: "%.1fM", bytesPerSecond / 1_048_576.0)
-        }
-        if bytesPerSecond >= 1_024 {
-            return String(format: "%.0fK", bytesPerSecond / 1_024.0)
-        }
-        return String(format: "%.0fB", bytesPerSecond)
+        button.attributedTitle = updateAvailable
+            ? NSAttributedString(string: "\u{26A0}\u{FE0F}", attributes: Self.iconBadgeAttributes)
+            : NSAttributedString(string: "")
     }
 
     // MARK: - Setup
@@ -249,6 +158,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         } else {
             button.title = "ST"
         }
+        showingIconFallback = true
         button.action = #selector(togglePopover)
         button.target = self
     }
@@ -256,6 +166,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private func setupPopover() {
         let hosting = NSHostingController(rootView: MainStatusView(
             controller: controller,
+            model: model,
             updateChecker: updateChecker,
             preferencesManager: preferencesManager,
             openPreferences: { [weak self] in self?.openPreferences() }
@@ -282,8 +193,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             // the popover is anchored can misplace the popover window.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
-            // Boost the refresh interval now that the popover is open
-            startMetricsRefresh()
+            // Switch the model to the interactive tier (faster cadence, full
+            // sensor set) now that the panel is on screen.
+            model.setDetailVisible(true)
         }
     }
 
@@ -313,8 +225,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     // MARK: - NSPopoverDelegate
 
     func popoverDidClose(_ notification: Notification) {
-        // Slow down the refresh timer when the popover closes
-        startMetricsRefresh()
+        // Drop back to the idle tier: metrics only, at a glanceable cadence.
+        model.setDetailVisible(false)
     }
 
     // MARK: - Sleep/Wake gap markers
@@ -330,6 +242,6 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func handleWake() {
-        controller.recordWakeGap()
+        model.recordWakeGap()
     }
 }

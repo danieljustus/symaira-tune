@@ -8,7 +8,11 @@ import SymTuneCore
 ///   fabricated straight line across sleep/wake or unavailable windows.
 /// - The Y-axis is auto-scaled to the value range, with optional `min`/`max`
 ///   annotations.
-struct SparklineView: View {
+///
+/// `Equatable`, so a redraw only happens when the samples actually change. The
+/// drawing pass also computes the range and the min/max annotations in the same
+/// walk over the samples instead of the four separate passes it used to do.
+struct SparklineView: View, Equatable {
     let samples: [MetricSample]
     let lineColor: Color
     let showAnnotations: Bool
@@ -33,75 +37,90 @@ struct SparklineView: View {
         Canvas { context, size in
             guard size.width > 0, size.height > 0 else { return }
 
-            let valueSamples = samples.enumerated().filter { $0.element.isValue }
-            guard !valueSamples.isEmpty else { return }
+            // Single pass for the extremes.
+            var minimum = Double.infinity
+            var maximum = -Double.infinity
+            var hasValues = false
+            for sample in samples {
+                guard let value = sample.value else { continue }
+                hasValues = true
+                if value < minimum { minimum = value }
+                if value > maximum { maximum = value }
+            }
+            guard hasValues else { return }
 
-            let range = valueRange ?? computeRange(from: valueSamples.map(\.element))
-            let yRange = range.upperBound - range.lowerBound
+            let range = valueRange ?? paddedRange(minimum: minimum, maximum: maximum)
+            let span = range.upperBound - range.lowerBound
+            let scale = span > 0 ? span : 1.0
+            let pad: Double = 2
+            let denominator = Double(max(1, samples.count - 1))
 
-            // Ensure we don't divide by zero
-            let scale = yRange > 0 ? yRange : 1.0
-            let pad: Double = 2 // padding from top/bottom edges
+            func point(index: Int, value: Double) -> CGPoint {
+                let x = size.width * Double(index) / denominator
+                let normalized = (value - range.lowerBound) / scale
+                let y = size.height - pad - (normalized * (size.height - 2 * pad))
+                return CGPoint(x: x, y: y)
+            }
 
-            // Build segments: each contiguous run of value samples is one path segment
-            var segments: [[(x: Double, y: Double)]] = []
-            var current: [(x: Double, y: Double)] = []
+            // Build the polyline and collect annotation dots in one walk.
+            // `pendingStart` holds a segment's first point until a second one
+            // arrives, so isolated samples between gaps draw nothing — matching
+            // the previous "segments of two or more points" rule.
+            var path = Path()
+            var pendingStart: CGPoint?
+            var inSegment = false
+            var annotations: [(point: CGPoint, isMaximum: Bool)] = []
 
-            for (globalIdx, sample) in samples.enumerated() {
+            for (index, sample) in samples.enumerated() {
                 guard let value = sample.value else {
-                    // Gap: finish current segment
-                    if !current.isEmpty {
-                        segments.append(current)
-                        current = []
-                    }
+                    pendingStart = nil
+                    inSegment = false
                     continue
                 }
 
-                let x = size.width * Double(globalIdx) / Double(max(1, samples.count - 1))
-                let normalizedY = (value - range.lowerBound) / scale
-                let y = size.height - pad - (normalizedY * (size.height - 2 * pad))
-                current.append((x: x, y: y))
-            }
-            if !current.isEmpty {
-                segments.append(current)
-            }
-
-            // Draw each segment as a polyline
-            for segment in segments where segment.count >= 2 {
-                var path = Path()
-                path.move(to: CGPoint(x: segment[0].x, y: segment[0].y))
-                for pt in segment.dropFirst() {
-                    path.addLine(to: CGPoint(x: pt.x, y: pt.y))
+                let position = point(index: index, value: value)
+                if let start = pendingStart {
+                    path.move(to: start)
+                    path.addLine(to: position)
+                    pendingStart = nil
+                    inSegment = true
+                } else if inSegment {
+                    path.addLine(to: position)
+                } else {
+                    pendingStart = position
                 }
-                context.stroke(path, with: .color(lineColor), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
+
+                if showAnnotations, value == minimum || value == maximum {
+                    annotations.append((position, value == maximum))
+                }
             }
 
-            // Optionally draw min/max dots
-            if showAnnotations, let globalMin = valueSamples.map({ $0.element.value! }).min(),
-               let globalMax = valueSamples.map({ $0.element.value! }).max() {
-                for (globalIdx, sample) in samples.enumerated() {
-                    guard let value = sample.value else { continue }
-                    let x = size.width * Double(globalIdx) / Double(max(1, samples.count - 1))
-                    let normalizedY = (value - range.lowerBound) / scale
-                    let y = size.height - pad - (normalizedY * (size.height - 2 * pad))
+            context.stroke(
+                path,
+                with: .color(lineColor),
+                style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
+            )
 
-                    if value == globalMin || value == globalMax {
-                        let dot = Path(ellipseIn: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3))
-                        let color: Color = value == globalMax ? SymairaColors.success : SymairaColors.warning
-                        context.fill(dot, with: .color(color))
-                    }
-                }
+            for annotation in annotations {
+                let dot = Path(ellipseIn: CGRect(
+                    x: annotation.point.x - 1.5,
+                    y: annotation.point.y - 1.5,
+                    width: 3,
+                    height: 3
+                ))
+                context.fill(
+                    dot,
+                    with: .color(annotation.isMaximum ? SymairaColors.success : SymairaColors.warning)
+                )
             }
         }
         .frame(height: 22)
     }
 
-    private func computeRange(from samples: [MetricSample]) -> ClosedRange<Double> {
-        let values = samples.compactMap(\.value)
-        guard let mn = values.min(), let mx = values.max() else { return 0...1 }
-        if mn == mx { return mn...(mn + 1) }
-        // Add 10% padding above/below for visual breathing room
-        let pad = (mx - mn) * 0.1
-        return (mn - pad)...(mx + pad)
+    /// Add 10% padding above/below for visual breathing room.
+    private func paddedRange(minimum: Double, maximum: Double) -> ClosedRange<Double> {
+        if minimum == maximum { return minimum...(minimum + 1) }
+        let pad = (maximum - minimum) * 0.1
+        return (minimum - pad)...(maximum + pad)
     }
 }

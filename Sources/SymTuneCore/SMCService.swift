@@ -221,6 +221,13 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
     public let handle: io_connect_t
     public let isOpen: Bool
 
+    /// Cached `READ_KEYINFO` results. A key's type and size are fixed by the
+    /// SMC firmware, so the info round-trip only has to happen once per key.
+    /// A cached `nil` records a key this Mac does not implement — repeat reads
+    /// of it then cost no IOKit call at all instead of one per poll.
+    private var keyInfoCache: [String: SMCParamBlock?] = [:]
+    private let keyInfoLock = NSLock()
+
     public init() {
         var openedHandle: io_connect_t = IO_OBJECT_NULL
         var opened = false
@@ -256,28 +263,45 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
         }
     }
 
+    /// Fetch a key's `READ_KEYINFO` block, using the cache when possible.
+    /// Returns `nil` for keys this Mac does not implement.
+    private func keyInfo(for key: String) -> SMCParamBlock? {
+        keyInfoLock.lock()
+        if let cached = keyInfoCache[key] {
+            keyInfoLock.unlock()
+            return cached
+        }
+        keyInfoLock.unlock()
+
+        var input = SMCParamBlock()
+        input.key = smcEncodeKey(key)
+        input.data8 = 9 // kSMCReadKeyInfo
+
+        var output = SMCParamBlock()
+        let ok = smcRawCall(handle: handle, input: &input, output: &output)
+            && output.result == 0
+            && output.keyInfoDataSize > 0
+            && output.keyInfoDataSize <= 32
+        let resolved: SMCParamBlock? = ok ? output : nil
+
+        keyInfoLock.lock()
+        keyInfoCache[key] = resolved
+        keyInfoLock.unlock()
+        return resolved
+    }
+
     public func readKeyRaw(_ key: String) -> (dataType: UInt32, bytes: [UInt8])? {
-        guard isOpen else { return nil }
+        guard isOpen, let info = keyInfo(for: key) else { return nil }
 
-        // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
-        var in1 = SMCParamBlock()
-        in1.key = smcEncodeKey(key)
-        in1.data8 = 9 // kSMCReadKeyInfo
+        let dataSize = info.keyInfoDataSize
+        let dataType = info.keyInfoDataType
 
-        var out1 = SMCParamBlock()
-        guard smcRawCall(handle: handle, input: &in1, output: &out1),
-              out1.result == 0
-        else { return nil }
-
-        let dataSize = out1.keyInfoDataSize
-        let dataType = out1.keyInfoDataType
-        guard dataSize > 0, dataSize <= 32 else { return nil }
-
-        // Step 2: READ_KEY — fetch the actual value.
+        // READ_KEY — fetch the actual value. The keyInfo round-trip that used
+        // to precede this on every call is served from the cache.
         var in2 = SMCParamBlock()
         in2.key = smcEncodeKey(key)
         in2.data8 = 5 // kSMCReadKey
-        in2.copyKeyInfo(from: out1)
+        in2.copyKeyInfo(from: info)
 
         var out2 = SMCParamBlock()
         guard smcRawCall(handle: handle, input: &in2, output: &out2),
@@ -288,20 +312,9 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
     }
 
     public func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
-        guard isOpen, bytes.count <= 32 else { return false }
-
-        // Step 1: READ_KEYINFO — ask the driver for the key's type and size.
-        var in1 = SMCParamBlock()
-        in1.key = smcEncodeKey(key)
-        in1.data8 = 9 // kSMCReadKeyInfo
-
-        var out1 = SMCParamBlock()
-        guard smcRawCall(handle: handle, input: &in1, output: &out1),
-              out1.result == 0
-        else { return false }
+        guard isOpen, bytes.count <= 32, let out1 = keyInfo(for: key) else { return false }
 
         let dataSize = out1.keyInfoDataSize
-        guard dataSize > 0, dataSize <= 32 else { return false }
 
         // Step 2: WRITE_KEY — write the value with keyInfo populated.
         var in2 = SMCParamBlock()
