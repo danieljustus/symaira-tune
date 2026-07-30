@@ -1,14 +1,17 @@
 import SwiftUI
 import SymTuneCore
+import SymairaUpdateCheck
 
 /// Preferences window for configuring which system metrics are monitored,
 /// shown in the menu bar, their order, refresh interval, and display units.
 struct PreferencesView: View {
     @ObservedObject var manager: PreferencesManager
+    let autoPrefs: UserDefaultsAutoUpdatePreferenceStore
 
     @State private var refreshText: String = ""
     @State private var applyMessage: String?
     @State private var applySuccess: Bool = false
+    @AppStorage("com.symaira.symtune.autoCheckEnabled") private var autoCheckEnabled = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +37,12 @@ struct PreferencesView: View {
 
                     // Units
                     unitsSection
+
+                    Divider()
+                        .background(SymairaColors.border)
+
+                    // Auto-update
+                    updateSection
                 }
                 .padding(20)
             }
@@ -301,6 +310,26 @@ struct PreferencesView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 120)
                 }
+            }
+        }
+    }
+
+    // MARK: - Auto-Update Section
+
+    private var updateSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("UPDATE CHECK")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(SymairaColors.textMuted)
+
+            HStack {
+                Toggle(isOn: $autoCheckEnabled) {
+                    Text("Automatisch nach Updates suchen")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(SymairaColors.textPrimary)
+                }
+                .toggleStyle(.switch)
+                Spacer()
             }
         }
     }

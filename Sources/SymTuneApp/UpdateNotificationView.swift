@@ -3,11 +3,28 @@ import SymairaUpdateCheck
 
 /// A compact card view displayed when a newer release is available.
 /// Shows the version tag, a Download button (opens the release URL),
-/// and a Skip button (persists via the store so the version is never
-/// re-prompted).
+/// an Install button (uses UpdateApplier for self-update when assets
+/// are available), and a Skip button.
 @MainActor
 struct UpdateNotificationView: View {
     @ObservedObject var updateChecker: AppUpdateChecker
+
+    @State private var isInstalling = false
+    @State private var installError: String?
+    @State private var installComplete = false
+
+    /// Progress callback passed to UpdateApplier. Tracks download progress.
+    private let progressHandler: UpdateProgressHandler = { _, _ in
+        // Progress tracking is handled by the caller via local state
+    }
+
+    /// Shared UpdateApplier for this app. Configured for macOS
+    /// (auto-detects current arch) with install-method detection disabled
+    /// for simplicity.
+    private let applier = UpdateApplier(
+        checkInstallMethod: false,
+        binaryName: "SymTuneApp"
+    )
 
     var body: some View {
         if case .available(let release) = updateChecker.status {
@@ -24,15 +41,28 @@ struct UpdateNotificationView: View {
                             .foregroundStyle(SymairaColors.textSecondary)
                     }
                     Spacer()
-                    Button("Download") {
-                        if let url = URL(string: release.htmlURL) {
-                            NSWorkspace.shared.open(url)
+
+                    // Install button — uses UpdateApplier when assets exist
+                    if release.assets.isEmpty {
+                        Button("Download") {
+                            if let url = URL(string: release.htmlURL) {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
+                        .font(.system(size: 10, weight: .bold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(SymairaColors.goldPrimary)
+                        .controlSize(.small)
+                    } else {
+                        Button("Jetzt installieren") {
+                            installUpdate(release: release)
+                        }
+                        .font(.system(size: 10, weight: .bold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(SymairaColors.goldPrimary)
+                        .controlSize(.small)
+                        .disabled(isInstalling)
                     }
-                    .font(.system(size: 10, weight: .bold))
-                    .buttonStyle(.borderedProminent)
-                    .tint(SymairaColors.goldPrimary)
-                    .controlSize(.small)
 
                     Button("Skip") {
                         updateChecker.skip(release)
@@ -40,6 +70,23 @@ struct UpdateNotificationView: View {
                     .font(.system(size: 10))
                     .buttonStyle(.plain)
                     .foregroundStyle(SymairaColors.textMuted)
+                }
+
+                // Installation progress / error
+                if isInstalling {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .controlSize(.small)
+                        Text("Installiere...")
+                            .font(.system(size: 9))
+                            .foregroundStyle(SymairaColors.textSecondary)
+                    }
+                }
+                if let error = installError {
+                    Text(error)
+                        .font(.system(size: 9))
+                        .foregroundStyle(SymairaColors.danger)
                 }
             }
             .padding(12)
@@ -49,6 +96,36 @@ struct UpdateNotificationView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(SymairaColors.borderStrong, lineWidth: 1)
             )
+        }
+    }
+
+    // MARK: - Install action
+
+    private func installUpdate(release: ReleaseInfo) {
+        isInstalling = true
+        installError = nil
+
+        Task {
+            do {
+                _ = try await applier.applyBundle(release: release)
+                // Installation succeeded — mark locally
+                installComplete = true
+                isInstalling = false
+
+                // Prompt user to relaunch
+                let alert = NSAlert()
+                alert.messageText = "Update installiert"
+                alert.informativeText = "SymTune \(release.tagName) wurde nach /Applications installiert. Bitte starte die App neu, um das Update zu aktivieren."
+                alert.addButton(withTitle: "Schließen")
+                alert.runModal()
+            } catch {
+                installError = "Installation fehlgeschlagen: \(error.localizedDescription)"
+                isInstalling = false
+                // Fall back to opening the download page
+                if let url = URL(string: release.htmlURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            }
         }
     }
 }
