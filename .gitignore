@@ -33,3 +33,4 @@ dist/
 .omo/notepads/
 coverage.html
 *.profraw
+.worktrees/
