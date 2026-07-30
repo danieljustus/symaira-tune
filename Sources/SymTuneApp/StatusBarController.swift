@@ -23,10 +23,14 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     /// Timer that drives the periodic metrics refresh in the menu bar.
     private var metricsRefreshTimer: Timer?
 
-    let updateChecker = AppUpdateChecker(
+    /// Auto-update preference store for toggling check-on-launch behaviour.
+    let autoPrefs = UserDefaultsAutoUpdatePreferenceStore(keyPrefix: "com.symaira.symtune")
+
+    lazy var updateChecker = AppUpdateChecker(
         checker: UpdateChecker(owner: "danieljustus", repo: "symaira-tune"),
         store: UserDefaultsSkippedVersionStore(key: "com.symaira.tune.updateSkippedTag"),
-        currentVersion: { TuneVersion.current }
+        currentVersion: { TuneVersion.current },
+        autoPrefs: autoPrefs
     )
 
     override init() {
@@ -44,7 +48,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     private func checkForUpdatesOnLaunch() {
         Task {
-            await updateChecker.checkForUpdate()
+            await updateChecker.checkOnLaunchIfEnabled()
             await MainActor.run { refreshMetricsDisplay() }
         }
     }
@@ -291,7 +295,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             return
         }
 
-        let prefsView = PreferencesView(manager: preferencesManager)
+        let prefsView = PreferencesView(manager: preferencesManager, autoPrefs: autoPrefs)
         let hosting = NSHostingController(rootView: prefsView)
 
         let window = NSWindow(contentViewController: hosting)
