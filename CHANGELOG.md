@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-30
+
+### Added
+- Auto-update check on app launch, gated by a settings toggle in Preferences. When an update is found, the menu-bar app now offers an in-app "Jetzt installieren" install button (`UpdateApplier.applyBundle()`) with download progress and error handling, falling back to the manual download link when no release assets are available (`#202`, `#208`).
+
+## [0.5.0] — 2026-07-29
+
+### Added
+- System metrics service for CPU, memory, disk, and network utilization, exposed via CLI `symtune metrics` and MCP `get_system_metrics` (`#195`, `#196`, `#201`, `#203`).
+- Preferences surface for metric selection, ordering, refresh interval and units (`#199`, `#204`).
+- Live menu bar metric readout with monospaced digits, coexisting with the update badge (`#197`, `#205`).
+- Rolling metric history with sparkline trends in the popover (`#200`, `#206`).
+
+### Fixed
+- Dim slider amount ↔ multiplier conversion fix (`#175`).
+
 ## [0.4.0] — 2026-07-29
 
 ### Added

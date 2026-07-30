@@ -62,7 +62,7 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Keep-awake sessions with timer-based expiry, duration presets, display-sleep toggle and remaining-time display (`#178`).
 - [x] Fan Control card gated on fan availability (`#176`, `#177`).
 
-## v0.5.0 — System metrics + live menu bar (current)
+## v0.5.0 — System metrics + live menu bar (shipped)
 
 - [x] System metrics service for CPU, memory, disk, and network utilization (`#195`, `#201`).
 - [x] CLI `symtune metrics` and MCP `get_system_metrics` tool (`#196`, `#203`).
@@ -71,6 +71,11 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Rolling metric history with sparkline trends in the popover (`#200`, `#206`).
 - [x] Dim slider amount ↔ multiplier conversion fix (`#175`).
 - [x] CI workflow split: fast PR gate on PRs, full suite on main + weekly schedule. CodeQL reduced to weekly.
+
+## v0.6.0 — Auto-update on launch (current)
+
+- [x] Auto-update check on app launch, gated by a settings toggle (`#202`, `#208`).
+- [x] In-app install button (`UpdateApplier.applyBundle()`) with download progress and error handling; falls back to the manual download link when no release assets are available (`#202`, `#208`).
 
 ## Future / cross-cutting
 
