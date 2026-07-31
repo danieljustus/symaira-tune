@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-31
+
+### Added
+- Configurable popover cards: choose which cards are visible in the menu-bar popover (system status, metric history, displays, display controls, keep-awake, fan control) via the preferences view; the selection is persisted in `~/.config/symtune/config.toml` under `[popover] cards` (`#218`).
+
+### Fixed
+- SMC availability reporting now reflects the truth per host, and the status popover no longer overflows on hosts without fans or SMC write access (`#217`).
+- Status panel no longer re-renders wholesale on every interaction; EDR overlay crash fix (`#209`).
+
+### Tests
+- Config-load test isolation, SMC param-block and transport tests, EDR overlay routing tests, app metric-formatting logic extracted to the core and covered (`#220`–`#223`).
+
 ## [0.6.0] — 2026-07-30
 
 ### Added

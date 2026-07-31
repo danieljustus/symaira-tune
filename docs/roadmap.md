@@ -72,7 +72,14 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Dim slider amount ↔ multiplier conversion fix (`#175`).
 - [x] CI workflow split: fast PR gate on PRs, full suite on main + weekly schedule. CodeQL reduced to weekly.
 
-## v0.6.0 — Auto-update on launch (current)
+## v0.7.0 — Configurable popover (current)
+
+- [x] Configurable popover cards: choose which cards are visible (system status, metric history, displays, display controls, keep-awake, fan control) in the preferences view; persisted in `config.toml` under `[popover] cards` (`#218`).
+- [x] SMC availability reporting fix: capability checks report the truth per host, and the status popover no longer overflows (`#217`).
+- [x] Status panel perf: stop wholesale re-rendering on every interaction; EDR overlay crash fix (`#209`).
+- [x] Test/coverage hardening: config-load test isolation, SMC transport + param-block tests, EDR overlay routing tests, app metric-formatting logic extracted to the core and covered (`#220`, `#221`, `#222`, `#223`).
+
+## v0.6.0 — Auto-update on launch
 
 - [x] Auto-update check on app launch, gated by a settings toggle (`#202`, `#208`).
 - [x] In-app install button (`UpdateApplier.applyBundle()`) with download progress and error handling; falls back to the manual download link when no release assets are available (`#202`, `#208`).
