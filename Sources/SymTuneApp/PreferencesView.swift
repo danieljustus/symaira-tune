@@ -1,6 +1,7 @@
 import SwiftUI
-import SymTuneCore
+import SymairaTheme
 import SymairaUpdateCheck
+import SymTuneCore
 
 /// Preferences window for configuring which system metrics are monitored,
 /// shown in the menu bar, their order, refresh interval, and display units.
@@ -72,10 +73,10 @@ struct PreferencesView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Preferences")
-                    .font(.system(size: 14, weight: .bold))
+                    .symairaText(.heading)
                     .foregroundStyle(SymairaColors.goldPrimary)
                 Text("System Metrics")
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
             }
             Spacer()
@@ -89,11 +90,11 @@ struct PreferencesView: View {
     private var metricsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("MONITORED METRICS")
-                .font(.system(size: 9, weight: .bold))
+                .symairaText(.sectionLabel)
                 .foregroundStyle(SymairaColors.textMuted)
 
             Text("Drag to reorder, toggle to enable/disable or show/hide in the menu bar.")
-                .font(.system(size: 10))
+                .symairaText(.caption)
                 .foregroundStyle(SymairaColors.textSecondary)
 
             // Metric rows
@@ -116,7 +117,7 @@ struct PreferencesView: View {
             VStack(spacing: 2) {
                 Button(action: { moveMetric(metric, up: true) }, label: {
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 9, weight: .bold))
+                        .symairaText(.caption)
                         .frame(width: 20, height: 14)
                 })
                 .buttonStyle(.plain)
@@ -126,7 +127,7 @@ struct PreferencesView: View {
 
                 Button(action: { moveMetric(metric, up: false) }, label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
+                        .symairaText(.caption)
                         .frame(width: 20, height: 14)
                 })
                 .buttonStyle(.plain)
@@ -137,7 +138,7 @@ struct PreferencesView: View {
 
             // Metric name
             Text(metric.displayName)
-                .font(.system(size: 12, weight: .medium))
+                .symairaText(.caption)
                 .foregroundStyle(isEnabled ? SymairaColors.textPrimary : SymairaColors.textMuted)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
@@ -158,7 +159,7 @@ struct PreferencesView: View {
                 }
             )) {
                 Text("Monitor")
-                    .font(.system(size: 10, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                     .lineLimit(1)
                     .fixedSize()
@@ -179,7 +180,7 @@ struct PreferencesView: View {
                 }
             )) {
                 Text("Show")
-                    .font(.system(size: 10, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                     .lineLimit(1)
                     .fixedSize()
@@ -219,11 +220,11 @@ struct PreferencesView: View {
     private var cardsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("POPOVER CARDS")
-                .font(.system(size: 9, weight: .bold))
+                .symairaText(.sectionLabel)
                 .foregroundStyle(SymairaColors.textMuted)
 
             Text("Choose which cards appear when you open the panel.")
-                .font(.system(size: 10))
+                .symairaText(.caption)
                 .foregroundStyle(SymairaColors.textSecondary)
 
             ForEach(PopoverCard.allCases, id: \.self) { card in
@@ -238,7 +239,7 @@ struct PreferencesView: View {
                     }
                 )) {
                     Text(card.displayName)
-                        .font(.system(size: 12, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textPrimary)
                         .lineLimit(1)
                         .fixedSize()
@@ -253,19 +254,19 @@ struct PreferencesView: View {
     private var refreshIntervalSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("REFRESH INTERVAL")
-                .font(.system(size: 9, weight: .bold))
+                .symairaText(.sectionLabel)
                 .foregroundStyle(SymairaColors.textMuted)
 
             HStack(spacing: 12) {
                 Text("Sample every")
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                     .lineLimit(1)
                     .fixedSize()
 
                 TextField("", text: $refreshText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .symairaText(.monoSmall)
                     .foregroundStyle(SymairaColors.textPrimary)
                     .frame(width: 50)
                     .padding(.horizontal, 8)
@@ -284,7 +285,7 @@ struct PreferencesView: View {
                     }
 
                 Text("seconds")
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                     .lineLimit(1)
                     .fixedSize()
@@ -298,7 +299,7 @@ struct PreferencesView: View {
                         refreshText = String(format: "%.0f", preset)
                     }, label: {
                         Text("\(Int(preset))s")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .symairaText(.monoSmall)
                             .foregroundStyle(
                                 abs(manager.metricsRefreshInterval - preset) < 0.01
                                     ? SymairaColors.bgDark
@@ -320,10 +321,10 @@ struct PreferencesView: View {
             // Minimum interval note
             HStack {
                 Image(systemName: "info.circle.fill")
-                    .font(.system(size: 9))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textMuted)
                 Text("Minimum refresh interval is \(String(format: "%.0f", TuneConfig.minimumRefreshInterval)) second")
-                    .font(.system(size: 9))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textMuted)
             }
         }
@@ -334,14 +335,14 @@ struct PreferencesView: View {
     private var unitsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("DISPLAY UNITS")
-                .font(.system(size: 9, weight: .bold))
+                .symairaText(.sectionLabel)
                 .foregroundStyle(SymairaColors.textMuted)
 
             HStack(spacing: 24) {
                 // Network unit
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Network Throughput")
-                        .font(.system(size: 10, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textMuted)
                         .lineLimit(1)
                         .fixedSize()
@@ -360,7 +361,7 @@ struct PreferencesView: View {
                 // Temperature unit
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Temperature")
-                        .font(.system(size: 10, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textMuted)
                         .lineLimit(1)
                         .fixedSize()
@@ -382,13 +383,13 @@ struct PreferencesView: View {
     private var updateSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("UPDATE CHECK")
-                .font(.system(size: 9, weight: .bold))
+                .symairaText(.sectionLabel)
                 .foregroundStyle(SymairaColors.textMuted)
 
             HStack {
                 Toggle(isOn: $autoCheckEnabled) {
                     Text("Check for updates automatically")
-                        .font(.system(size: 12, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textPrimary)
                         .lineLimit(1)
                         .fixedSize()
@@ -407,10 +408,10 @@ struct PreferencesView: View {
             if let message = applyMessage {
                 HStack(spacing: 4) {
                     Image(systemName: applySuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 10))
+                        .symairaText(.caption)
                         .foregroundStyle(applySuccess ? SymairaColors.success : SymairaColors.danger)
                     Text(message)
-                        .font(.system(size: 10, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(applySuccess ? SymairaColors.success : SymairaColors.danger)
                 }
             }
@@ -421,7 +422,7 @@ struct PreferencesView: View {
                 NSApp.keyWindow?.close()
             }, label: {
                 Text("Close")
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
@@ -436,7 +437,7 @@ struct PreferencesView: View {
 
             Button(action: applyPreferences) {
                 Text("Apply & Save")
-                    .font(.system(size: 11, weight: .bold))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.bgDark)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)

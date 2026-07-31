@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// The menu-bar rendering options for one metric, shown beneath its row in
@@ -43,7 +44,7 @@ struct MetricStyleRow: View {
             Spacer()
 
             Text(preview)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .symairaText(.monoSmall)
                 .foregroundStyle(SymairaColors.goldPrimary)
                 .lineLimit(1)
                 .fixedSize()
@@ -58,7 +59,7 @@ struct MetricStyleRow: View {
     ) -> some View where Value.AllCases: RandomAccessCollection {
         VStack(alignment: .leading, spacing: 2) {
             Text(title.uppercased())
-                .font(.system(size: 8, weight: .bold))
+                .symairaText(.sectionLabel)
                 .foregroundStyle(SymairaColors.textMuted)
                 .lineLimit(1)
                 .fixedSize()

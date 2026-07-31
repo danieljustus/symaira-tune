@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymairaUpdateCheck
 
 /// A compact card view displayed when a newer release is available.
@@ -37,10 +38,10 @@ struct UpdateNotificationView: View {
                         .foregroundStyle(SymairaColors.goldPrimary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Update Available")
-                            .font(.system(size: 11, weight: .bold))
+                            .symairaText(.subheading)
                             .foregroundStyle(SymairaColors.goldPrimary)
                         Text(release.tagName)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .symairaText(.monoSmall)
                             .foregroundStyle(SymairaColors.textSecondary)
                     }
                     Spacer()
@@ -52,7 +53,7 @@ struct UpdateNotificationView: View {
                                 NSWorkspace.shared.open(url)
                             }
                         }
-                        .font(.system(size: 10, weight: .bold))
+                        .symairaText(.caption, respectsForeground: false)
                         .buttonStyle(.borderedProminent)
                         .tint(SymairaColors.goldPrimary)
                         .controlSize(.small)
@@ -60,7 +61,7 @@ struct UpdateNotificationView: View {
                         Button("Jetzt installieren") {
                             installUpdate(release: release)
                         }
-                        .font(.system(size: 10, weight: .bold))
+                        .symairaText(.caption, respectsForeground: false)
                         .buttonStyle(.borderedProminent)
                         .tint(SymairaColors.goldPrimary)
                         .controlSize(.small)
@@ -70,7 +71,7 @@ struct UpdateNotificationView: View {
                     Button("Skip") {
                         updateChecker.skip(release)
                     }
-                    .font(.system(size: 10))
+                    .symairaText(.caption)
                     .buttonStyle(.plain)
                     .foregroundStyle(SymairaColors.textMuted)
                 }
@@ -82,13 +83,13 @@ struct UpdateNotificationView: View {
                             .scaleEffect(0.7)
                             .controlSize(.small)
                         Text("Installiere...")
-                            .font(.system(size: 9))
+                            .symairaText(.caption)
                             .foregroundStyle(SymairaColors.textSecondary)
                     }
                 }
                 if let error = installError {
                     Text(error)
-                        .font(.system(size: 9))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.danger)
                 }
             }

@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 // MARK: - Shared card chrome
@@ -50,10 +51,10 @@ struct StatusHeaderView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("SYMAIRA TUNE")
-                    .font(.system(size: 14, weight: .bold, design: .default))
+                    .symairaText(.heading)
                     .foregroundStyle(SymairaColors.goldPrimary)
                 Text("v\(TuneVersion.current)")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .symairaText(.monoSmall)
                     .foregroundStyle(SymairaColors.textMuted)
             }
             Spacer()
@@ -72,7 +73,7 @@ struct StatusFooterView: View {
         HStack {
             Button(action: openPreferences) {
                 Text("Preferences\u{2026}")
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -91,7 +92,7 @@ struct StatusFooterView: View {
                 NSApp.terminate(nil)
             } label: {
                 Text("Quit")
-                    .font(.system(size: 11, weight: .bold))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.bgDark)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
@@ -118,7 +119,7 @@ struct SystemStatusCard: View, Equatable {
         VStack(spacing: CardMetrics.rowSpacing - 2) {
             HStack {
                 Text("SYSTEM STATUS")
-                    .font(.system(size: 9, weight: .bold))
+                    .symairaText(.sectionLabel)
                     .foregroundStyle(SymairaColors.textMuted)
                 Spacer()
             }
@@ -128,10 +129,10 @@ struct SystemStatusCard: View, Equatable {
                     .foregroundStyle(SymairaColors.goldPrimary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(batteryState)
-                        .font(.system(size: 11, weight: .semibold))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textPrimary)
                     Text(batteryDetails)
-                        .font(.system(size: 9))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textSecondary)
                 }
                 Spacer()
@@ -144,15 +145,15 @@ struct SystemStatusCard: View, Equatable {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text("Thermal:")
-                            .font(.system(size: 11, weight: .semibold))
+                            .symairaText(.caption)
                             .foregroundStyle(SymairaColors.textPrimary)
                         Text(sensors?.thermalPressure ?? "nominal")
-                            .font(.system(size: 11, weight: .bold))
+                            .symairaText(.caption)
                             .foregroundStyle(thermalColor)
                     }
                     if let details = sensorDetails {
                         Text(details)
-                            .font(.system(size: 9))
+                            .symairaText(.caption)
                             .foregroundStyle(SymairaColors.textSecondary)
                     }
                 }
@@ -230,30 +231,30 @@ struct DisplaysCard: View, Equatable {
         VStack(spacing: CardMetrics.rowPadding + 3) {
             HStack {
                 Text("CONNECTED DISPLAYS")
-                    .font(.system(size: 9, weight: .bold))
+                    .symairaText(.sectionLabel)
                     .foregroundStyle(SymairaColors.textMuted)
                 Spacer()
             }
 
             if displays.isEmpty {
                 Text("No active displays found")
-                    .font(.system(size: 11))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
             } else {
                 ForEach(displays, id: \.displayID) { display in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(display.name)
-                                .font(.system(size: 11, weight: .semibold))
+                                .symairaText(.caption)
                                 .foregroundStyle(SymairaColors.textPrimary)
                             Text(display.isBuiltin == true ? "Built-in Display" : "External Display")
-                                .font(.system(size: 9))
+                                .symairaText(.caption)
                                 .foregroundStyle(SymairaColors.textSecondary)
                         }
                         Spacer()
                         if display.edrCapable {
                             Text("EDR \(String(format: "%.1f", display.maxEDRHeadroom))x")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .symairaText(.monoSmall)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(SymairaColors.goldPrimary.opacity(0.12))

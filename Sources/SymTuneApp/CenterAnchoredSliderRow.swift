@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// A slider anchored at its middle, where centre means "no change".
@@ -31,11 +32,11 @@ struct CenterAnchoredSliderRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label(title, systemImage: systemImage)
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textSecondary)
                 Spacer()
                 Text(format(displayed))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .symairaText(.monoSmall)
                     .foregroundStyle(
                         abs(displayed) < 0.005
                             ? SymairaColors.textMuted
@@ -67,19 +68,19 @@ struct CenterAnchoredSliderRow: View {
 
             HStack {
                 Text(minimumLabel)
-                    .font(.system(size: 8, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textMuted)
                     .lineLimit(1)
                     .fixedSize()
                 Spacer()
                 Text("Normal")
-                    .font(.system(size: 8, weight: .bold))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textMuted)
                     .lineLimit(1)
                     .fixedSize()
                 Spacer()
                 Text(maximumDisabledNote ?? maximumLabel)
-                    .font(.system(size: 8, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textMuted)
                     .lineLimit(1)
                     .fixedSize()

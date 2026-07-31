@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 
 /// A labelled slider row that owns its drag state.
 ///
@@ -37,11 +38,11 @@ struct TuneSliderRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label(title, systemImage: systemImage)
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(labelColor)
                 Spacer()
                 Text(format(displayedValue))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .symairaText(.monoSmall)
                     .foregroundStyle(readoutColor)
             }
             Slider(

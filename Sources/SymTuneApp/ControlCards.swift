@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 // MARK: - Display controls
@@ -109,7 +110,7 @@ struct FanControlCard: View {
             VStack(spacing: CardMetrics.rowSpacing) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .symairaText(.subheading)
                         .foregroundStyle(SymairaColors.textSecondary)
                     Spacer()
                     Toggle("", isOn: manualBinding)
@@ -128,7 +129,7 @@ struct FanControlCard: View {
 
                 if let fanError {
                     Text(fanError)
-                        .font(.system(size: 9, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.danger)
                         .padding(.top, 2)
                 }
@@ -142,12 +143,12 @@ struct FanControlCard: View {
             VStack(spacing: 6) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .symairaText(.subheading)
                         .foregroundStyle(SymairaColors.textSecondary)
                     Spacer()
                 }
                 Text("Not available on this Mac")
-                    .font(.system(size: 10, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(SymairaColors.textMuted)
             }
             .cardStyle()

@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// Keep Awake session card: status indicator, duration picker, display-sleep
@@ -25,7 +26,7 @@ struct KeepAwakeCard: View {
         VStack(spacing: CardMetrics.rowSpacing) {
             HStack {
                 Label("Keep Awake", systemImage: active ? "lock.fill" : "lock.open.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .symairaText(.subheading)
                     .foregroundStyle(active ? SymairaColors.goldPrimary : SymairaColors.textSecondary)
                 Spacer()
                 // Status indicator
@@ -33,11 +34,11 @@ struct KeepAwakeCard: View {
                     .fill(active ? SymairaColors.success : SymairaColors.danger.opacity(0.4))
                     .frame(width: 6, height: 6)
                 Text(active ? "Active" : "Inactive")
-                    .font(.system(size: 10, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(active ? SymairaColors.success : SymairaColors.textMuted)
                 if active, let remaining = remaining {
                     Text("· \(remaining)")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .symairaText(.monoSmall)
                         .foregroundStyle(SymairaColors.goldSecondary)
                 }
             }
@@ -56,7 +57,7 @@ struct KeepAwakeCard: View {
                 // Display sleep toggle
                 Toggle(isOn: $preventDisplaySleep) {
                     Text("Display")
-                        .font(.system(size: 9, weight: .medium))
+                        .symairaText(.caption)
                         .foregroundStyle(SymairaColors.textMuted)
                 }
                 .toggleStyle(.switch)
@@ -66,7 +67,7 @@ struct KeepAwakeCard: View {
             // Start / End button
             Button(action: onToggle) {
                 Text(active ? "End Session" : "Start Session")
-                    .font(.system(size: 11, weight: .bold))
+                    .symairaText(.caption)
                     .foregroundStyle(active ? SymairaColors.danger : SymairaColors.bgDark)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
