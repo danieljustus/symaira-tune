@@ -145,6 +145,9 @@ public struct TuneConfig: Equatable, Sendable {
     /// ``MetricStyle/default``, so an untouched config behaves as before.
     public let metricStyles: [MetricIdentifier: MetricStyle]
 
+    /// Which cards the status popover shows.
+    public let visibleCards: Set<PopoverCard>
+
     /// Documented minimum refresh interval (seconds).
     public static let minimumRefreshInterval: TimeInterval = 1.0
 
@@ -175,7 +178,8 @@ public struct TuneConfig: Equatable, Sendable {
         metricOrder: [MetricIdentifier] = MetricIdentifier.allCases,
         networkUnit: NetworkUnit = .bytesPerSecond,
         temperatureUnit: TemperatureUnit = .celsius,
-        metricStyles: [MetricIdentifier: MetricStyle] = [:]
+        metricStyles: [MetricIdentifier: MetricStyle] = [:],
+        visibleCards: Set<PopoverCard> = Set(PopoverCard.allCases)
     ) {
         self.extendedBrightnessMin = extendedBrightnessMin
         self.extendedBrightnessMax = extendedBrightnessMax
@@ -196,6 +200,7 @@ public struct TuneConfig: Equatable, Sendable {
         self.networkUnit = networkUnit
         self.temperatureUnit = temperatureUnit
         self.metricStyles = metricStyles
+        self.visibleCards = visibleCards
     }
 
     // MARK: - Loading
@@ -304,7 +309,8 @@ public struct TuneConfig: Equatable, Sendable {
             metricOrder: metricOrderVal("metrics", "order", MetricIdentifier.allCases),
             networkUnit: networkUnitVal("metrics", "network_unit", .bytesPerSecond),
             temperatureUnit: temperatureUnitVal("metrics", "temperature_unit", .celsius),
-            metricStyles: Self.parseMetricStyles(table: table, section: "metrics")
+            metricStyles: Self.parseMetricStyles(table: table, section: "metrics"),
+            visibleCards: Self.parseCardSet(table: table)
         )
 
         // Clamp user-defined bounds to the non-negotiable SafetyPolicy hard limits.
@@ -327,7 +333,8 @@ public struct TuneConfig: Equatable, Sendable {
             metricOrder: config.metricOrder,
             networkUnit: config.networkUnit,
             temperatureUnit: config.temperatureUnit,
-            metricStyles: config.metricStyles
+            metricStyles: config.metricStyles,
+            visibleCards: config.visibleCards
         )
 
         // Validate min < max for each range; fall back to defaults on inversion.
@@ -377,6 +384,17 @@ public struct TuneConfig: Equatable, Sendable {
         }
 
         return styles
+    }
+
+    /// Parse the popover card set. An explicit empty list is honoured — a user
+    /// who turned every card off gets an empty panel, not a silent reset.
+    static func parseCardSet(
+        table: TOMLTable, section: String = "popover", key: String = "cards",
+        fallback: [PopoverCard] = PopoverCard.allCases
+    ) -> Set<PopoverCard> {
+        guard let arr = table[section, key]?.stringArrayValue else { return Set(fallback) }
+        let known = Set(PopoverCard.allCases.map(\.rawValue))
+        return Set(arr.filter { known.contains($0) }.map(PopoverCard.init(rawValue:)))
     }
 
     private static func parseMetricSet(

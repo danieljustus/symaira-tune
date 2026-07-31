@@ -29,6 +29,12 @@ struct PreferencesView: View {
                     Divider()
                         .background(SymairaColors.border)
 
+                    // Which cards the popover shows
+                    cardsSection
+
+                    Divider()
+                        .background(SymairaColors.border)
+
                     // Refresh interval
                     refreshIntervalSection
 
@@ -206,6 +212,40 @@ struct PreferencesView: View {
         let newIndex = up ? max(0, index - 1) : min(manager.metricOrder.count - 1, index + 1)
         guard newIndex != index else { return }
         manager.metricOrder.move(fromOffsets: IndexSet(integer: index), toOffset: newIndex > index ? newIndex + 1 : newIndex)
+    }
+
+    // MARK: - Popover Cards
+
+    private var cardsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("POPOVER CARDS")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(SymairaColors.textMuted)
+
+            Text("Choose which cards appear when you open the panel.")
+                .font(.system(size: 10))
+                .foregroundStyle(SymairaColors.textSecondary)
+
+            ForEach(PopoverCard.allCases, id: \.self) { card in
+                Toggle(isOn: Binding(
+                    get: { manager.visibleCards.contains(card) },
+                    set: { newValue in
+                        if newValue {
+                            manager.visibleCards.insert(card)
+                        } else {
+                            manager.visibleCards.remove(card)
+                        }
+                    }
+                )) {
+                    Text(card.displayName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(SymairaColors.textPrimary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                .toggleStyle(.switch)
+            }
+        }
     }
 
     // MARK: - Refresh Interval

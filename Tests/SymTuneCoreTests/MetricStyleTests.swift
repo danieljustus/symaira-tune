@@ -182,3 +182,53 @@ final class MetricStyleTests: XCTestCase {
         XCTAssertNil(styles[.cpu], "no recognised axis means no style entry at all")
     }
 }
+
+final class PopoverCardTests: XCTestCase {
+
+    func testAllCardsAreVisibleByDefault() {
+        XCTAssertEqual(TuneConfig().visibleCards, Set(PopoverCard.allCases))
+    }
+
+    func testCardSetParsesFromThePopoverSection() {
+        let table = TOMLParser().parse("""
+        [popover]
+        cards = ["display_controls", "system_status"]
+        """)
+        XCTAssertEqual(
+            TuneConfig.parseCardSet(table: table),
+            [.displayControls, .systemStatus]
+        )
+    }
+
+    func testUnknownCardNamesAreIgnoredRatherThanFailingTheWholeList() {
+        let table = TOMLParser().parse("""
+        [popover]
+        cards = ["display_controls", "teleporter"]
+        """)
+        XCTAssertEqual(TuneConfig.parseCardSet(table: table), [.displayControls])
+    }
+
+    /// Turning every card off is a real choice, not a config error — it must
+    /// not silently spring back to "show everything".
+    func testAnExplicitlyEmptyListIsHonoured() {
+        let table = TOMLParser().parse("""
+        [popover]
+        cards = []
+        """)
+        XCTAssertEqual(TuneConfig.parseCardSet(table: table), [])
+    }
+
+    func testAMissingSectionFallsBackToEveryCard() {
+        XCTAssertEqual(
+            TuneConfig.parseCardSet(table: TOMLParser().parse("")),
+            Set(PopoverCard.allCases)
+        )
+    }
+
+    func testOnlyFanControlIsHiddenWhenItsHardwareIsMissing() {
+        XCTAssertTrue(PopoverCard.fanControl.hidesWhenHardwareMissing)
+        for card in PopoverCard.allCases where card != .fanControl {
+            XCTAssertFalse(card.hidesWhenHardwareMissing, "\(card.displayName)")
+        }
+    }
+}

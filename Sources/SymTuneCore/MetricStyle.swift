@@ -286,3 +286,47 @@ public enum MetricStyleFormatting {
         }
     }
 }
+
+// MARK: - Popover cards
+
+/// A card in the status popover that the user can turn off.
+///
+/// The header and footer are not listed: they are the panel's own chrome, not
+/// content, and hiding them would leave no way back to Preferences.
+public struct PopoverCard: RawRepresentable, Hashable, Codable, Sendable, CaseIterable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let displayControls = PopoverCard(rawValue: "display_controls")
+    public static let keepAwake = PopoverCard(rawValue: "keep_awake")
+    public static let fanControl = PopoverCard(rawValue: "fan_control")
+    public static let systemStatus = PopoverCard(rawValue: "system_status")
+    public static let metricsHistory = PopoverCard(rawValue: "metrics_history")
+    public static let displays = PopoverCard(rawValue: "displays")
+
+    public static var allCases: [PopoverCard] {
+        [.displayControls, .keepAwake, .fanControl, .systemStatus, .metricsHistory, .displays]
+    }
+
+    public var displayName: String {
+        switch self {
+        case .displayControls: return "Display Controls"
+        case .keepAwake: return "Keep Awake"
+        case .fanControl: return "Fan Control"
+        case .systemStatus: return "System Status"
+        case .metricsHistory: return "System Metrics"
+        case .displays: return "Connected Displays"
+        default: return rawValue
+        }
+    }
+
+    /// Whether this card is worth showing when the hardware cannot back it.
+    ///
+    /// Fan Control on a fanless Mac is a permanent "Not available on this Mac"
+    /// notice; it costs panel height every time the popover opens and tells the
+    /// user nothing new after the first look. Cards like this default to hidden
+    /// when their hardware is missing, and the user can still turn them on.
+    public var hidesWhenHardwareMissing: Bool {
+        self == .fanControl
+    }
+}
