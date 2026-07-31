@@ -53,7 +53,7 @@ struct PreferencesView: View {
             // Footer with apply button
             footerView
         }
-        .frame(width: 420, height: 480)
+        .frame(width: 470, height: 500)
         .background(SymairaColors.bgDark)
         .onAppear {
             refreshText = String(format: "%.1f", manager.metricsRefreshInterval)
@@ -133,7 +133,9 @@ struct PreferencesView: View {
             Text(metric.displayName)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isEnabled ? SymairaColors.textPrimary : SymairaColors.textMuted)
-                .frame(width: 60, alignment: .leading)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 60, alignment: .leading)
 
             Spacer()
 
@@ -152,6 +154,8 @@ struct PreferencesView: View {
                 Text("Monitor")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(SymairaColors.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .toggleStyle(.switch)
             .frame(width: 100)
@@ -171,6 +175,8 @@ struct PreferencesView: View {
                 Text("Show")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(SymairaColors.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .toggleStyle(.switch)
             .frame(width: 80)
@@ -205,6 +211,8 @@ struct PreferencesView: View {
                 Text("Sample every")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(SymairaColors.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
 
                 TextField("", text: $refreshText)
                     .textFieldStyle(.plain)
@@ -229,6 +237,8 @@ struct PreferencesView: View {
                 Text("seconds")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(SymairaColors.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
 
                 Spacer()
 
@@ -284,6 +294,8 @@ struct PreferencesView: View {
                     Text("Network Throughput")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(SymairaColors.textMuted)
+                        .lineLimit(1)
+                        .fixedSize()
 
                     Picker("", selection: $manager.networkUnit) {
                         ForEach(NetworkUnit.allCases, id: \.self) { unit in
@@ -301,6 +313,8 @@ struct PreferencesView: View {
                     Text("Temperature")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(SymairaColors.textMuted)
+                        .lineLimit(1)
+                        .fixedSize()
 
                     Picker("", selection: $manager.temperatureUnit) {
                         ForEach(TemperatureUnit.allCases, id: \.self) { unit in
@@ -324,9 +338,11 @@ struct PreferencesView: View {
 
             HStack {
                 Toggle(isOn: $autoCheckEnabled) {
-                    Text("Automatisch nach Updates suchen")
+                    Text("Check for updates automatically")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(SymairaColors.textPrimary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .toggleStyle(.switch)
                 Spacer()
