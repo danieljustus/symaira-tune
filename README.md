@@ -17,7 +17,7 @@ e.g. "this render is running hot, ramp the fans and dim the screen."
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
 (Apache-2.0).
 
-> **Status: v0.7.0 core + standalone menu-bar app.** The current release includes
+> **Status: v0.8.0 core + standalone menu-bar app.** The current release includes
 > fan control and battery charge limiting directly in the open core. SMC writes
 > require `sudo`. Homebrew installs both the app and the CLI from the generated
 > cask (`brew install danieljustus/tap/symtune`).

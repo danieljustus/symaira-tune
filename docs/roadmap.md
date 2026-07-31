@@ -72,7 +72,11 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Dim slider amount ↔ multiplier conversion fix (`#175`).
 - [x] CI workflow split: fast PR gate on PRs, full suite on main + weekly schedule. CodeQL reduced to weekly.
 
-## v0.7.0 — Configurable popover (current)
+## v0.8.0 — Design system alignment (current)
+
+- [x] Menu-bar app migrated onto the shared `SymairaTheme` design system from `symaira-appkit`: type scale (`symairaText` roles), color tokens, spacing/radius tokens, shared text field style (`#226`).
+
+## v0.7.0 — Configurable popover
 
 - [x] Configurable popover cards: choose which cards are visible (system status, metric history, displays, display controls, keep-awake, fan control) in the preferences view; persisted in `config.toml` under `[popover] cards` (`#218`).
 - [x] SMC availability reporting fix: capability checks report the truth per host, and the status popover no longer overflows (`#217`).

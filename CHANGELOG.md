@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-31
+
+### Added
+- Menu-bar app migrated onto the shared Symaira design system (`SymairaTheme` from `symaira-appkit`): type-scale text roles (`symairaText`), color/spacing/radius tokens, and the shared text field style (`#226`).
+
 ## [0.7.0] — 2026-07-31
 
 ### Added
