@@ -4,42 +4,24 @@ import SymTuneCore
 
 // MARK: - Shared card chrome
 
-/// The popover's density knobs, in one place.
-///
-/// The panel is a glance-and-adjust surface, not a document: every card is
-/// visible at once, so padding spent per card is paid eight times over in
-/// total height. Tune these rather than sprinkling literals through the cards.
-enum CardMetrics {
-    /// Padding inside a card, between its border and its content.
-    static let cardPadding: CGFloat = 10
-    /// Gap between two cards in the popover stack.
-    static let stackSpacing: CGFloat = 10
-    /// Padding between the popover edge and the card stack.
-    static let panelPadding: CGFloat = 12
-    /// Gap between rows inside one card.
-    static let rowSpacing: CGFloat = 8
-    /// Extra vertical breathing room around an individual readout row.
-    static let rowPadding: CGFloat = 2
-}
-
 /// The panel background shared by every card in the status popover.
 struct CardStyle: ViewModifier {
-    var borderColor: Color = SymairaColors.border
+    var borderColor: Color = SymairaTheme.borderGlass
 
     func body(content: Content) -> some View {
         content
-            .padding(CardMetrics.cardPadding)
-            .background(SymairaColors.bgPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(SymairaSpacing.medium)
+            .background(SymairaTheme.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.card))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: SymairaRadius.card)
                     .stroke(borderColor, lineWidth: 1)
             )
     }
 }
 
 extension View {
-    func cardStyle(borderColor: Color = SymairaColors.border) -> some View {
+    func cardStyle(borderColor: Color = SymairaTheme.borderGlass) -> some View {
         modifier(CardStyle(borderColor: borderColor))
     }
 }
@@ -52,17 +34,17 @@ struct StatusHeaderView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("SYMAIRA TUNE")
                     .symairaText(.heading)
-                    .foregroundStyle(SymairaColors.goldPrimary)
+                    .foregroundStyle(SymairaTheme.goldPrimary)
                 Text("v\(TuneVersion.current)")
                     .symairaText(.monoSmall)
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .foregroundStyle(SymairaTheme.textMuted)
             }
             Spacer()
             Circle()
-                .fill(SymairaColors.success.opacity(0.8))
+                .fill(SymairaTheme.positive.opacity(0.8))
                 .frame(width: 6, height: 6)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, SymairaSpacing.xSmall)
     }
 }
 
@@ -74,14 +56,14 @@ struct StatusFooterView: View {
             Button(action: openPreferences) {
                 Text("Preferences\u{2026}")
                     .symairaText(.caption)
-                    .foregroundStyle(SymairaColors.textSecondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(SymairaColors.bgPanel)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(SymairaTheme.textSecondary)
+                    .padding(.horizontal, SymairaSpacing.medium)
+                    .padding(.vertical, SymairaSpacing.small)
+                    .background(SymairaTheme.bgCard)
+                    .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.control))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(SymairaColors.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: SymairaRadius.control)
+                            .stroke(SymairaTheme.borderGlass, lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -93,15 +75,15 @@ struct StatusFooterView: View {
             } label: {
                 Text("Quit")
                     .symairaText(.caption)
-                    .foregroundStyle(SymairaColors.bgDark)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(SymairaColors.goldPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(SymairaTheme.bgDark)
+                    .padding(.horizontal, SymairaSpacing.large)
+                    .padding(.vertical, SymairaSpacing.small)
+                    .background(SymairaTheme.goldPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.control))
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 4)
+        .padding(.top, SymairaSpacing.xSmall)
     }
 }
 
@@ -116,37 +98,37 @@ struct SystemStatusCard: View, Equatable {
     let sensors: SensorReport?
 
     var body: some View {
-        VStack(spacing: CardMetrics.rowSpacing - 2) {
+        VStack(spacing: SymairaSpacing.small - 2) {
             HStack {
                 Text("SYSTEM STATUS")
                     .symairaText(.sectionLabel)
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .foregroundStyle(SymairaTheme.textMuted)
                 Spacer()
             }
 
             HStack(spacing: 8) {
                 Image(systemName: batteryIcon)
-                    .foregroundStyle(SymairaColors.goldPrimary)
+                    .foregroundStyle(SymairaTheme.goldPrimary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(batteryState)
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.textPrimary)
+                        .foregroundStyle(SymairaTheme.textPrimary)
                     Text(batteryDetails)
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.textSecondary)
+                        .foregroundStyle(SymairaTheme.textSecondary)
                 }
                 Spacer()
             }
-            .padding(.vertical, CardMetrics.rowPadding)
+            .padding(.vertical, SymairaSpacing.xSmall)
 
             HStack(spacing: 8) {
                 Image(systemName: "gauge.with.needle.fill")
-                    .foregroundStyle(SymairaColors.goldPrimary)
+                    .foregroundStyle(SymairaTheme.goldPrimary)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text("Thermal:")
                             .symairaText(.caption)
-                            .foregroundStyle(SymairaColors.textPrimary)
+                            .foregroundStyle(SymairaTheme.textPrimary)
                         Text(sensors?.thermalPressure ?? "nominal")
                             .symairaText(.caption)
                             .foregroundStyle(thermalColor)
@@ -154,12 +136,12 @@ struct SystemStatusCard: View, Equatable {
                     if let details = sensorDetails {
                         Text(details)
                             .symairaText(.caption)
-                            .foregroundStyle(SymairaColors.textSecondary)
+                            .foregroundStyle(SymairaTheme.textSecondary)
                     }
                 }
                 Spacer()
             }
-            .padding(.vertical, CardMetrics.rowPadding)
+            .padding(.vertical, SymairaSpacing.xSmall)
         }
         .cardStyle()
     }
@@ -193,9 +175,9 @@ struct SystemStatusCard: View, Equatable {
 
     private var thermalColor: Color {
         switch (sensors?.thermalPressure ?? "nominal").lowercased() {
-        case "nominal": return SymairaColors.success
-        case "fair": return SymairaColors.warning
-        default: return SymairaColors.danger
+        case "nominal": return SymairaTheme.positive
+        case "fair": return SymairaTheme.warning
+        default: return SymairaTheme.critical
         }
     }
 
@@ -228,41 +210,41 @@ struct DisplaysCard: View, Equatable {
     let displays: [DisplayInfo]
 
     var body: some View {
-        VStack(spacing: CardMetrics.rowPadding + 3) {
+        VStack(spacing: SymairaSpacing.xSmall + 1) {
             HStack {
                 Text("CONNECTED DISPLAYS")
                     .symairaText(.sectionLabel)
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .foregroundStyle(SymairaTheme.textMuted)
                 Spacer()
             }
 
             if displays.isEmpty {
                 Text("No active displays found")
                     .symairaText(.caption)
-                    .foregroundStyle(SymairaColors.textSecondary)
+                    .foregroundStyle(SymairaTheme.textSecondary)
             } else {
                 ForEach(displays, id: \.displayID) { display in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(display.name)
                                 .symairaText(.caption)
-                                .foregroundStyle(SymairaColors.textPrimary)
+                                .foregroundStyle(SymairaTheme.textPrimary)
                             Text(display.isBuiltin == true ? "Built-in Display" : "External Display")
                                 .symairaText(.caption)
-                                .foregroundStyle(SymairaColors.textSecondary)
+                                .foregroundStyle(SymairaTheme.textSecondary)
                         }
                         Spacer()
                         if display.edrCapable {
                             Text("EDR \(String(format: "%.1f", display.maxEDRHeadroom))x")
                                 .symairaText(.monoSmall)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(SymairaColors.goldPrimary.opacity(0.12))
-                                .foregroundStyle(SymairaColors.goldPrimary)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .padding(.horizontal, SymairaSpacing.small)
+                                .padding(.vertical, SymairaSpacing.xSmall)
+                                .background(SymairaTheme.goldPrimary.opacity(0.12))
+                                .foregroundStyle(SymairaTheme.goldPrimary)
+                                .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.control))
                         }
                     }
-                    .padding(.vertical, CardMetrics.rowPadding)
+                    .padding(.vertical, SymairaSpacing.xSmall)
                 }
             }
         }

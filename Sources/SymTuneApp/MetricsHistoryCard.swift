@@ -18,7 +18,7 @@ struct MetricsHistoryCard: View, Equatable {
                 HStack {
                     Text("SYSTEM METRICS")
                         .symairaText(.sectionLabel)
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .foregroundStyle(SymairaTheme.textMuted)
                     Spacer()
                 }
                 ForEach(rows) { row in
@@ -40,18 +40,18 @@ struct MetricsHistoryRow: View, Equatable {
             HStack {
                 Text(row.title)
                     .symairaText(.caption)
-                    .foregroundStyle(SymairaColors.textSecondary)
+                    .foregroundStyle(SymairaTheme.textSecondary)
                 Spacer()
                 Text(row.current)
                     .symairaText(.monoSmall)
-                    .foregroundStyle(SymairaColors.goldSecondary)
+                    .foregroundStyle(SymairaTheme.goldSecondary)
                 if row.samples.isEmpty {
                     Text("·")
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .foregroundStyle(SymairaTheme.textMuted)
                     Text("collecting…")
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .foregroundStyle(SymairaTheme.textMuted)
                 }
             }
 
@@ -62,14 +62,14 @@ struct MetricsHistoryRow: View, Equatable {
                 HStack {
                     Text("min \(row.minimum)")
                         .symairaText(.monoSmall)
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .foregroundStyle(SymairaTheme.textMuted)
                     Spacer()
                     Text("max \(row.maximum)")
                         .symairaText(.monoSmall)
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .foregroundStyle(SymairaTheme.textMuted)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, SymairaSpacing.xSmall)
     }
 }

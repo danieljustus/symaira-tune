@@ -1,5 +1,6 @@
 import SwiftUI
 import SymTuneCore
+import SymairaTheme
 import SymairaUpdateCheck
 
 /// The status popover.
@@ -46,18 +47,18 @@ struct MainStatusView: View {
         }
         .frame(width: 320)
         .frame(maxHeight: maxHeight)
-        .background(SymairaColors.bgDark)
+        .background(SymairaTheme.bgDark)
         .onAppear {
             keepAwakePreventDisplaySleep = model.keepAwake.preventDisplaySleep
         }
     }
 
     private var cards: some View {
-        VStack(spacing: CardMetrics.stackSpacing) {
+        VStack(spacing: SymairaSpacing.medium) {
             StatusHeaderView()
 
             Divider()
-                .background(SymairaColors.goldPrimary.opacity(0.15))
+                .background(SymairaTheme.goldPrimary.opacity(0.15))
 
             if shows(.displayControls) {
                 DisplayControlsCard(controller: controller, model: model)
@@ -100,7 +101,7 @@ struct MainStatusView: View {
 
             StatusFooterView(openPreferences: openPreferences)
         }
-        .padding(CardMetrics.panelPadding)
+        .padding(SymairaSpacing.medium)
         .frame(width: 320)
     }
 
@@ -143,22 +144,4 @@ struct MainStatusView: View {
         }
         model.refreshNow()
     }
-}
-
-// MARK: - Colors
-
-struct SymairaColors {
-    static let bgDark = Color(red: 13/255, green: 12/255, blue: 10/255)
-    static let bgPanel = Color(red: 18/255, green: 17/255, blue: 14/255)
-    static let bgCard = Color(red: 26/255, green: 24/255, blue: 20/255)
-    static let goldPrimary = Color(red: 229/255, green: 195/255, blue: 151/255)
-    static let goldSecondary = Color(red: 248/255, green: 230/255, blue: 205/255)
-    static let textPrimary = Color(red: 245/255, green: 244/255, blue: 240/255)
-    static let textSecondary = Color(red: 181/255, green: 174/255, blue: 165/255)
-    static let textMuted = Color(red: 110/255, green: 104/255, blue: 96/255)
-    static let border = Color(red: 229/255, green: 195/255, blue: 151/255).opacity(0.08)
-    static let borderStrong = Color(red: 229/255, green: 195/255, blue: 151/255).opacity(0.18)
-    static let success = Color(red: 16/255, green: 185/255, blue: 129/255)
-    static let warning = Color(red: 245/255, green: 158/255, blue: 11/255)
-    static let danger = Color(red: 239/255, green: 68/255, blue: 68/255)
 }

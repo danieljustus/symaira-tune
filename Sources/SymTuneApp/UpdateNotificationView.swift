@@ -35,14 +35,14 @@ struct UpdateNotificationView: View {
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .foregroundStyle(SymairaColors.goldPrimary)
+                        .foregroundStyle(SymairaTheme.goldPrimary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Update Available")
                             .symairaText(.subheading)
-                            .foregroundStyle(SymairaColors.goldPrimary)
+                            .foregroundStyle(SymairaTheme.goldPrimary)
                         Text(release.tagName)
                             .symairaText(.monoSmall)
-                            .foregroundStyle(SymairaColors.textSecondary)
+                            .foregroundStyle(SymairaTheme.textSecondary)
                     }
                     Spacer()
 
@@ -55,7 +55,7 @@ struct UpdateNotificationView: View {
                         }
                         .symairaText(.caption, respectsForeground: false)
                         .buttonStyle(.borderedProminent)
-                        .tint(SymairaColors.goldPrimary)
+                        .tint(SymairaTheme.goldPrimary)
                         .controlSize(.small)
                     } else {
                         Button("Jetzt installieren") {
@@ -63,7 +63,7 @@ struct UpdateNotificationView: View {
                         }
                         .symairaText(.caption, respectsForeground: false)
                         .buttonStyle(.borderedProminent)
-                        .tint(SymairaColors.goldPrimary)
+                        .tint(SymairaTheme.goldPrimary)
                         .controlSize(.small)
                         .disabled(isInstalling)
                     }
@@ -73,7 +73,7 @@ struct UpdateNotificationView: View {
                     }
                     .symairaText(.caption)
                     .buttonStyle(.plain)
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .foregroundStyle(SymairaTheme.textMuted)
                 }
 
                 // Installation progress / error
@@ -84,21 +84,21 @@ struct UpdateNotificationView: View {
                             .controlSize(.small)
                         Text("Installiere...")
                             .symairaText(.caption)
-                            .foregroundStyle(SymairaColors.textSecondary)
+                            .foregroundStyle(SymairaTheme.textSecondary)
                     }
                 }
                 if let error = installError {
                     Text(error)
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.danger)
+                        .foregroundStyle(SymairaTheme.critical)
                 }
             }
-            .padding(12)
-            .background(SymairaColors.bgPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(SymairaSpacing.medium)
+            .background(SymairaTheme.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.card))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(SymairaColors.borderStrong, lineWidth: 1)
+                RoundedRectangle(cornerRadius: SymairaRadius.card)
+                    .stroke(SymairaTheme.borderGlassHover, lineWidth: 1)
             )
         }
     }

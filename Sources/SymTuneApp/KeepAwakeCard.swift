@@ -23,23 +23,23 @@ struct KeepAwakeCard: View {
     let onToggle: () -> Void
 
     var body: some View {
-        VStack(spacing: CardMetrics.rowSpacing) {
+        VStack(spacing: SymairaSpacing.small) {
             HStack {
                 Label("Keep Awake", systemImage: active ? "lock.fill" : "lock.open.fill")
                     .symairaText(.subheading)
-                    .foregroundStyle(active ? SymairaColors.goldPrimary : SymairaColors.textSecondary)
+                    .foregroundStyle(active ? SymairaTheme.goldPrimary : SymairaTheme.textSecondary)
                 Spacer()
                 // Status indicator
                 Circle()
-                    .fill(active ? SymairaColors.success : SymairaColors.danger.opacity(0.4))
+                    .fill(active ? SymairaTheme.positive : SymairaTheme.critical.opacity(0.4))
                     .frame(width: 6, height: 6)
                 Text(active ? "Active" : "Inactive")
                     .symairaText(.caption)
-                    .foregroundStyle(active ? SymairaColors.success : SymairaColors.textMuted)
+                    .foregroundStyle(active ? SymairaTheme.positive : SymairaTheme.textMuted)
                 if active, let remaining = remaining {
                     Text("· \(remaining)")
                         .symairaText(.monoSmall)
-                        .foregroundStyle(SymairaColors.goldSecondary)
+                        .foregroundStyle(SymairaTheme.goldSecondary)
                 }
             }
 
@@ -58,7 +58,7 @@ struct KeepAwakeCard: View {
                 Toggle(isOn: $preventDisplaySleep) {
                     Text("Display")
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .foregroundStyle(SymairaTheme.textMuted)
                 }
                 .toggleStyle(.switch)
                 .disabled(!isInteractive)
@@ -68,18 +68,18 @@ struct KeepAwakeCard: View {
             Button(action: onToggle) {
                 Text(active ? "End Session" : "Start Session")
                     .symairaText(.caption)
-                    .foregroundStyle(active ? SymairaColors.danger : SymairaColors.bgDark)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(active ? SymairaColors.danger.opacity(0.15) : SymairaColors.goldPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(active ? SymairaTheme.critical : SymairaTheme.bgDark)
+                    .padding(.horizontal, SymairaSpacing.large)
+                    .padding(.vertical, SymairaSpacing.small)
+                    .background(active ? SymairaTheme.critical.opacity(0.15) : SymairaTheme.goldPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.control))
             }
             .buttonStyle(.plain)
         }
         .cardStyle(
             borderColor: active
-                ? SymairaColors.goldPrimary.opacity(0.3)
-                : SymairaColors.border
+                ? SymairaTheme.goldPrimary.opacity(0.3)
+                : SymairaTheme.borderGlass
         )
     }
 }

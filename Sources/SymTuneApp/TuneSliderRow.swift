@@ -27,11 +27,11 @@ struct TuneSliderRow: View {
     private var displayedValue: Double { localValue ?? value }
 
     private var labelColor: Color {
-        isEnabled ? SymairaColors.textSecondary : SymairaColors.textMuted
+        isEnabled ? SymairaTheme.textSecondary : SymairaTheme.textMuted
     }
 
     private var readoutColor: Color {
-        isEnabled ? SymairaColors.goldSecondary : SymairaColors.textMuted
+        isEnabled ? SymairaTheme.goldSecondary : SymairaTheme.textMuted
     }
 
     var body: some View {
@@ -57,7 +57,7 @@ struct TuneSliderRow: View {
                     onCommit(final)
                 }
             )
-            .tint(SymairaColors.goldPrimary)
+            .tint(SymairaTheme.goldPrimary)
             .disabled(!isEnabled)
         }
         .onChange(of: value) { _, _ in

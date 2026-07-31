@@ -45,11 +45,11 @@ struct MetricStyleRow: View {
 
             Text(preview)
                 .symairaText(.monoSmall)
-                .foregroundStyle(SymairaColors.goldPrimary)
+                .foregroundStyle(SymairaTheme.goldPrimary)
                 .lineLimit(1)
                 .fixedSize()
         }
-        .padding(.leading, 30)
+        .padding(.leading, SymairaSpacing.section)
     }
 
     private func stylePicker<Value: Hashable & CaseIterable>(
@@ -60,7 +60,7 @@ struct MetricStyleRow: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title.uppercased())
                 .symairaText(.sectionLabel)
-                .foregroundStyle(SymairaColors.textMuted)
+                .foregroundStyle(SymairaTheme.textMuted)
                 .lineLimit(1)
                 .fixedSize()
 

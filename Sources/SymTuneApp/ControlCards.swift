@@ -17,7 +17,7 @@ struct DisplayControlsCard: View {
     }
 
     var body: some View {
-        VStack(spacing: CardMetrics.rowSpacing) {
+        VStack(spacing: SymairaSpacing.small) {
             TuneSliderRow(
                 title: "Screen Brightness",
                 systemImage: "sun.max.fill",
@@ -107,11 +107,11 @@ struct FanControlCard: View {
 
     var body: some View {
         if hasFans {
-            VStack(spacing: CardMetrics.rowSpacing) {
+            VStack(spacing: SymairaSpacing.small) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
                         .symairaText(.subheading)
-                        .foregroundStyle(SymairaColors.textSecondary)
+                        .foregroundStyle(SymairaTheme.textSecondary)
                     Spacer()
                     Toggle("", isOn: manualBinding)
                         .toggleStyle(.switch)
@@ -130,8 +130,8 @@ struct FanControlCard: View {
                 if let fanError {
                     Text(fanError)
                         .symairaText(.caption)
-                        .foregroundStyle(SymairaColors.danger)
-                        .padding(.top, 2)
+                        .foregroundStyle(SymairaTheme.critical)
+                        .padding(.top, SymairaSpacing.xSmall)
                 }
             }
             .cardStyle()
@@ -144,12 +144,12 @@ struct FanControlCard: View {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
                         .symairaText(.subheading)
-                        .foregroundStyle(SymairaColors.textSecondary)
+                        .foregroundStyle(SymairaTheme.textSecondary)
                     Spacer()
                 }
                 Text("Not available on this Mac")
                     .symairaText(.caption)
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .foregroundStyle(SymairaTheme.textMuted)
             }
             .cardStyle()
         }
