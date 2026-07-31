@@ -1,66 +1,155 @@
 import XCTest
 @testable import SymTuneCore
 
-final class MockEDROverlayService: EDROverlayServiceProtocol, @unchecked Sendable {
-    var appliedHeadroom: [CGDirectDisplayID: Double] = [:]
-    var applyError: Error?
+/// Fake overlay that records routing without creating real NSWindows.
+private final class FakeEDROverlay: EDROverlay {
+    var removed = false
 
-    func applyExtendedBrightness(_ multiplier: Double, displayID: CGDirectDisplayID?) throws {
-        if let applyError { throw applyError }
-        let id = displayID ?? 1
-        appliedHeadroom[id] = multiplier
+    init(displayID: CGDirectDisplayID) {
+        super.init(displayID: displayID, screenFrame: .zero)
     }
 
-    func removeOverlay(for displayID: CGDirectDisplayID) {
-        appliedHeadroom.removeValue(forKey: displayID)
+    override func configure(screenFrame: NSRect) {
+        // No real window creation in tests.
     }
 
-    func removeAllOverlays() {
-        appliedHeadroom.removeAll()
-    }
-
-    func currentHeadroom(for displayID: CGDirectDisplayID) -> Double? {
-        appliedHeadroom[displayID]
-    }
-
-    func systemEDRHeadroom(for displayID: CGDirectDisplayID) -> Double? {
-        1.6
+    override func removeFromScreen() {
+        removed = true
     }
 }
 
-final class EDROverlayServiceProtocolTests: XCTestCase {
+final class EDROverlayServiceTests: XCTestCase {
 
-    func testMockEDROverlayServiceApplyAndRemove() throws {
-        let mock = MockEDROverlayService()
-        XCTAssertNil(mock.currentHeadroom(for: 1))
+    private let displayA: CGDirectDisplayID = 0x1000_0001
+    private let displayB: CGDirectDisplayID = 0x1000_0002
 
-        try mock.applyExtendedBrightness(1.3, displayID: 1)
-        XCTAssertEqual(mock.currentHeadroom(for: 1), 1.3)
-        XCTAssertEqual(mock.systemEDRHeadroom(for: 1), 1.6)
-
-        mock.removeOverlay(for: 1)
-        XCTAssertNil(mock.currentHeadroom(for: 1))
+    /// Service with a fake frame provider and a factory that returns fakes.
+    private func makeService(
+        frames: [CGDirectDisplayID: CGRect],
+        factory: @escaping (CGDirectDisplayID, CGRect) -> EDROverlay
+    ) -> EDROverlayService {
+        EDROverlayService(
+            screenFrameProvider: { frames[$0] },
+            overlayFactory: factory
+        )
     }
 
-    func testMockEDROverlayServiceRemoveAll() throws {
-        let mock = MockEDROverlayService()
-        try mock.applyExtendedBrightness(1.2, displayID: 1)
-        try mock.applyExtendedBrightness(1.5, displayID: 2)
-        XCTAssertEqual(mock.appliedHeadroom.count, 2)
-
-        mock.removeAllOverlays()
-        XCTAssertTrue(mock.appliedHeadroom.isEmpty)
+    private func fakeFactory() -> (EDROverlayService, () -> [FakeEDROverlay]) {
+        var created: [FakeEDROverlay] = []
+        let service = makeService(frames: [displayA: CGRect(x: 0, y: 0, width: 1920, height: 1080)]) { id, _ in
+            let overlay = FakeEDROverlay(displayID: id)
+            created.append(overlay)
+            return overlay
+        }
+        return (service, { created })
     }
 
-    func testMockEDROverlayServiceErrorHandling() {
-        let mock = MockEDROverlayService()
-        mock.applyError = TuneError.failed("EDR unsupported")
+    // MARK: - Create / update routing
 
-        XCTAssertThrowsError(try mock.applyExtendedBrightness(1.4, displayID: 1)) { error in
-            guard case TuneError.failed(let msg) = error else {
+    func testApplyCreatesOverlayAndSetsHeadroom() throws {
+        let (service, created) = fakeFactory()
+        try service.applyExtendedBrightness(1.5, displayID: displayA)
+
+        XCTAssertEqual(created().count, 1)
+        let headroom = try XCTUnwrap(created().first?.headroom)
+        XCTAssertEqual(headroom, 1.5, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(service.currentHeadroom(for: displayA)), 1.5, accuracy: 0.0001)
+    }
+
+    func testApplyUpdatesExistingOverlayInsteadOfCreatingAnother() throws {
+        let (service, created) = fakeFactory()
+        try service.applyExtendedBrightness(1.3, displayID: displayA)
+        try service.applyExtendedBrightness(1.6, displayID: displayA)
+
+        XCTAssertEqual(created().count, 1, "second apply must reuse the existing overlay")
+        XCTAssertEqual(try XCTUnwrap(created().first?.headroom), 1.6, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(service.currentHeadroom(for: displayA)), 1.6, accuracy: 0.0001)
+    }
+
+    // MARK: - Error paths
+
+    func testApplyThrowsWhenScreenFrameMissing() {
+        let service = makeService(frames: [:]) { id, _ in FakeEDROverlay(displayID: id) }
+        XCTAssertThrowsError(try service.applyExtendedBrightness(1.5, displayID: displayA)) { error in
+            guard case TuneError.failed = error else {
                 return XCTFail("expected TuneError.failed, got \(error)")
             }
-            XCTAssertEqual(msg, "EDR unsupported")
         }
+    }
+
+    func testApplyThrowsWhenMultiplierBelowMinimum() {
+        let (service, _) = fakeFactory()
+        XCTAssertThrowsError(try service.applyExtendedBrightness(0.99, displayID: displayA)) { error in
+            guard case TuneError.usage = error else {
+                return XCTFail("expected TuneError.usage, got \(error)")
+            }
+        }
+    }
+
+    func testApplyThrowsWhenMultiplierAboveMaximum() {
+        let (service, _) = fakeFactory()
+        XCTAssertThrowsError(try service.applyExtendedBrightness(1.61, displayID: displayA)) { error in
+            guard case TuneError.usage = error else {
+                return XCTFail("expected TuneError.usage, got \(error)")
+            }
+        }
+    }
+
+    func testApplyWithoutDisplayIDThrowsOnThisHost() {
+        // No display session is guaranteed in unit tests: either the built-in
+        // display lookup fails or the injected frame provider returns nil —
+        // both must surface as an error, never a crash.
+        let (service, _) = fakeFactory()
+        XCTAssertThrowsError(try service.applyExtendedBrightness(1.5))
+    }
+
+    // MARK: - Removal
+
+    func testRemoveOverlayClearsHeadroomAndRemovesFromScreen() throws {
+        let (service, created) = fakeFactory()
+        try service.applyExtendedBrightness(1.5, displayID: displayA)
+        XCTAssertNotNil(service.currentHeadroom(for: displayA))
+
+        service.removeOverlay(for: displayA)
+
+        XCTAssertNil(service.currentHeadroom(for: displayA))
+        XCTAssertTrue(created().first?.removed == true)
+    }
+
+    func testRemoveAllOverlaysRemovesEverything() throws {
+        var frames: [CGDirectDisplayID: CGRect] = [:]
+        var created: [FakeEDROverlay] = []
+        let service = EDROverlayService(
+            screenFrameProvider: { frames[$0] },
+            overlayFactory: { id, _ in
+                let overlay = FakeEDROverlay(displayID: id)
+                created.append(overlay)
+                return overlay
+            }
+        )
+        frames[displayA] = .zero
+        frames[displayB] = .zero
+
+        try service.applyExtendedBrightness(1.4, displayID: displayA)
+        try service.applyExtendedBrightness(1.2, displayID: displayB)
+        XCTAssertEqual(created.count, 2)
+
+        service.removeAllOverlays()
+
+        XCTAssertNil(service.currentHeadroom(for: displayA))
+        XCTAssertNil(service.currentHeadroom(for: displayB))
+        XCTAssertTrue(created.allSatisfy { $0.removed })
+    }
+
+    func testCurrentHeadroomIsNilWithoutOverlay() {
+        let (service, _) = fakeFactory()
+        XCTAssertNil(service.currentHeadroom(for: displayA))
+    }
+
+    func testSystemEDRHeadroomIsNilForUnknownDisplay() {
+        let (service, _) = fakeFactory()
+        // No real display session: the production lookup cannot resolve a
+        // fake display ID, so this must be nil rather than crash.
+        XCTAssertNil(service.systemEDRHeadroom(for: displayA))
     }
 }

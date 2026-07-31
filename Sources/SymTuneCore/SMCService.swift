@@ -228,6 +228,11 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
     private var keyInfoCache: [String: SMCParamBlock?] = [:]
     private let keyInfoLock = NSLock()
 
+    /// One raw param-block round-trip. Production instances wrap
+    /// `smcRawCall(handle:)`; the internal test seam injects a closure so the
+    /// keyInfo/read/write logic can be exercised without IOKit hardware.
+    private let perform: (inout SMCParamBlock, inout SMCParamBlock) -> Bool
+
     /// The key the open-probe asks for. `#KEY` reports the total number of SMC
     /// keys and exists on every Mac that implements the SMC at all — unlike
     /// `FNum`, which a fanless Mac may legitimately not implement. Using it
@@ -279,6 +284,20 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
 
         self.handle = openedHandle
         self.isOpen = opened
+
+        let finalHandle = openedHandle
+        self.perform = { input, output in
+            smcRawCall(handle: finalHandle, input: &input, output: &output)
+        }
+    }
+
+    /// Test seam: wrap an arbitrary perform closure so the transport logic
+    /// (keyInfo caching, READ_KEY/WRITE_KEY dispatch, result validation) can
+    /// be unit-tested without an IOKit connection. Not used in production.
+    init(isOpen: Bool, perform: @escaping (inout SMCParamBlock, inout SMCParamBlock) -> Bool) {
+        self.handle = IO_OBJECT_NULL
+        self.isOpen = isOpen
+        self.perform = perform
     }
 
     deinit {
@@ -302,7 +321,7 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
         input.data8 = 9 // kSMCReadKeyInfo
 
         var output = SMCParamBlock()
-        let ok = smcRawCall(handle: handle, input: &input, output: &output)
+        let ok = perform(&input, &output)
             && output.result == 0
             && output.keyInfoDataSize > 0
             && output.keyInfoDataSize <= 32
@@ -328,7 +347,7 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
         in2.copyKeyInfo(from: info)
 
         var out2 = SMCParamBlock()
-        guard smcRawCall(handle: handle, input: &in2, output: &out2),
+        guard perform(&in2, &out2),
               out2.result == 0
         else { return nil }
 
@@ -352,7 +371,7 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
         }
 
         var out2 = SMCParamBlock()
-        guard smcRawCall(handle: handle, input: &in2, output: &out2),
+        guard perform(&in2, &out2),
               out2.result == 0
         else { return false }
 
