@@ -22,7 +22,7 @@ struct KeepAwakeCard: View {
     let onToggle: () -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: CardMetrics.rowSpacing) {
             HStack {
                 Label("Keep Awake", systemImage: active ? "lock.fill" : "lock.open.fill")
                     .font(.system(size: 11, weight: .bold))

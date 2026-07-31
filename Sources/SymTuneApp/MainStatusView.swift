@@ -53,7 +53,7 @@ struct MainStatusView: View {
     }
 
     private var cards: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: CardMetrics.stackSpacing) {
             StatusHeaderView()
 
             Divider()
@@ -86,7 +86,7 @@ struct MainStatusView: View {
 
             StatusFooterView(openPreferences: openPreferences)
         }
-        .padding(16)
+        .padding(CardMetrics.panelPadding)
         .frame(width: 320)
     }
 

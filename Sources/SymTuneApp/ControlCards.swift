@@ -16,7 +16,7 @@ struct DisplayControlsCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: CardMetrics.rowSpacing) {
             TuneSliderRow(
                 title: "Screen Brightness",
                 systemImage: "sun.max.fill",
@@ -88,7 +88,7 @@ struct FanControlCard: View {
 
     var body: some View {
         if hasFans {
-            VStack(spacing: 12) {
+            VStack(spacing: CardMetrics.rowSpacing) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
                         .font(.system(size: 11, weight: .bold))
