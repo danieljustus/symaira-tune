@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// A mini sparkline view that renders a ``MetricSample`` array as a polyline.
@@ -23,7 +24,7 @@ struct SparklineView: View, Equatable {
 
     init(
         samples: [MetricSample],
-        lineColor: Color = SymairaColors.goldPrimary,
+        lineColor: Color = SymairaTheme.goldPrimary,
         showAnnotations: Bool = true,
         valueRange: ClosedRange<Double>? = nil
     ) {
@@ -110,7 +111,7 @@ struct SparklineView: View, Equatable {
                 ))
                 context.fill(
                     dot,
-                    with: .color(annotation.isMaximum ? SymairaColors.success : SymairaColors.warning)
+                    with: .color(annotation.isMaximum ? SymairaTheme.positive : SymairaTheme.warning)
                 )
             }
         }

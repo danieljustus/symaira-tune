@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 
 /// A labelled slider row that owns its drag state.
 ///
@@ -26,22 +27,22 @@ struct TuneSliderRow: View {
     private var displayedValue: Double { localValue ?? value }
 
     private var labelColor: Color {
-        isEnabled ? SymairaColors.textSecondary : SymairaColors.textMuted
+        isEnabled ? SymairaTheme.textSecondary : SymairaTheme.textMuted
     }
 
     private var readoutColor: Color {
-        isEnabled ? SymairaColors.goldSecondary : SymairaColors.textMuted
+        isEnabled ? SymairaTheme.goldSecondary : SymairaTheme.textMuted
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label(title, systemImage: systemImage)
-                    .font(.system(size: 11, weight: .medium))
+                    .symairaText(.caption)
                     .foregroundStyle(labelColor)
                 Spacer()
                 Text(format(displayedValue))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .symairaText(.monoSmall)
                     .foregroundStyle(readoutColor)
             }
             Slider(
@@ -56,7 +57,7 @@ struct TuneSliderRow: View {
                     onCommit(final)
                 }
             )
-            .tint(SymairaColors.goldPrimary)
+            .tint(SymairaTheme.goldPrimary)
             .disabled(!isEnabled)
         }
         .onChange(of: value) { _, _ in

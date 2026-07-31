@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 // MARK: - Display controls
@@ -16,7 +17,7 @@ struct DisplayControlsCard: View {
     }
 
     var body: some View {
-        VStack(spacing: CardMetrics.rowSpacing) {
+        VStack(spacing: SymairaSpacing.small) {
             TuneSliderRow(
                 title: "Screen Brightness",
                 systemImage: "sun.max.fill",
@@ -106,11 +107,11 @@ struct FanControlCard: View {
 
     var body: some View {
         if hasFans {
-            VStack(spacing: CardMetrics.rowSpacing) {
+            VStack(spacing: SymairaSpacing.small) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(SymairaColors.textSecondary)
+                        .symairaText(.subheading)
+                        .foregroundStyle(SymairaTheme.textSecondary)
                     Spacer()
                     Toggle("", isOn: manualBinding)
                         .toggleStyle(.switch)
@@ -128,9 +129,9 @@ struct FanControlCard: View {
 
                 if let fanError {
                     Text(fanError)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(SymairaColors.danger)
-                        .padding(.top, 2)
+                        .symairaText(.caption)
+                        .foregroundStyle(SymairaTheme.critical)
+                        .padding(.top, SymairaSpacing.xSmall)
                 }
             }
             .cardStyle()
@@ -142,13 +143,13 @@ struct FanControlCard: View {
             VStack(spacing: 6) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(SymairaColors.textSecondary)
+                        .symairaText(.subheading)
+                        .foregroundStyle(SymairaTheme.textSecondary)
                     Spacer()
                 }
                 Text("Not available on this Mac")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.textMuted)
             }
             .cardStyle()
         }

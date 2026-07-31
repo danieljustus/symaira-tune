@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// A slider anchored at its middle, where centre means "no change".
@@ -31,15 +32,15 @@ struct CenterAnchoredSliderRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label(title, systemImage: systemImage)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(SymairaColors.textSecondary)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.textSecondary)
                 Spacer()
                 Text(format(displayed))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .symairaText(.monoSmall)
                     .foregroundStyle(
                         abs(displayed) < 0.005
-                            ? SymairaColors.textMuted
-                            : SymairaColors.goldSecondary
+                            ? SymairaTheme.textMuted
+                            : SymairaTheme.goldSecondary
                     )
             }
 
@@ -47,7 +48,7 @@ struct CenterAnchoredSliderRow: View {
                 // The centre detent, drawn behind the track: the one position
                 // that means "symtune is doing nothing to this display".
                 Rectangle()
-                    .fill(SymairaColors.goldPrimary.opacity(0.35))
+                    .fill(SymairaTheme.goldPrimary.opacity(0.35))
                     .frame(width: 1, height: 12)
 
                 Slider(
@@ -62,25 +63,25 @@ struct CenterAnchoredSliderRow: View {
                         onCommit(final)
                     }
                 )
-                .tint(SymairaColors.goldPrimary)
+                .tint(SymairaTheme.goldPrimary)
             }
 
             HStack {
                 Text(minimumLabel)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.textMuted)
                     .lineLimit(1)
                     .fixedSize()
                 Spacer()
                 Text("Normal")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.textMuted)
                     .lineLimit(1)
                     .fixedSize()
                 Spacer()
                 Text(maximumDisabledNote ?? maximumLabel)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.textMuted)
                     .lineLimit(1)
                     .fixedSize()
             }

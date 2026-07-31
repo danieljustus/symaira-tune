@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymairaUpdateCheck
 
 /// A compact card view displayed when a newer release is available.
@@ -34,14 +35,14 @@ struct UpdateNotificationView: View {
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .foregroundStyle(SymairaColors.goldPrimary)
+                        .foregroundStyle(SymairaTheme.goldPrimary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Update Available")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(SymairaColors.goldPrimary)
+                            .symairaText(.subheading)
+                            .foregroundStyle(SymairaTheme.goldPrimary)
                         Text(release.tagName)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(SymairaColors.textSecondary)
+                            .symairaText(.monoSmall)
+                            .foregroundStyle(SymairaTheme.textSecondary)
                     }
                     Spacer()
 
@@ -52,17 +53,17 @@ struct UpdateNotificationView: View {
                                 NSWorkspace.shared.open(url)
                             }
                         }
-                        .font(.system(size: 10, weight: .bold))
+                        .symairaText(.caption, respectsForeground: false)
                         .buttonStyle(.borderedProminent)
-                        .tint(SymairaColors.goldPrimary)
+                        .tint(SymairaTheme.goldPrimary)
                         .controlSize(.small)
                     } else {
                         Button("Jetzt installieren") {
                             installUpdate(release: release)
                         }
-                        .font(.system(size: 10, weight: .bold))
+                        .symairaText(.caption, respectsForeground: false)
                         .buttonStyle(.borderedProminent)
-                        .tint(SymairaColors.goldPrimary)
+                        .tint(SymairaTheme.goldPrimary)
                         .controlSize(.small)
                         .disabled(isInstalling)
                     }
@@ -70,9 +71,9 @@ struct UpdateNotificationView: View {
                     Button("Skip") {
                         updateChecker.skip(release)
                     }
-                    .font(.system(size: 10))
+                    .symairaText(.caption)
                     .buttonStyle(.plain)
-                    .foregroundStyle(SymairaColors.textMuted)
+                    .foregroundStyle(SymairaTheme.textMuted)
                 }
 
                 // Installation progress / error
@@ -82,22 +83,22 @@ struct UpdateNotificationView: View {
                             .scaleEffect(0.7)
                             .controlSize(.small)
                         Text("Installiere...")
-                            .font(.system(size: 9))
-                            .foregroundStyle(SymairaColors.textSecondary)
+                            .symairaText(.caption)
+                            .foregroundStyle(SymairaTheme.textSecondary)
                     }
                 }
                 if let error = installError {
                     Text(error)
-                        .font(.system(size: 9))
-                        .foregroundStyle(SymairaColors.danger)
+                        .symairaText(.caption)
+                        .foregroundStyle(SymairaTheme.critical)
                 }
             }
-            .padding(12)
-            .background(SymairaColors.bgPanel)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(SymairaSpacing.medium)
+            .background(SymairaTheme.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.card))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(SymairaColors.borderStrong, lineWidth: 1)
+                RoundedRectangle(cornerRadius: SymairaRadius.card)
+                    .stroke(SymairaTheme.borderGlassHover, lineWidth: 1)
             )
         }
     }

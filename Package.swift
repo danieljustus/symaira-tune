@@ -33,6 +33,7 @@ let package = Package(
                 "SymTuneCore",
                 "SymTuneMCP",
                 .product(name: "SymairaUpdateCheck", package: "symaira-appkit"),
+                .product(name: "SymairaTheme", package: "symaira-appkit"),
             ]
         ),
         .executableTarget(
@@ -40,6 +41,7 @@ let package = Package(
             dependencies: [
                 "SymTuneCore",
                 .product(name: "SymairaUpdateCheck", package: "symaira-appkit"),
+                .product(name: "SymairaTheme", package: "symaira-appkit"),
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),

@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// Sparkline trends for the enabled system metrics.
@@ -16,8 +17,8 @@ struct MetricsHistoryCard: View, Equatable {
             VStack(spacing: 6) {
                 HStack {
                     Text("SYSTEM METRICS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .symairaText(.sectionLabel)
+                        .foregroundStyle(SymairaTheme.textMuted)
                     Spacer()
                 }
                 ForEach(rows) { row in
@@ -38,19 +39,19 @@ struct MetricsHistoryRow: View, Equatable {
         VStack(spacing: 2) {
             HStack {
                 Text(row.title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(SymairaColors.textSecondary)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.textSecondary)
                 Spacer()
                 Text(row.current)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(SymairaColors.goldSecondary)
+                    .symairaText(.monoSmall)
+                    .foregroundStyle(SymairaTheme.goldSecondary)
                 if row.samples.isEmpty {
                     Text("·")
-                        .font(.system(size: 9))
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .symairaText(.caption)
+                        .foregroundStyle(SymairaTheme.textMuted)
                     Text("collecting…")
-                        .font(.system(size: 9))
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .symairaText(.caption)
+                        .foregroundStyle(SymairaTheme.textMuted)
                 }
             }
 
@@ -60,15 +61,15 @@ struct MetricsHistoryRow: View, Equatable {
 
                 HStack {
                     Text("min \(row.minimum)")
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .symairaText(.monoSmall)
+                        .foregroundStyle(SymairaTheme.textMuted)
                     Spacer()
                     Text("max \(row.maximum)")
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .symairaText(.monoSmall)
+                        .foregroundStyle(SymairaTheme.textMuted)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, SymairaSpacing.xSmall)
     }
 }

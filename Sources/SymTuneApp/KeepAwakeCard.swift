@@ -1,4 +1,5 @@
 import SwiftUI
+import SymairaTheme
 import SymTuneCore
 
 /// Keep Awake session card: status indicator, duration picker, display-sleep
@@ -22,23 +23,23 @@ struct KeepAwakeCard: View {
     let onToggle: () -> Void
 
     var body: some View {
-        VStack(spacing: CardMetrics.rowSpacing) {
+        VStack(spacing: SymairaSpacing.small) {
             HStack {
                 Label("Keep Awake", systemImage: active ? "lock.fill" : "lock.open.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(active ? SymairaColors.goldPrimary : SymairaColors.textSecondary)
+                    .symairaText(.subheading)
+                    .foregroundStyle(active ? SymairaTheme.goldPrimary : SymairaTheme.textSecondary)
                 Spacer()
                 // Status indicator
                 Circle()
-                    .fill(active ? SymairaColors.success : SymairaColors.danger.opacity(0.4))
+                    .fill(active ? SymairaTheme.positive : SymairaTheme.critical.opacity(0.4))
                     .frame(width: 6, height: 6)
                 Text(active ? "Active" : "Inactive")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(active ? SymairaColors.success : SymairaColors.textMuted)
+                    .symairaText(.caption)
+                    .foregroundStyle(active ? SymairaTheme.positive : SymairaTheme.textMuted)
                 if active, let remaining = remaining {
                     Text("· \(remaining)")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(SymairaColors.goldSecondary)
+                        .symairaText(.monoSmall)
+                        .foregroundStyle(SymairaTheme.goldSecondary)
                 }
             }
 
@@ -56,8 +57,8 @@ struct KeepAwakeCard: View {
                 // Display sleep toggle
                 Toggle(isOn: $preventDisplaySleep) {
                     Text("Display")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(SymairaColors.textMuted)
+                        .symairaText(.caption)
+                        .foregroundStyle(SymairaTheme.textMuted)
                 }
                 .toggleStyle(.switch)
                 .disabled(!isInteractive)
@@ -66,19 +67,19 @@ struct KeepAwakeCard: View {
             // Start / End button
             Button(action: onToggle) {
                 Text(active ? "End Session" : "Start Session")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(active ? SymairaColors.danger : SymairaColors.bgDark)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(active ? SymairaColors.danger.opacity(0.15) : SymairaColors.goldPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .symairaText(.caption)
+                    .foregroundStyle(active ? SymairaTheme.critical : SymairaTheme.bgDark)
+                    .padding(.horizontal, SymairaSpacing.large)
+                    .padding(.vertical, SymairaSpacing.small)
+                    .background(active ? SymairaTheme.critical.opacity(0.15) : SymairaTheme.goldPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.control))
             }
             .buttonStyle(.plain)
         }
         .cardStyle(
             borderColor: active
-                ? SymairaColors.goldPrimary.opacity(0.3)
-                : SymairaColors.border
+                ? SymairaTheme.goldPrimary.opacity(0.3)
+                : SymairaTheme.borderGlass
         )
     }
 }
