@@ -5,8 +5,9 @@ import SymTuneCore
 /// toggle, and start/end button. Extracted from MainStatusView to keep the
 /// main view under the type-body-length limit.
 struct KeepAwakeCard: View {
-    /// Whether a keep-awake session is currently active.
-    @Binding var active: Bool
+    /// Whether a keep-awake session is currently active. Owned by the model —
+    /// the card reports intent through `onToggle` and re-reads the result.
+    let active: Bool
     /// Whether to prevent display sleep in addition to system sleep.
     @Binding var preventDisplaySleep: Bool
     /// Selected duration preset index (0 = indefinite).
@@ -74,12 +75,10 @@ struct KeepAwakeCard: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(12)
-        .background(SymairaColors.bgPanel)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(active ? SymairaColors.goldPrimary.opacity(0.3) : SymairaColors.border, lineWidth: 1)
+        .cardStyle(
+            borderColor: active
+                ? SymairaColors.goldPrimary.opacity(0.3)
+                : SymairaColors.border
         )
     }
 }

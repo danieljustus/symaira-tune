@@ -66,7 +66,9 @@ symtune (executable)  →  SymTuneMCP  →  SymTuneCore
 ## Roadmap pointers
 
 `docs/roadmap.md` is the source of truth for what's built vs planned. v0.1 =
-reads + keep-awake + MCP scaffold. v0.2 = EDR/extended brightness + dim overlay +
-SMC sensor reads (needs a menu-bar/app context). Pro = privileged SMC helper for
-fan curves & charge limiting. Tightening to Swift 6 strict concurrency is tracked
-there too (v0.1 builds in Swift 5 language mode).
+reads + keep-awake + MCP scaffold. v0.2 = standalone menu-bar app + EDR/extended
+brightness + dim overlay + SMC sensor reads. v0.3 = fan control and battery
+charge limiting shipped directly in the open Apache-2.0 core (no separate Pro
+tier or privileged helper required); an optional `symtune-helper` daemon remains
+a future convenience, not a gate. The package already builds in Swift 6 language
+mode (`swiftLanguageModes: [.v6]` in `Package.swift`).

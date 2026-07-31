@@ -39,6 +39,10 @@ All notable changes to this project are documented here. The format is based on
 
 (This version was prepared but not released — content folded into 0.4.0.)
 
+### Fixed
+- `restoreAuto()` throws `.noFansDetected` instead of silently succeeding on Macs without controllable fans (e.g. fanless MacBook Air), and the menu-bar app's Fan Control card is gated on fan availability (`#179`).
+- CI: quote the SPM package revision in `project.yml` so it is not parsed as a YAML float.
+
 ## [0.3.0] — 2026-07-17
 
 ### Added

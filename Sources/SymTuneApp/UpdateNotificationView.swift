@@ -21,7 +21,10 @@ struct UpdateNotificationView: View {
     /// Shared UpdateApplier for this app. Configured for macOS
     /// (auto-detects current arch) with install-method detection disabled
     /// for simplicity.
-    private let applier = UpdateApplier(
+    ///
+    /// `static` on purpose: a stored property here is constructed every time the
+    /// view struct is rebuilt, which happens on every panel refresh.
+    private static let applier = UpdateApplier(
         checkInstallMethod: false,
         binaryName: "SymTuneApp"
     )
@@ -107,7 +110,7 @@ struct UpdateNotificationView: View {
 
         Task {
             do {
-                _ = try await applier.applyBundle(release: release)
+                _ = try await Self.applier.applyBundle(release: release)
                 // Installation succeeded — mark locally
                 installComplete = true
                 isInstalling = false

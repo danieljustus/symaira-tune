@@ -57,6 +57,8 @@ real-host control and restore-on-exit checklist.
 
 ```text
 symtune doctor                        # capabilities, host info, recommendations (JSON)
+symtune status                        # current override/session status (JSON)
+symtune history                       # recent applied changes (JSON)
 symtune sensors                       # thermal pressure + temps/fan RPM via AppleSMC (JSON)
 symtune battery                       # charge %, cycles, capacity, health, condition (JSON)
 symtune displays                      # displays + EDR headroom / extended-brightness capability
@@ -80,6 +82,7 @@ symtune profile load <name>           # apply a saved profile
 symtune profile list                  # list saved profiles
 symtune profile delete <name>         # delete a saved profile
 symtune serve                         # run the MCP server over stdio
+symtune version [--check-for-updates] # print version (optionally check GitHub releases)
 ```
 
 Example:

@@ -155,47 +155,60 @@ private final class EDROverlay: @unchecked Sendable {
         guard let pixelFormat = MTLPixelFormat(rawValue: 80) else {
             fatalError("Unsupported Metal pixel format raw value 80 for EDR overlay.")
         }
-        DispatchQueue.main.sync { [self] in
-            MainActor.assumeIsolated {
-                let window = NSWindow(
-                    contentRect: screenFrame,
-                    styleMask: .borderless,
-                    backing: .buffered,
-                    defer: false
-                )
-
-                // Create a CAMetalLayer as the backing layer.
-                let metalLayer = CAMetalLayer()
-                metalLayer.frame = CGRect(origin: .zero, size: screenFrame.size)
-                metalLayer.pixelFormat = pixelFormat
-                metalLayer.wantsExtendedDynamicRangeContent = true
-                metalLayer.contentsFormat = .RGBA16Float
-                metalLayer.contentsScale = window.backingScaleFactor
-
-                // Start with no drawable content — the EDR headroom alone
-                // drives the display brightness. Use a very dim white so
-                // the layer is valid but nearly invisible.
-                metalLayer.backgroundColor = NSColor(white: 0.01, alpha: 1.0).cgColor
-                metalLayer.opacity = 1.0
-
-                let contentView = NSView(frame: screenFrame)
-                contentView.wantsLayer = true
-                contentView.layer?.addSublayer(metalLayer)
-                window.contentView = contentView
-
-                // Window properties: invisible to user, passes through input.
-                window.isOpaque = false
-                window.backgroundColor = .clear
-                window.hasShadow = false
-                window.level = .statusBar - 1  // Below menu bar, above most windows
-                window.ignoresMouseEvents = true
-                window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-                window.isReleasedWhenClosed = false
-                window.orderFront(nil)
-
-                self.window = window
-                self.metalLayer = metalLayer
+        // Must match `setHeadroom`/`removeFromScreen`: dispatching *synchronously*
+        // to the main queue from the main thread deadlocks and libdispatch traps
+        // the process. The UI applies extended brightness from the main thread,
+        // so the unguarded version crashed the app the first time the slider was
+        // used on a display that had no overlay yet.
+        if Thread.isMainThread {
+            buildWindow(screenFrame: screenFrame, pixelFormat: pixelFormat)
+        } else {
+            DispatchQueue.main.sync { [self] in
+                buildWindow(screenFrame: screenFrame, pixelFormat: pixelFormat)
             }
+        }
+    }
+
+    private func buildWindow(screenFrame: NSRect, pixelFormat: MTLPixelFormat) {
+        MainActor.assumeIsolated {
+            let window = NSWindow(
+                contentRect: screenFrame,
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false
+            )
+
+            // Create a CAMetalLayer as the backing layer.
+            let metalLayer = CAMetalLayer()
+            metalLayer.frame = CGRect(origin: .zero, size: screenFrame.size)
+            metalLayer.pixelFormat = pixelFormat
+            metalLayer.wantsExtendedDynamicRangeContent = true
+            metalLayer.contentsFormat = .RGBA16Float
+            metalLayer.contentsScale = window.backingScaleFactor
+
+            // Start with no drawable content — the EDR headroom alone
+            // drives the display brightness. Use a very dim white so
+            // the layer is valid but nearly invisible.
+            metalLayer.backgroundColor = NSColor(white: 0.01, alpha: 1.0).cgColor
+            metalLayer.opacity = 1.0
+
+            let contentView = NSView(frame: screenFrame)
+            contentView.wantsLayer = true
+            contentView.layer?.addSublayer(metalLayer)
+            window.contentView = contentView
+
+            // Window properties: invisible to user, passes through input.
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.hasShadow = false
+            window.level = .statusBar - 1  // Below menu bar, above most windows
+            window.ignoresMouseEvents = true
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+            window.isReleasedWhenClosed = false
+            window.orderFront(nil)
+
+            self.window = window
+            self.metalLayer = metalLayer
         }
     }
 

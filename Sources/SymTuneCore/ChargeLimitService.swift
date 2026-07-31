@@ -37,20 +37,55 @@ public enum ChargeLimitKeyFamily: Sendable, Equatable {
 public struct ChargeLimitService: Sendable {
     private let smc: SMCService
 
+    /// Memoises the key-family probe. Which charge-limit keys a Mac implements
+    /// is fixed by its firmware, but `detectKeyFamily()` sits on the hot status
+    /// path (every battery read and every override snapshot), so probing the
+    /// SMC again on each call is pure overhead.
+    private final class FamilyCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var resolved = false
+        private var value: ChargeLimitKeyFamily?
+
+        func get(_ probe: () -> ChargeLimitKeyFamily?) -> ChargeLimitKeyFamily? {
+            lock.lock()
+            if resolved {
+                defer { lock.unlock() }
+                return value
+            }
+            lock.unlock()
+
+            let probed = probe()
+
+            lock.lock()
+            if !resolved {
+                value = probed
+                resolved = true
+            }
+            let result = value
+            lock.unlock()
+            return result
+        }
+    }
+
+    private let familyCache = FamilyCache()
+
     public init(smc: SMCService) {
         self.smc = smc
     }
 
     /// Determine which charge-limit key family is available on this Mac.
+    /// The result is probed once and then memoised.
     public func detectKeyFamily() -> ChargeLimitKeyFamily? {
-        #if arch(arm64)
-        if smc.readKeyUInt32("CHTE") != nil { return .chte }
-        if smc.readKeyUInt("CH0B") != nil { return .ch0b }
-        return nil
-        #else
-        if smc.readKeyUInt("CHLC") != nil { return .chlc }
-        return nil
-        #endif
+        familyCache.get {
+            #if arch(arm64)
+            if smc.readKeyUInt32("CHTE") != nil { return .chte }
+            if smc.readKeyUInt("CH0B") != nil { return .ch0b }
+            return nil
+            #else
+            if smc.readKeyUInt("CHLC") != nil { return .chlc }
+            return nil
+            #endif
+        }
     }
 
     /// Inhibit charging so the battery stays at or below the target percent.
