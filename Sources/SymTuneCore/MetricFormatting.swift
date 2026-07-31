@@ -1,16 +1,15 @@
 import Foundation
-import SymTuneCore
 
 /// Shared metric formatting.
 ///
 /// The status item and the history card used to carry near-identical copies of
 /// these formatters and ran them inside SwiftUI body evaluations. They now live
 /// in one place and are called once per refresh.
-enum MetricFormatting {
+public enum MetricFormatting {
 
     // MARK: - Availability
 
-    static func hasData(_ id: MetricIdentifier, report: SystemMetricsReport) -> Bool {
+    public static func hasData(_ id: MetricIdentifier, report: SystemMetricsReport) -> Bool {
         switch id {
         case .cpu: return report.cpu.totalUtilization != nil
         case .memory: return report.memory.usedBytes != nil
@@ -25,7 +24,7 @@ enum MetricFormatting {
     // MARK: - History card
 
     /// Format an aggregated history value for the metrics card.
-    static func value(_ id: MetricIdentifier, _ value: Double) -> String {
+    public static func value(_ id: MetricIdentifier, _ value: Double) -> String {
         switch id {
         case .cpu, .disk:
             return String(format: "%.0f%%", value)
@@ -43,7 +42,7 @@ enum MetricFormatting {
 
     /// Value shown before enough history exists for min/max, or `nil` when the
     /// metric has no data at all.
-    static func fallbackValue(_ id: MetricIdentifier, report: SystemMetricsReport) -> String? {
+    public static func fallbackValue(_ id: MetricIdentifier, report: SystemMetricsReport) -> String? {
         switch id {
         case .cpu:
             guard let utilization = report.cpu.totalUtilization else { return nil }
@@ -78,7 +77,7 @@ enum MetricFormatting {
 
     /// Compact single-line status-item text. Returns `""` when no selected
     /// metric has data, which tells the status item to fall back to its icon.
-    static func statusItemText(
+    public static func statusItemText(
         report: SystemMetricsReport,
         identifiers: [MetricIdentifier]
     ) -> String {

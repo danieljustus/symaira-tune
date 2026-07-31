@@ -2,20 +2,6 @@ import Foundation
 import Observation
 import SymTuneCore
 
-/// A prepared row of the metrics-history card.
-///
-/// Formatting and min/max aggregation happen once per refresh here, not once
-/// per SwiftUI body evaluation. `Equatable` lets the card skip re-rendering
-/// entirely while the numbers stand still.
-struct MetricRowData: Identifiable, Equatable {
-    let id: MetricIdentifier
-    let title: String
-    let current: String
-    let minimum: String
-    let maximum: String
-    let samples: [MetricSample]
-}
-
 /// Hardware readings gathered off the main thread.
 private struct HardwareSnapshot: Sendable {
     let metrics: SystemMetricsReport
@@ -289,9 +275,7 @@ final class TuneViewModel {
         _ selected: Set<MetricIdentifier>,
         fallback: [MetricIdentifier] = []
     ) -> [MetricIdentifier] {
-        let order = preferences.metricOrder
-        guard !selected.isEmpty, !order.isEmpty else { return fallback }
-        return order.filter { selected.contains($0) }
+        MetricOrdering.ordered(selected, order: preferences.metricOrder, fallback: fallback)
     }
 
     /// Sync the history buffers after the user changed which metrics are enabled.
