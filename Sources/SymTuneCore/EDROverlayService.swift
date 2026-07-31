@@ -25,7 +25,27 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
     nonisolated(unsafe) private var overlays: [CGDirectDisplayID: EDROverlay] = [:]
     private let lock = NSLock()
 
-    public init() {}
+    /// Resolves the screen frame for a display ID. Production instances use
+    /// `DisplayHelpers`; tests inject a fake provider (CGRect is trivially
+    /// fabricable, NSScreen is not).
+    private let screenFrameProvider: (CGDirectDisplayID) -> CGRect?
+    /// Creates the overlay for a display. Tests inject a fake overlay factory
+    /// so routing can be exercised without creating real NSWindows.
+    private let overlayFactory: (CGDirectDisplayID, CGRect) -> EDROverlay
+
+    public init() {
+        self.screenFrameProvider = { DisplayHelpers.screenForDisplayID($0)?.frame }
+        self.overlayFactory = { EDROverlay(displayID: $0, screenFrame: $1) }
+    }
+
+    /// Test seam: inject a screen-frame provider and/or overlay factory.
+    internal init(
+        screenFrameProvider: @escaping (CGDirectDisplayID) -> CGRect? = { DisplayHelpers.screenForDisplayID($0)?.frame },
+        overlayFactory: @escaping (CGDirectDisplayID, CGRect) -> EDROverlay = { EDROverlay(displayID: $0, screenFrame: $1) }
+    ) {
+        self.screenFrameProvider = screenFrameProvider
+        self.overlayFactory = overlayFactory
+    }
 
     deinit {
         removeAllOverlays()
@@ -59,10 +79,10 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
         if let overlay = existing {
             overlay.setHeadroom(headroom)
         } else {
-            guard let screen = screenForDisplayID(targetID) else {
+            guard let frame = screenFrameProvider(targetID) else {
                 throw TuneError.failed("Could not find screen for display \(targetID).")
             }
-            let overlay = EDROverlay(displayID: targetID, screenFrame: screen.frame)
+            let overlay = overlayFactory(targetID, frame)
             overlay.setHeadroom(headroom)
             lock.lock()
             overlays[targetID] = overlay
@@ -98,7 +118,7 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
 
     /// The built-in display's current EDR headroom (from the system, not overlay).
     public func systemEDRHeadroom(for displayID: CGDirectDisplayID) -> Double? {
-        guard let screen = screenForDisplayID(displayID) else { return nil }
+        guard let screen = DisplayHelpers.screenForDisplayID(displayID) else { return nil }
         return Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue)
     }
 
@@ -106,10 +126,6 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
 
     private func builtinDisplayID() throws -> CGDirectDisplayID {
         try DisplayHelpers.builtinDisplayID()
-    }
-
-    private func screenForDisplayID(_ displayID: CGDirectDisplayID) -> NSScreen? {
-        DisplayHelpers.screenForDisplayID(displayID)
     }
 }
 
@@ -119,14 +135,21 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
 /// Uses a CAMetalLayer with `wantsExtendedDynamicRangeContent = true`
 /// at the requested headroom level. The layer is nearly invisible
 /// (very low alpha) so it doesn't affect visual content.
-private final class EDROverlay: @unchecked Sendable {
+internal class EDROverlay: @unchecked Sendable {
     let displayID: CGDirectDisplayID
     private var window: NSWindow?
     private var metalLayer: CAMetalLayer?
-    private(set) var headroom: Float = 1.0
+    // Setter is internal (not private(set)) so test subclasses overriding
+    // `setHeadroom` can record the applied value; `currentHeadroom` reads it.
+    var headroom: Float = 1.0
 
     init(displayID: CGDirectDisplayID, screenFrame: NSRect) {
         self.displayID = displayID
+        configure(screenFrame: screenFrame)
+    }
+
+    /// Hook for subclasses (tests) to skip real window creation.
+    func configure(screenFrame: NSRect) {
         setupWindow(screenFrame: screenFrame)
     }
 
