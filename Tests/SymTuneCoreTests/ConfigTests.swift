@@ -345,7 +345,12 @@ final class TuneConfigTests: XCTestCase {
     // MARK: ConfigPaths.loadConfig convenience
 
     func testConfigPathsLoadConfigConvenience() {
-        let paths = ConfigPaths()
+        // Isolate from any real user config at ~/.config/symtune/config.toml.
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("symtune-convenience-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let paths = ConfigPaths(home: home)
         let config = paths.loadConfig()
         XCTAssertEqual(config, TuneConfig())
     }
