@@ -163,14 +163,34 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         button.target = self
     }
 
-    private func setupPopover() {
-        let hosting = NSHostingController(rootView: MainStatusView(
+    /// Vertical space the popover may occupy on `screen`: the menu-bar-free
+    /// area, minus room for the popover's arrow, shadow and a small margin.
+    /// Falls back to a conservative value when no screen can be determined.
+    static func availableContentHeight(for screen: NSScreen?) -> CGFloat {
+        guard let screen else { return 600 }
+        return max(320, screen.visibleFrame.height - 32)
+    }
+
+    private var popoverHosting: NSHostingController<MainStatusView>?
+
+    private func makeStatusView(maxHeight: CGFloat) -> MainStatusView {
+        MainStatusView(
             controller: controller,
             model: model,
             updateChecker: updateChecker,
             preferencesManager: preferencesManager,
-            openPreferences: { [weak self] in self?.openPreferences() }
-        ))
+            openPreferences: { [weak self] in self?.openPreferences() },
+            maxHeight: maxHeight
+        )
+    }
+
+    private func setupPopover() {
+        let hosting = NSHostingController(
+            rootView: makeStatusView(
+                maxHeight: Self.availableContentHeight(for: NSScreen.main)
+            )
+        )
+        popoverHosting = hosting
         // Without preferredContentSize sizing, the SwiftUI content reports its
         // height only after the popover is shown (and again on every periodic
         // refresh), so the popover window gets anchored with a stale frame and
@@ -189,6 +209,12 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // The menu bar may have moved to a different-sized display since
+            // the last open, so re-derive the height budget before showing.
+            let screen = button.window?.screen ?? NSScreen.main
+            popoverHosting?.rootView = makeStatusView(
+                maxHeight: Self.availableContentHeight(for: screen)
+            )
             // Show first, then activate: activating an LSUIElement app before
             // the popover is anchored can misplace the popover window.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)

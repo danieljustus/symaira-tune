@@ -31,10 +31,28 @@ struct MainStatusView: View {
         ("8 hours", 28800),
     ]
 
+    /// Height budget for the popover, from the screen the menu bar is on.
+    /// The panel grows with its content up to this cap and scrolls beyond it —
+    /// `NSPopover` neither reflows nor scrolls oversized content, it just
+    /// positions the window so the overflow (header first) falls off-screen.
+    let maxHeight: CGFloat
+
     @State private var keepAwakeDurationIndex = 0
     @State private var keepAwakePreventDisplaySleep = false
 
     var body: some View {
+        ScrollView(.vertical) {
+            cards
+        }
+        .frame(width: 320)
+        .frame(maxHeight: maxHeight)
+        .background(SymairaColors.bgDark)
+        .onAppear {
+            keepAwakePreventDisplaySleep = model.keepAwake.preventDisplaySleep
+        }
+    }
+
+    private var cards: some View {
         VStack(spacing: 14) {
             StatusHeaderView()
 
@@ -70,10 +88,6 @@ struct MainStatusView: View {
         }
         .padding(16)
         .frame(width: 320)
-        .background(SymairaColors.bgDark)
-        .onAppear {
-            keepAwakePreventDisplaySleep = model.keepAwake.preventDisplaySleep
-        }
     }
 
     // MARK: - Keep awake

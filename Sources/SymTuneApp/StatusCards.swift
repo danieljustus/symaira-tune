@@ -182,7 +182,13 @@ struct SystemStatusCard: View, Equatable {
 
     private var sensorDetails: String? {
         guard let sensors, !sensors.temperatures.isEmpty || !sensors.fans.isEmpty else {
-            return "App Sandbox: Detailed sensors restricted"
+            // Two different situations, previously reported with one (wrong)
+            // sandbox message: the SMC never answered at all, or it answered
+            // but reports no sensors this Mac exposes to us.
+            guard let sensors else { return nil }
+            return sensors.smcSupported
+                ? "No detailed sensors reported"
+                : "SMC unavailable on this macOS build"
         }
         var parts: [String] = []
         if let cpu = sensors.temperatures.first(where: { $0.label.contains("CPU") }) {

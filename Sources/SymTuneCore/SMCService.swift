@@ -228,6 +228,32 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
     private var keyInfoCache: [String: SMCParamBlock?] = [:]
     private let keyInfoLock = NSLock()
 
+    /// The key the open-probe asks for. `#KEY` reports the total number of SMC
+    /// keys and exists on every Mac that implements the SMC at all — unlike
+    /// `FNum`, which a fanless Mac may legitimately not implement. Using it
+    /// keeps "fanless" and "SMC unreachable" apart.
+    static let probeKey = "#KEY"
+
+    /// Decide whether the SMC actually answers us, given a way to perform one
+    /// raw param-block round-trip.
+    ///
+    /// A successful `IOConnectCallStructMethod` only means the *transport*
+    /// worked; the SMC firmware reports its own verdict in `result`. On macOS
+    /// builds that no longer grant third-party processes access to the raw
+    /// AppleSMC user client, the transport call succeeds while every key comes
+    /// back `kSMCKeyNotFound` (132) — so a transport-only check reports
+    /// "connected" for a connection through which nothing can ever be read.
+    static func probeIndicatesOpen(
+        perform: (inout SMCParamBlock, inout SMCParamBlock) -> Bool
+    ) -> Bool {
+        var probe = SMCParamBlock()
+        probe.key = smcEncodeKey(probeKey)
+        probe.data8 = 9 // kSMCReadKeyInfo
+
+        var out = SMCParamBlock()
+        return perform(&probe, &out) && out.result == 0
+    }
+
     public init() {
         var openedHandle: io_connect_t = IO_OBJECT_NULL
         var opened = false
@@ -240,13 +266,11 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
             defer { IOObjectRelease(service) }
             let kr = IOServiceOpen(service, Self.taskPort, 0, &openedHandle)
             if kr == kIOReturnSuccess {
-                var probe = SMCParamBlock()
-                probe.key = smcEncodeKey("FNum")
-                probe.data8 = 9
-                var out = SMCParamBlock()
-                if smcRawCall(handle: openedHandle, input: &probe, output: &out) {
-                    opened = true
-                } else {
+                let handle = openedHandle
+                opened = Self.probeIndicatesOpen { input, output in
+                    smcRawCall(handle: handle, input: &input, output: &output)
+                }
+                if !opened {
                     IOServiceClose(openedHandle)
                     openedHandle = IO_OBJECT_NULL
                 }
