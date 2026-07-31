@@ -53,7 +53,7 @@ struct PreferencesView: View {
             // Footer with apply button
             footerView
         }
-        .frame(width: 470, height: 500)
+        .frame(width: 560, height: 560)
         .background(SymairaColors.bgDark)
         .onAppear {
             refreshText = String(format: "%.1f", manager.metricsRefreshInterval)
@@ -105,7 +105,7 @@ struct PreferencesView: View {
         let isFirst = manager.metricOrder.first == metric
         let isLast = manager.metricOrder.last == metric
 
-        return HStack(spacing: 10) {
+        let row = HStack(spacing: 10) {
             // Move up/down buttons
             VStack(spacing: 2) {
                 Button(action: { moveMetric(metric, up: true) }, label: {
@@ -181,6 +181,15 @@ struct PreferencesView: View {
             .toggleStyle(.switch)
             .frame(width: 80)
             .disabled(!isEnabled)
+        }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            row
+            // Style controls only matter for a metric that is actually in the
+            // menu bar, so they appear with it rather than sitting there inert.
+            if isVisible {
+                MetricStyleRow(manager: manager, metric: metric)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

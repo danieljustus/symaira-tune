@@ -17,6 +17,8 @@ final class PreferencesManager: ObservableObject {
     @Published var metricOrder: [MetricIdentifier]
     @Published var networkUnit: NetworkUnit
     @Published var temperatureUnit: TemperatureUnit
+    /// Per-metric menu-bar rendering. Metrics absent here use ``MetricStyle/default``.
+    @Published var metricStyles: [MetricIdentifier: MetricStyle]
 
     private let configPaths = ConfigPaths()
 
@@ -29,6 +31,15 @@ final class PreferencesManager: ObservableObject {
         self.metricOrder = config.metricOrder
         self.networkUnit = config.networkUnit
         self.temperatureUnit = config.temperatureUnit
+        self.metricStyles = config.metricStyles
+    }
+
+    /// The style for `metric`, defaulted, as a binding the pickers can drive.
+    func style(for metric: MetricIdentifier) -> Binding<MetricStyle> {
+        Binding(
+            get: { self.metricStyles[metric] ?? .default },
+            set: { self.metricStyles[metric] = $0 }
+        )
     }
 
     // MARK: - Snapshot as TuneConfig
@@ -53,7 +64,8 @@ final class PreferencesManager: ObservableObject {
             visibleMetrics: visibleMetrics,
             metricOrder: metricOrder,
             networkUnit: networkUnit,
-            temperatureUnit: temperatureUnit
+            temperatureUnit: temperatureUnit,
+            metricStyles: metricStyles
         )
     }
 
@@ -167,6 +179,16 @@ final class PreferencesManager: ObservableObject {
 
         lines.append("network_unit = \"\(networkUnit.rawValue)\"")
         lines.append("temperature_unit = \"\(temperatureUnit.rawValue)\"")
+
+        // Per-metric style, flat keys so the whole section stays one block.
+        // Only non-default metrics are written — an untouched config keeps a
+        // short, readable [metrics] section.
+        for metric in metricOrder {
+            guard let style = metricStyles[metric], style != .default else { continue }
+            lines.append("\(metric.rawValue)_label = \"\(style.label.rawValue)\"")
+            lines.append("\(metric.rawValue)_scale = \"\(style.scale.rawValue)\"")
+            lines.append("\(metric.rawValue)_unit = \"\(style.unit.rawValue)\"")
+        }
 
         return lines.joined(separator: "\n")
     }

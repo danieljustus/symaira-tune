@@ -57,13 +57,17 @@ final class TuneViewModel {
     /// Rendered menu-bar text (empty when the icon fallback should be used).
     private(set) var statusItemText: String = ""
 
+    /// The same title as ``statusItemText``, but keeping icon segments intact
+    /// so the status item can draw real SF Symbols.
+    private(set) var statusItemSegments: [StatusItemSegment] = []
+
     private(set) var builtinBrightness: Double = 0.5
     private(set) var dimAmount: Double = 0.0
     private(set) var warmth: Double = 0.0
 
     /// Called whenever ``statusItemText`` changes, so the status item is only
     /// re-laid-out when its content actually differs.
-    var onStatusItemTextChanged: ((String) -> Void)?
+    var onStatusItemTextChanged: (([StatusItemSegment]) -> Void)?
 
     // MARK: - Dependencies
 
@@ -267,10 +271,18 @@ final class TuneViewModel {
     private func updateStatusItemText() {
         guard let report = metrics else { return }
         let visible = orderedMetrics(preferences.visibleMetrics, fallback: [.cpu, .memory])
-        let text = MetricFormatting.statusItemText(report: report, identifiers: visible)
-        guard statusItemText != text else { return }
-        statusItemText = text
-        onStatusItemTextChanged?(text)
+        let segments = MetricStyleFormatting.statusItemSegments(
+            report: report,
+            identifiers: visible,
+            styles: preferences.metricStyles
+        )
+        // Comparing segments, not just the flattened text: two styles can
+        // render the same characters with a different icon, and the status
+        // item would otherwise keep the stale glyph.
+        guard statusItemSegments != segments else { return }
+        statusItemSegments = segments
+        statusItemText = MetricStyleFormatting.plainText(segments)
+        onStatusItemTextChanged?(segments)
     }
 
     private func orderedMetrics(
