@@ -16,7 +16,7 @@ struct DisplayControlsCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: CardMetrics.rowSpacing) {
             TuneSliderRow(
                 title: "Screen Brightness",
                 systemImage: "sun.max.fill",
@@ -27,15 +27,20 @@ struct DisplayControlsCard: View {
                 model.refreshNow()
             }
 
-            TuneSliderRow(
-                title: "Software Dimming",
-                systemImage: "moon.fill",
-                value: model.dimAmount,
-                range: 0.0...0.85
-            ) { value in
-                try? controller.applyDim(1.0 - value)
-                model.refreshNow()
-            }
+            // Software dimming and EDR headroom as one control: centre is the
+            // display untouched, and either direction is range symtune adds on
+            // top of what the hardware does by itself. See
+            // ``BeyondNormalBrightness`` for why the two are folded together
+            // and why OS brightness above stays separate.
+            CenterAnchoredSliderRow(
+                title: "Beyond Normal",
+                systemImage: "circle.lefthalf.filled",
+                position: beyondNormalPosition,
+                minimumLabel: "Darker",
+                maximumLabel: "Brighter",
+                maximumDisabledNote: isEDRCapable ? nil : "Brighter (unsupported)",
+                onCommit: applyBeyondNormal
+            )
 
             TuneSliderRow(
                 title: "Color Warmth",
@@ -46,20 +51,33 @@ struct DisplayControlsCard: View {
                 try? controller.applyWarmth(value)
                 model.refreshNow()
             }
-
-            if isEDRCapable {
-                TuneSliderRow(
-                    title: "Extended Brightness",
-                    systemImage: "sun.max.trianglebadge.exclamationmark.fill",
-                    value: model.overrides.edrBrightness ?? 1.0,
-                    range: 1.0...1.6
-                ) { value in
-                    try? controller.applyExtendedBrightness(value)
-                    model.refreshNow()
-                }
-            }
         }
         .cardStyle()
+    }
+
+    // MARK: - Beyond-normal brightness
+
+    private var beyondNormalPosition: Double {
+        BeyondNormalBrightness.position(
+            dimFactor: 1.0 - model.dimAmount,
+            extendedBrightness: model.overrides.edrBrightness,
+            config: controller.config
+        )
+    }
+
+    private func applyBeyondNormal(_ position: Double) {
+        let resolved = BeyondNormalBrightness.resolve(
+            position: position,
+            config: controller.config,
+            allowsExtendedBrightness: isEDRCapable
+        )
+        // Both sides are written every time: leaving the other one at its last
+        // value would keep it acting after the knob has crossed centre.
+        try? controller.applyDim(resolved.dimFactor)
+        if isEDRCapable {
+            try? controller.applyExtendedBrightness(resolved.extendedBrightness)
+        }
+        model.refreshNow()
     }
 }
 
@@ -88,7 +106,7 @@ struct FanControlCard: View {
 
     var body: some View {
         if hasFans {
-            VStack(spacing: 12) {
+            VStack(spacing: CardMetrics.rowSpacing) {
                 HStack {
                     Label("Fan Control", systemImage: "fanblades.fill")
                         .font(.system(size: 11, weight: .bold))

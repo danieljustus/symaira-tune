@@ -53,41 +53,69 @@ struct MainStatusView: View {
     }
 
     private var cards: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: CardMetrics.stackSpacing) {
             StatusHeaderView()
 
             Divider()
                 .background(SymairaColors.goldPrimary.opacity(0.15))
 
-            DisplayControlsCard(controller: controller, model: model)
+            if shows(.displayControls) {
+                DisplayControlsCard(controller: controller, model: model)
+            }
 
-            KeepAwakeCard(
-                active: model.keepAwake.active,
-                preventDisplaySleep: $keepAwakePreventDisplaySleep,
-                durationIndex: $keepAwakeDurationIndex,
-                remaining: keepAwakeRemaining,
-                isInteractive: !model.keepAwake.active,
-                presets: Self.keepAwakePresets,
-                onToggle: toggleKeepAwake
-            )
+            if shows(.keepAwake) {
+                KeepAwakeCard(
+                    active: model.keepAwake.active,
+                    preventDisplaySleep: $keepAwakePreventDisplaySleep,
+                    durationIndex: $keepAwakeDurationIndex,
+                    remaining: keepAwakeRemaining,
+                    isInteractive: !model.keepAwake.active,
+                    presets: Self.keepAwakePresets,
+                    onToggle: toggleKeepAwake
+                )
+            }
 
-            FanControlCard(controller: controller, model: model)
+            if shows(.fanControl, hardwareAvailable: hasFans) {
+                FanControlCard(controller: controller, model: model)
+            }
 
-            SystemStatusCard(battery: model.battery, sensors: model.sensors)
-                .equatable()
+            if shows(.systemStatus) {
+                SystemStatusCard(battery: model.battery, sensors: model.sensors)
+                    .equatable()
+            }
 
+            // Never hidden: an available update is the one thing the user has
+            // not opted out of seeing.
             UpdateNotificationView(updateChecker: updateChecker)
 
-            MetricsHistoryCard(rows: model.metricRows)
-                .equatable()
+            if shows(.metricsHistory) {
+                MetricsHistoryCard(rows: model.metricRows)
+                    .equatable()
+            }
 
-            DisplaysCard(displays: model.displays)
-                .equatable()
+            if shows(.displays) {
+                DisplaysCard(displays: model.displays)
+                    .equatable()
+            }
 
             StatusFooterView(openPreferences: openPreferences)
         }
-        .padding(16)
+        .padding(CardMetrics.panelPadding)
         .frame(width: 320)
+    }
+
+    // MARK: - Card visibility
+
+    private func shows(_ card: PopoverCard, hardwareAvailable: Bool = true) -> Bool {
+        preferencesManager.showsCard(card, hardwareAvailable: hardwareAvailable)
+    }
+
+    /// Whether this Mac reports any fan. `nil` sensors means "not read yet" —
+    /// treated as present so the card does not flicker away on the first frame
+    /// and back once the first sensor read lands.
+    private var hasFans: Bool {
+        guard let fans = model.sensors?.fans else { return true }
+        return !fans.isEmpty
     }
 
     // MARK: - Keep awake

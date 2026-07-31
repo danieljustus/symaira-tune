@@ -17,6 +17,10 @@ final class PreferencesManager: ObservableObject {
     @Published var metricOrder: [MetricIdentifier]
     @Published var networkUnit: NetworkUnit
     @Published var temperatureUnit: TemperatureUnit
+    /// Per-metric menu-bar rendering. Metrics absent here use ``MetricStyle/default``.
+    @Published var metricStyles: [MetricIdentifier: MetricStyle]
+    /// Which cards the popover shows.
+    @Published var visibleCards: Set<PopoverCard>
 
     private let configPaths = ConfigPaths()
 
@@ -29,6 +33,26 @@ final class PreferencesManager: ObservableObject {
         self.metricOrder = config.metricOrder
         self.networkUnit = config.networkUnit
         self.temperatureUnit = config.temperatureUnit
+        self.metricStyles = config.metricStyles
+        self.visibleCards = config.visibleCards
+    }
+
+    /// Whether `card` should be rendered, given whether its hardware exists.
+    ///
+    /// A card the user turned off stays off. A card whose hardware is missing
+    /// is hidden by default (see ``PopoverCard/hidesWhenHardwareMissing``) but
+    /// still appears if the user explicitly asked for it.
+    func showsCard(_ card: PopoverCard, hardwareAvailable: Bool = true) -> Bool {
+        guard visibleCards.contains(card) else { return false }
+        return hardwareAvailable || !card.hidesWhenHardwareMissing
+    }
+
+    /// The style for `metric`, defaulted, as a binding the pickers can drive.
+    func style(for metric: MetricIdentifier) -> Binding<MetricStyle> {
+        Binding(
+            get: { self.metricStyles[metric] ?? .default },
+            set: { self.metricStyles[metric] = $0 }
+        )
     }
 
     // MARK: - Snapshot as TuneConfig
@@ -53,7 +77,9 @@ final class PreferencesManager: ObservableObject {
             visibleMetrics: visibleMetrics,
             metricOrder: metricOrder,
             networkUnit: networkUnit,
-            temperatureUnit: temperatureUnit
+            temperatureUnit: temperatureUnit,
+            metricStyles: metricStyles,
+            visibleCards: visibleCards
         )
     }
 
@@ -71,7 +97,7 @@ final class PreferencesManager: ObservableObject {
             existingContent = ""
         }
 
-        let updatedContent = mergeMetricsSection(into: existingContent)
+        let updatedContent = mergePopoverSection(into: mergeMetricsSection(into: existingContent))
         try FileManager.default.createDirectory(
             at: configPaths.configDir,
             withIntermediateDirectories: true
@@ -97,6 +123,26 @@ final class PreferencesManager: ObservableObject {
             return metricsTOML + "\n"
         }
         return trimmed + "\n\n" + metricsTOML + "\n"
+    }
+
+    /// Merge the `[popover]` section into the existing TOML content, replacing
+    /// it if present and appending it otherwise.
+    private func mergePopoverSection(into content: String) -> String {
+        let cards = PopoverCard.allCases
+            .filter { visibleCards.contains($0) }
+            .map { "\"\($0.rawValue)\"" }
+            .joined(separator: ", ")
+        let popoverTOML = "[popover]\ncards = [\(cards)]"
+
+        if let range = existingSectionRange(section: "popover", in: content) {
+            var updated = content
+            updated.replaceSubrange(range, with: popoverTOML)
+            return updated
+        }
+
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return popoverTOML + "\n" }
+        return trimmed + "\n\n" + popoverTOML + "\n"
     }
 
     /// Find the range of an existing `[section]` block in TOML content.
@@ -167,6 +213,16 @@ final class PreferencesManager: ObservableObject {
 
         lines.append("network_unit = \"\(networkUnit.rawValue)\"")
         lines.append("temperature_unit = \"\(temperatureUnit.rawValue)\"")
+
+        // Per-metric style, flat keys so the whole section stays one block.
+        // Only non-default metrics are written — an untouched config keeps a
+        // short, readable [metrics] section.
+        for metric in metricOrder {
+            guard let style = metricStyles[metric], style != .default else { continue }
+            lines.append("\(metric.rawValue)_label = \"\(style.label.rawValue)\"")
+            lines.append("\(metric.rawValue)_scale = \"\(style.scale.rawValue)\"")
+            lines.append("\(metric.rawValue)_unit = \"\(style.unit.rawValue)\"")
+        }
 
         return lines.joined(separator: "\n")
     }

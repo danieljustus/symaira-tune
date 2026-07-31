@@ -3,13 +3,31 @@ import SymTuneCore
 
 // MARK: - Shared card chrome
 
+/// The popover's density knobs, in one place.
+///
+/// The panel is a glance-and-adjust surface, not a document: every card is
+/// visible at once, so padding spent per card is paid eight times over in
+/// total height. Tune these rather than sprinkling literals through the cards.
+enum CardMetrics {
+    /// Padding inside a card, between its border and its content.
+    static let cardPadding: CGFloat = 10
+    /// Gap between two cards in the popover stack.
+    static let stackSpacing: CGFloat = 10
+    /// Padding between the popover edge and the card stack.
+    static let panelPadding: CGFloat = 12
+    /// Gap between rows inside one card.
+    static let rowSpacing: CGFloat = 8
+    /// Extra vertical breathing room around an individual readout row.
+    static let rowPadding: CGFloat = 2
+}
+
 /// The panel background shared by every card in the status popover.
 struct CardStyle: ViewModifier {
     var borderColor: Color = SymairaColors.border
 
     func body(content: Content) -> some View {
         content
-            .padding(12)
+            .padding(CardMetrics.cardPadding)
             .background(SymairaColors.bgPanel)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
@@ -97,7 +115,7 @@ struct SystemStatusCard: View, Equatable {
     let sensors: SensorReport?
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: CardMetrics.rowSpacing - 2) {
             HStack {
                 Text("SYSTEM STATUS")
                     .font(.system(size: 9, weight: .bold))
@@ -118,7 +136,7 @@ struct SystemStatusCard: View, Equatable {
                 }
                 Spacer()
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, CardMetrics.rowPadding)
 
             HStack(spacing: 8) {
                 Image(systemName: "gauge.with.needle.fill")
@@ -140,7 +158,7 @@ struct SystemStatusCard: View, Equatable {
                 }
                 Spacer()
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, CardMetrics.rowPadding)
         }
         .cardStyle()
     }
@@ -209,7 +227,7 @@ struct DisplaysCard: View, Equatable {
     let displays: [DisplayInfo]
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: CardMetrics.rowPadding + 3) {
             HStack {
                 Text("CONNECTED DISPLAYS")
                     .font(.system(size: 9, weight: .bold))
@@ -243,7 +261,7 @@ struct DisplaysCard: View, Equatable {
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                     }
-                    .padding(.vertical, 3)
+                    .padding(.vertical, CardMetrics.rowPadding)
                 }
             }
         }

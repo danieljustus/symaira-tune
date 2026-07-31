@@ -141,6 +141,13 @@ public struct TuneConfig: Equatable, Sendable {
     /// Temperature display unit.
     public let temperatureUnit: TemperatureUnit
 
+    /// Per-metric menu-bar rendering options. Metrics absent from the map use
+    /// ``MetricStyle/default``, so an untouched config behaves as before.
+    public let metricStyles: [MetricIdentifier: MetricStyle]
+
+    /// Which cards the status popover shows.
+    public let visibleCards: Set<PopoverCard>
+
     /// Documented minimum refresh interval (seconds).
     public static let minimumRefreshInterval: TimeInterval = 1.0
 
@@ -170,7 +177,9 @@ public struct TuneConfig: Equatable, Sendable {
         visibleMetrics: Set<MetricIdentifier> = Set(MetricIdentifier.allCases),
         metricOrder: [MetricIdentifier] = MetricIdentifier.allCases,
         networkUnit: NetworkUnit = .bytesPerSecond,
-        temperatureUnit: TemperatureUnit = .celsius
+        temperatureUnit: TemperatureUnit = .celsius,
+        metricStyles: [MetricIdentifier: MetricStyle] = [:],
+        visibleCards: Set<PopoverCard> = Set(PopoverCard.allCases)
     ) {
         self.extendedBrightnessMin = extendedBrightnessMin
         self.extendedBrightnessMax = extendedBrightnessMax
@@ -190,6 +199,8 @@ public struct TuneConfig: Equatable, Sendable {
         self.metricOrder = metricOrder
         self.networkUnit = networkUnit
         self.temperatureUnit = temperatureUnit
+        self.metricStyles = metricStyles
+        self.visibleCards = visibleCards
     }
 
     // MARK: - Loading
@@ -297,7 +308,9 @@ public struct TuneConfig: Equatable, Sendable {
             visibleMetrics: metricSetVal("metrics", "visible", MetricIdentifier.allCases),
             metricOrder: metricOrderVal("metrics", "order", MetricIdentifier.allCases),
             networkUnit: networkUnitVal("metrics", "network_unit", .bytesPerSecond),
-            temperatureUnit: temperatureUnitVal("metrics", "temperature_unit", .celsius)
+            temperatureUnit: temperatureUnitVal("metrics", "temperature_unit", .celsius),
+            metricStyles: Self.parseMetricStyles(table: table, section: "metrics"),
+            visibleCards: Self.parseCardSet(table: table)
         )
 
         // Clamp user-defined bounds to the non-negotiable SafetyPolicy hard limits.
@@ -319,7 +332,9 @@ public struct TuneConfig: Equatable, Sendable {
             visibleMetrics: config.visibleMetrics,
             metricOrder: config.metricOrder,
             networkUnit: config.networkUnit,
-            temperatureUnit: config.temperatureUnit
+            temperatureUnit: config.temperatureUnit,
+            metricStyles: config.metricStyles,
+            visibleCards: config.visibleCards
         )
 
         // Validate min < max for each range; fall back to defaults on inversion.
@@ -339,6 +354,48 @@ public struct TuneConfig: Equatable, Sendable {
     }
 
     // MARK: - Parse helpers (static, extracted to keep `load` body under limit)
+
+    /// Read per-metric style keys out of `[metrics]`.
+    ///
+    /// Flat keys (`cpu_label`, `memory_scale`, ...) rather than a nested table
+    /// per metric: it matches the existing `[metrics]` keys and keeps the
+    /// section rewritable as one block when preferences are saved.
+    static func parseMetricStyles(
+        table: TOMLTable, section: String
+    ) -> [MetricIdentifier: MetricStyle] {
+        var styles: [MetricIdentifier: MetricStyle] = [:]
+
+        for metric in MetricIdentifier.allCases {
+            let id = metric.rawValue
+            let label = table[section, "\(id)_label"]?.stringValue
+                .flatMap(MetricStyle.LabelStyle.init(rawValue:))
+            let scale = table[section, "\(id)_scale"]?.stringValue
+                .flatMap(MetricStyle.ValueScale.init(rawValue:))
+            let unit = table[section, "\(id)_unit"]?.stringValue
+                .flatMap(MetricStyle.UnitStyle.init(rawValue:))
+
+            guard label != nil || scale != nil || unit != nil else { continue }
+
+            styles[metric] = MetricStyle(
+                label: label ?? MetricStyle.default.label,
+                scale: scale ?? MetricStyle.default.scale,
+                unit: unit ?? MetricStyle.default.unit
+            )
+        }
+
+        return styles
+    }
+
+    /// Parse the popover card set. An explicit empty list is honoured — a user
+    /// who turned every card off gets an empty panel, not a silent reset.
+    static func parseCardSet(
+        table: TOMLTable, section: String = "popover", key: String = "cards",
+        fallback: [PopoverCard] = PopoverCard.allCases
+    ) -> Set<PopoverCard> {
+        guard let arr = table[section, key]?.stringArrayValue else { return Set(fallback) }
+        let known = Set(PopoverCard.allCases.map(\.rawValue))
+        return Set(arr.filter { known.contains($0) }.map(PopoverCard.init(rawValue:)))
+    }
 
     private static func parseMetricSet(
         table: TOMLTable, section: String, key: String,

@@ -24,8 +24,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private var preferencesWindow: NSWindow?
     private var cancellables: Set<AnyCancellable> = []
 
-    /// Last text rendered into the status button, to skip redundant updates.
-    private var renderedTitle: String?
+    /// Last title rendered into the status button, to skip redundant updates.
+    private var renderedSegments: [StatusItemSegment]?
     /// Whether the button currently shows the icon fallback.
     private var showingIconFallback = false
 
@@ -63,8 +63,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         configureButton()
         setupPopover()
         observePreferences()
-        model.onStatusItemTextChanged = { [weak self] text in
-            self?.renderStatusItem(text: text)
+        model.onStatusItemTextChanged = { [weak self] segments in
+            self?.renderStatusItem(segments: segments)
         }
         model.start()
         checkForUpdatesOnLaunch()
@@ -80,7 +80,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private func checkForUpdatesOnLaunch() {
         Task {
             await updateChecker.checkOnLaunchIfEnabled()
-            renderStatusItem(text: model.statusItemText, force: true)
+            renderStatusItem(segments: model.statusItemSegments, force: true)
         }
     }
 
@@ -98,16 +98,16 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     // MARK: - Status item rendering
 
-    /// Render `text` into the status button. Skips the work when nothing
+    /// Render `segments` into the status button. Skips the work when nothing
     /// changed, which is the common case between refreshes.
-    private func renderStatusItem(text: String, force: Bool = false) {
+    private func renderStatusItem(segments: [StatusItemSegment], force: Bool = false) {
         guard let button = statusItem.button else { return }
         let updateAvailable = { if case .available = updateChecker.status { return true } else { return false } }()
 
-        guard force || text != renderedTitle else { return }
-        renderedTitle = text
+        guard force || segments != renderedSegments else { return }
+        renderedSegments = segments
 
-        guard !text.isEmpty else {
+        guard !segments.isEmpty else {
             renderIconFallback(button: button, updateAvailable: updateAvailable)
             return
         }
@@ -117,7 +117,16 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             showingIconFallback = false
         }
 
-        let attributed = NSMutableAttributedString(string: text, attributes: Self.titleAttributes)
+        let attributed = NSMutableAttributedString()
+        for segment in segments {
+            switch segment {
+            case .text(let text):
+                attributed.append(NSAttributedString(string: text, attributes: Self.titleAttributes))
+            case .symbol(let name):
+                attributed.append(Self.symbolAttachment(named: name))
+            }
+        }
+
         if updateAvailable {
             attributed.append(NSAttributedString(
                 string: " \u{26A0}\u{FE0F}",
@@ -125,6 +134,26 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             ))
         }
         button.attributedTitle = attributed
+        button.toolTip = MetricStyleFormatting.plainText(segments)
+    }
+
+    /// An SF Symbol drawn inline in the status-item title.
+    ///
+    /// A menu-bar title is a string, so an icon has to arrive as a text
+    /// attachment. Falls back to the symbol name in text if the system has no
+    /// such symbol — better a stray word than a silently missing metric.
+    private static func symbolAttachment(named name: String) -> NSAttributedString {
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: name) else {
+            return NSAttributedString(string: name, attributes: titleAttributes)
+        }
+        image.isTemplate = true
+
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Nudge the glyph down onto the text baseline; an attachment otherwise
+        // sits on its own bottom edge and rides high next to the digits.
+        attachment.bounds = CGRect(x: 0, y: -2, width: 12, height: 12)
+        return NSAttributedString(attachment: attachment)
     }
 
     /// Render the fallback icon (and update badge) when no metrics are visible.
