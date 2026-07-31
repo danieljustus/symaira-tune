@@ -20,8 +20,9 @@ public struct SensorService: Sendable {
         var notes: [String] = []
         if !smc.isAvailable {
             notes.append(
-                "SMC connection failed — detailed die temperatures and fan RPM "
-                + "are unavailable. Ensure you are running on a real Mac (not a VM)."
+                "SMC unavailable — detailed die temperatures and fan RPM cannot "
+                + "be read. This happens on a VM, and on macOS builds that no "
+                + "longer let unprivileged processes talk to the AppleSMC driver."
             )
         } else {
             if temperatures.isEmpty {

@@ -120,4 +120,39 @@ final class SMCServiceTests: XCTestCase {
         XCTAssertFalse(service.writeKeyValue("X", value: 1.0, dataType: "abcd"))
         XCTAssertTrue(conn.writtenKeys.isEmpty)
     }
+
+    // MARK: - Open probe
+
+    func testOpenProbeAsksForTheUniversalKeyCountKey() {
+        var probedKey: UInt32 = 0
+        _ = HardwareSMCConnection.probeIndicatesOpen { input, _ in
+            probedKey = input.key
+            return false
+        }
+        XCTAssertEqual(smcDecodeKey(probedKey), "#KEY")
+    }
+
+    func testOpenProbeSucceedsWhenTheSMCReportsSuccess() {
+        let open = HardwareSMCConnection.probeIndicatesOpen { _, output in
+            output.data[40] = 0 // result == kSMCSuccess
+            return true
+        }
+        XCTAssertTrue(open)
+    }
+
+    /// The regression from #210: on macOS builds that reject the raw AppleSMC
+    /// interface, the transport call succeeds while the firmware answers
+    /// kSMCKeyNotFound for every key — including `#KEY`. That is not an open
+    /// connection, and reporting it as one makes `smc_supported` lie.
+    func testOpenProbeFailsWhenTransportSucceedsButSMCRejectsTheKey() {
+        let open = HardwareSMCConnection.probeIndicatesOpen { _, output in
+            output.data[40] = 132 // kSMCKeyNotFound
+            return true
+        }
+        XCTAssertFalse(open)
+    }
+
+    func testOpenProbeFailsWhenTheTransportCallFails() {
+        XCTAssertFalse(HardwareSMCConnection.probeIndicatesOpen { _, _ in false })
+    }
 }
