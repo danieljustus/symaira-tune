@@ -17,7 +17,7 @@ e.g. "this render is running hot, ramp the fans and dim the screen."
 Part of the [Symaira](../ECOSYSTEM.md) family of AI-agent-native macOS tooling
 (Apache-2.0).
 
-> **Status: v0.6.0 core + standalone menu-bar app.** The current release includes
+> **Status: v0.7.0 core + standalone menu-bar app.** The current release includes
 > fan control and battery charge limiting directly in the open core. SMC writes
 > require `sudo`. Homebrew installs both the app and the CLI from the generated
 > cask (`brew install danieljustus/tap/symtune`).
@@ -52,6 +52,12 @@ The release DMG contains `SymairaTune.app` and the CLI binary. The app uses the
 same `TuneController` and `SafetyPolicy` as the CLI and MCP surfaces. See
 [`docs/manual-app-verification.md`](docs/manual-app-verification.md) for the
 real-host control and restore-on-exit checklist.
+
+The menu-bar popover shows a configurable set of cards: system status, metric
+history (sparklines), displays, display controls (brightness/dim/warmth),
+keep-awake, and fan control. Choose which cards are visible in the preferences
+view; the selection is persisted in `~/.config/symtune/config.toml` under
+`[popover] cards = [...]` (an explicit empty list shows an empty panel).
 
 ## CLI
 
