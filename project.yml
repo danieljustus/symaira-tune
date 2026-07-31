@@ -9,7 +9,7 @@ options:
 packages:
   symaira-appkit:
     url: https://github.com/danieljustus/symaira-appkit.git
-    revision: "ba4bbb234f43735d061895390377b585cb83ec81"
+    revision: "39dbab726db39ecd88814ae5e9b20ff7705cebfa"
 
 targets:
   SymTuneCore:
@@ -36,6 +36,8 @@ targets:
       - target: SymTuneCore
       - package: symaira-appkit
         product: SymairaUpdateCheck
+      - package: symaira-appkit
+        product: SymairaTheme
     settings:
       base:
         INFOPLIST_FILE: Sources/SymTuneApp/Info.plist
