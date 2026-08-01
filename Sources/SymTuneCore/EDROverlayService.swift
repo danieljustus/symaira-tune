@@ -71,6 +71,13 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
             )
         }
 
+        // The SDR reference does not need an overlay. Removing it here also
+        // ensures the neutral point restores the display after an EDR apply.
+        if multiplier == SafetyPolicy.extendedBrightnessMin {
+            removeOverlay(for: targetID)
+            return
+        }
+
         let headroom = Float(multiplier)
         lock.lock()
         let existing = overlays[targetID]
@@ -203,17 +210,12 @@ internal class EDROverlay: @unchecked Sendable {
 
             // Create a CAMetalLayer as the backing layer.
             let metalLayer = CAMetalLayer()
-            metalLayer.frame = CGRect(origin: .zero, size: screenFrame.size)
-            metalLayer.pixelFormat = pixelFormat
-            metalLayer.wantsExtendedDynamicRangeContent = true
-            metalLayer.contentsFormat = .RGBA16Float
-            metalLayer.contentsScale = window.backingScaleFactor
-
-            // Start with no drawable content — the EDR headroom alone
-            // drives the display brightness. Use a very dim white so
-            // the layer is valid but nearly invisible.
-            metalLayer.backgroundColor = NSColor(white: 0.01, alpha: 1.0).cgColor
-            metalLayer.opacity = 1.0
+            Self.configureMetalLayer(
+                metalLayer,
+                pixelFormat: pixelFormat,
+                frameSize: screenFrame.size,
+                contentsScale: window.backingScaleFactor
+            )
 
             let contentView = NSView(frame: screenFrame)
             contentView.wantsLayer = true
@@ -233,6 +235,28 @@ internal class EDROverlay: @unchecked Sendable {
             self.window = window
             self.metalLayer = metalLayer
         }
+    }
+
+    /// Configures an EDR-capable layer without contributing visible pixels.
+    /// Keeping this separate makes the transparency contract testable without
+    /// creating an on-screen window or requiring a physical display.
+    internal static func configureMetalLayer(
+        _ metalLayer: CAMetalLayer,
+        pixelFormat: MTLPixelFormat,
+        frameSize: CGSize,
+        contentsScale: CGFloat
+    ) {
+        metalLayer.frame = CGRect(origin: .zero, size: frameSize)
+        metalLayer.pixelFormat = pixelFormat
+        metalLayer.wantsExtendedDynamicRangeContent = true
+        metalLayer.contentsFormat = .RGBA16Float
+        metalLayer.contentsScale = contentsScale
+
+        // The overlay exists only to claim EDR headroom. Its content must not
+        // cover or dim the desktop beneath it.
+        metalLayer.backgroundColor = NSColor.clear.cgColor
+        metalLayer.isOpaque = false
+        metalLayer.opacity = 0.0
     }
 
     private func updateHeadroom() {

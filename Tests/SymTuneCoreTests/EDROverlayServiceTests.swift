@@ -1,4 +1,5 @@
 import XCTest
+import QuartzCore
 @testable import SymTuneCore
 
 /// Fake overlay that records routing without creating real NSWindows.
@@ -116,6 +117,23 @@ final class EDROverlayServiceTests: XCTestCase {
         XCTAssertTrue(created().first?.removed == true)
     }
 
+    func testApplyingNeutralMultiplierRemovesOverlayAndAllowsReapply() throws {
+        let (service, created) = fakeFactory()
+        try service.applyExtendedBrightness(1.4, displayID: displayA)
+        let firstOverlay = try XCTUnwrap(created().first)
+
+        try service.applyExtendedBrightness(SafetyPolicy.extendedBrightnessMin, displayID: displayA)
+
+        XCTAssertNil(service.currentHeadroom(for: displayA))
+        XCTAssertTrue(firstOverlay.removed)
+
+        try service.applyExtendedBrightness(1.2, displayID: displayA)
+
+        XCTAssertEqual(created().count, 2)
+        XCTAssertEqual(try XCTUnwrap(created().last?.headroom), 1.2, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(service.currentHeadroom(for: displayA)), 1.2, accuracy: 0.0001)
+    }
+
     func testRemoveAllOverlaysRemovesEverything() throws {
         var frames: [CGDirectDisplayID: CGRect] = [:]
         var created: [FakeEDROverlay] = []
@@ -144,6 +162,24 @@ final class EDROverlayServiceTests: XCTestCase {
     func testCurrentHeadroomIsNilWithoutOverlay() {
         let (service, _) = fakeFactory()
         XCTAssertNil(service.currentHeadroom(for: displayA))
+    }
+
+    func testMetalLayerConfigurationIsTransparentWhileRetainingEDR() throws {
+        let layer = CAMetalLayer()
+        let pixelFormat = try XCTUnwrap(MTLPixelFormat(rawValue: 80))
+
+        EDROverlay.configureMetalLayer(
+            layer,
+            pixelFormat: pixelFormat,
+            frameSize: CGSize(width: 1920, height: 1080),
+            contentsScale: 2.0
+        )
+
+        let backgroundColor = try XCTUnwrap(layer.backgroundColor)
+        XCTAssertTrue(layer.wantsExtendedDynamicRangeContent)
+        XCTAssertFalse(layer.isOpaque)
+        XCTAssertEqual(backgroundColor.alpha, 0, accuracy: 0.0001)
+        XCTAssertEqual(layer.opacity, 0, accuracy: 0.0001)
     }
 
     func testSystemEDRHeadroomIsNilForUnknownDisplay() {
