@@ -10,13 +10,19 @@ import IOKit
 public struct BatteryService: Sendable {
     private let source: any BatterySource
     private let isChargeLimitSupported: @Sendable () -> Bool
+    /// Supplies Apple's own "Maximum Capacity" / "Condition" figures from
+    /// `system_profiler SPPowerDataType`. Nil disables the Apple fields (e.g.
+    /// in tests). Cached by the provider, so it never runs on a hot loop.
+    private let appleHealthProvider: (any AppleBatteryHealthProviding)?
 
     public init(
         source: any BatterySource = HardwareBatterySource(),
-        isChargeLimitSupported: @escaping @Sendable () -> Bool = { false }
+        isChargeLimitSupported: @escaping @Sendable () -> Bool = { false },
+        appleHealthProvider: (any AppleBatteryHealthProviding)? = nil
     ) {
         self.source = source
         self.isChargeLimitSupported = isChargeLimitSupported
+        self.appleHealthProvider = appleHealthProvider
     }
 
     public func read() -> BatteryReport {
@@ -54,6 +60,10 @@ public struct BatteryService: Sendable {
                 temperatureC = Double(raw) / 100.0
             }
 
+            // Apple's own figures are reported alongside, never scored. Only
+            // fetched when a battery is present, and cached by the provider.
+            let appleHealth = appleHealthProvider?.readAppleHealth()
+
             var notes = [
                 "Read from raw AppleSmartBattery keys; interpretation can vary by Mac model.",
             ]
@@ -71,6 +81,8 @@ public struct BatteryService: Sendable {
                 maxCapacityMah: props.rawMaxCapacity,
                 healthPercent: health,
                 temperatureCelsius: temperatureC,
+                appleMaximumCapacityPercent: appleHealth?.maximumCapacityPercent,
+                appleCondition: appleHealth?.condition,
                 chargeLimitSupported: chargeLimitSupported,
                 notes: notes
             )

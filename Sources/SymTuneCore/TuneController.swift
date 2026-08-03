@@ -53,13 +53,15 @@ public final class TuneController: Sendable {
         self.chargeLimit = ChargeLimitService(smc: smc)
         self.battery = BatteryService(
             source: batterySource ?? HardwareBatterySource(),
-            isChargeLimitSupported: { [chargeLimit] in
-                chargeLimit.detectKeyFamily() != nil
-            }
+            // The system_profiler read is cached (TTL), so it never lands on a hot
+            // loop. Injected battery sources (test seams) get no provider, keeping
+            // unit tests free of subprocess calls.
+            isChargeLimitSupported: { [chargeLimit] in chargeLimit.detectKeyFamily() != nil },
+            appleHealthProvider: batterySource == nil ? SystemProfilerBatteryHealthProvider.shared : nil
         )
         self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
         self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
-        self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource())
+        self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource(smc: smc))
         self.metricsHistory = MetricsHistoryService(capacity: 120)
         // Sync enabled metrics from config into the history buffers
         metricsHistory.ensureBuffers(for: config.enabledMetrics)
@@ -190,6 +192,7 @@ public final class TuneController: Sendable {
                        detail: smcWritable
                             ? "Battery charge limiting via SMC. Requires root for writes."
                             : "SMC unavailable — charge limiting not possible."),
+            powerDrawCapability(),
         ]
 
         var recommendations: [String] = []
@@ -550,5 +553,17 @@ extension TuneController {
             logHistory(action: "battery-limit.clear", result: "failed", error: error)
             throw error
         }
+    }
+
+    private func powerDrawCapability() -> Capability {
+        let available = smc.readSystemPower() != nil
+        return Capability(
+            id: "power.draw.read",
+            available: available,
+            tier: "core",
+            detail: available
+                ? "Live DC-in power draw (volts/amps/watts) via SMC keys VD0R/ID0R/PDTR."
+                : "SMC DC-in power keys (VD0R/ID0R/PDTR) not exposed on this Mac — live power draw unavailable."
+        )
     }
 }

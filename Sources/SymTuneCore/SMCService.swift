@@ -424,6 +424,25 @@ public struct SMCService: Sendable {
              | UInt32(bytes[2]) << 8 | UInt32(bytes[3])
     }
 
+    // MARK: - System Power (DC-in rail)
+
+    /// Read live power draw from the DC-in rail: `VD0R` (volts), `ID0R`
+    /// (amps) and `PDTR` (watts). Strictly read-only — no SMC writes, no
+    /// elevated privileges, no `SafetyPolicy` surface.
+    ///
+    /// Returns nil when the connection is closed or when none of the three
+    /// keys is readable (many Macs do not expose the DC-in keys), so callers
+    /// can report honest unavailability instead of zeros. Values are reported
+    /// as read; `PDTR` is the direct wattage read, not a V×A derivation.
+    public func readSystemPower() -> PowerReport? {
+        guard connection.isOpen else { return nil }
+        let volts = readKeyValue("VD0R")
+        let amps = readKeyValue("ID0R")
+        let watts = readKeyValue("PDTR")
+        guard volts != nil || amps != nil || watts != nil else { return nil }
+        return PowerReport(volts: volts, amps: amps, watts: watts)
+    }
+
     // MARK: - Key Writing (privileged, used by helper IPC)
 
     /// Write a raw value to an SMC key. Requires root/SMC connection privileges.

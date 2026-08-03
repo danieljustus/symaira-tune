@@ -19,6 +19,7 @@ what's available on your machine.
 | `power.keepAwake` | All | All | Prevent idle sleep via IOKit power assertion. Works on every Mac. Ships in v0.1. |
 | `fan.control` | Macs with fans | Macs with fans | Core tier. SMC writes require root — run with `sudo`. Not available on fanless models (MacBook Air). |
 | `battery.chargeLimit` | Apple Silicon notebooks | Some Intel notebooks | Core tier. SMC writes require root — run with `sudo`. The IOKit/SMC keys differ between architectures. |
+| `power.draw.read` | DC-in rail only | DC-in rail only | Live volts/amps/watts via read-only SMC keys `VD0R`/`ID0R`/`PDTR`. Unprivileged. Absent (`nil`) on Macs that do not expose the keys — `doctor` reports the reason. |
 
 ### Tier and status legend
 
@@ -172,6 +173,7 @@ of 1.0 means no extended range is available on that display.
 | `sensors.thermalPressure` | None |
 | `sensors.smc` (read) | None (unprivileged IOKit access) |
 | `battery.read` | None (unprivileged IORegistry access) |
+| `power.draw.read` | None (unprivileged SMC read) |
 | `display.edr.read` | None (AppKit, GUI session) |
 | `power.keepAwake` | None (IOKit power assertion) |
 

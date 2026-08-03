@@ -56,18 +56,22 @@ public struct SystemMetricsSnapshot: Sendable, Equatable {
     public let memory: MemoryStatistics
     public let disk: DiskStatistics?
     public let network: [NetworkInterfaceStatistics]
+    /// Live DC-in power draw; nil when the SMC does not expose the keys.
+    public let power: PowerReport?
     public init(
         timestamp: TimeInterval = 0,
         cpu: CPUStatistics,
         memory: MemoryStatistics,
         disk: DiskStatistics?,
-        network: [NetworkInterfaceStatistics]
+        network: [NetworkInterfaceStatistics],
+        power: PowerReport? = nil
     ) {
         self.timestamp = timestamp
         self.cpu = cpu
         self.memory = memory
         self.disk = disk
         self.network = network
+        self.power = power
     }
     public static let empty = SystemMetricsSnapshot(timestamp: 0, cpu: .init(total: [], perCore: []), memory: .empty, disk: nil, network: [])
 }
@@ -75,9 +79,21 @@ public struct SystemMetricsSnapshot: Sendable, Equatable {
 public protocol SystemMetricsSource: Sendable { func readSnapshot() -> SystemMetricsSnapshot }
 
 public struct HardwareSystemMetricsSource: SystemMetricsSource, Sendable {
-    public init() {}
+    private let smc: SMCService
+
+    public init(smc: SMCService = SMCService()) {
+        self.smc = smc
+    }
+
     public func readSnapshot() -> SystemMetricsSnapshot {
-        SystemMetricsSnapshot(timestamp: Date.timeIntervalSinceReferenceDate, cpu: readCPU(), memory: readMemory(), disk: readDisk(), network: readNetwork())
+        SystemMetricsSnapshot(
+            timestamp: Date.timeIntervalSinceReferenceDate,
+            cpu: readCPU(),
+            memory: readMemory(),
+            disk: readDisk(),
+            network: readNetwork(),
+            power: smc.readSystemPower()
+        )
     }
 
     private func readCPU() -> CPUStatistics {

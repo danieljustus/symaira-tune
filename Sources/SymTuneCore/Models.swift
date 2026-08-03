@@ -56,10 +56,48 @@ public struct BatteryReport: Codable, Sendable, Equatable {
     /// maxCapacity / designCapacity, in percent. ~100 on a healthy battery.
     public let healthPercent: Int?
     public let temperatureCelsius: Double?
+    /// Apple's own whole-percent figure from `system_profiler
+    /// SPPowerDataType` ("Maximum Capacity", as shown in System Settings).
+    /// Absent when the block cannot be read or parsed. This legitimately
+    /// differs from `healthPercent` — see the README's battery section.
+    public let appleMaximumCapacityPercent: Int?
+    /// Apple's own "Condition" verdict from the same source (e.g. "Normal",
+    /// "Replace Soon"). Absent when the block cannot be read or parsed.
+    public let appleCondition: String?
     /// Whether the SMC exposes a charge-limit key on this Mac. This depends on
     /// the platform key probe (CHTE/CH0B/CHLC) and an SMC connection.
     public let chargeLimitSupported: Bool
     public let notes: [String]
+
+    public init(
+        present: Bool,
+        charging: Bool?,
+        externalConnected: Bool?,
+        currentCapacityPercent: Int?,
+        cycleCount: Int?,
+        designCapacityMah: Int?,
+        maxCapacityMah: Int?,
+        healthPercent: Int?,
+        temperatureCelsius: Double?,
+        appleMaximumCapacityPercent: Int? = nil,
+        appleCondition: String? = nil,
+        chargeLimitSupported: Bool,
+        notes: [String]
+    ) {
+        self.present = present
+        self.charging = charging
+        self.externalConnected = externalConnected
+        self.currentCapacityPercent = currentCapacityPercent
+        self.cycleCount = cycleCount
+        self.designCapacityMah = designCapacityMah
+        self.maxCapacityMah = maxCapacityMah
+        self.healthPercent = healthPercent
+        self.temperatureCelsius = temperatureCelsius
+        self.appleMaximumCapacityPercent = appleMaximumCapacityPercent
+        self.appleCondition = appleCondition
+        self.chargeLimitSupported = chargeLimitSupported
+        self.notes = notes
+    }
 }
 
 // MARK: - Displays
@@ -310,23 +348,46 @@ public struct NetworkReport: Codable, Sendable, Equatable {
     public let aggregateBytesInPerSecond: Double?
     public let aggregateBytesOutPerSecond: Double?
 }
+
+/// Live power draw from the SMC DC-in rail. Every field is optional: the
+/// `VD0R`/`ID0R`/`PDTR` keys are not exposed on every Mac, and the whole
+/// block is omitted from JSON when nothing is readable — no zeros, no guesses.
+public struct PowerReport: Codable, Sendable, Equatable {
+    /// DC-in rail voltage in volts (`VD0R`).
+    public let volts: Double?
+    /// DC-in rail current in amps (`ID0R`).
+    public let amps: Double?
+    /// DC-in rail power draw in watts (`PDTR`).
+    public let watts: Double?
+
+    public init(volts: Double? = nil, amps: Double? = nil, watts: Double? = nil) {
+        self.volts = volts
+        self.amps = amps
+        self.watts = watts
+    }
+}
+
 public struct SystemMetricsReport: Codable, Sendable, Equatable {
     public let cpu: CPUReport
     public let memory: MemoryReport
     public let disk: DiskReport?
     public let network: NetworkReport
+    /// Live power draw; absent when the SMC does not expose the DC-in keys.
+    public let power: PowerReport?
     public let notes: [String]
     public init(
         cpu: CPUReport,
         memory: MemoryReport,
         disk: DiskReport?,
         network: NetworkReport,
+        power: PowerReport? = nil,
         notes: [String] = []
     ) {
         self.cpu = cpu
         self.memory = memory
         self.disk = disk
         self.network = network
+        self.power = power
         self.notes = notes
     }
 }
