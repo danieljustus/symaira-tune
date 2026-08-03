@@ -18,6 +18,10 @@ final class FakeSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     var writtenKeys: [FakeSMCWrittenKey] = []
     var writeHandler: (@Sendable (String, UInt32, [UInt8]) -> Bool)?
 
+    /// The keys this fake "exposes" to index-based enumeration. nil (the
+    /// default) simulates a macOS build where enumeration is unavailable.
+    var enumeratedKeys: [String]?
+
     init(isOpen: Bool = true, keys: [String: FakeSMCKeyResult] = [:]) {
         self.isOpen = isOpen
         self.keys = keys
@@ -34,5 +38,9 @@ final class FakeSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
         }
         keys[key] = FakeSMCKeyResult(dataType: dataType, bytes: bytes)
         return true
+    }
+
+    func enumerateKeys() -> [String]? {
+        enumeratedKeys
     }
 }

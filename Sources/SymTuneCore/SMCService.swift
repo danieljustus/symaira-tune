@@ -179,6 +179,19 @@ public protocol SMCConnectionProtocol: Sendable {
 
     /// Write raw bytes to a key. Returns true on success.
     func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool
+
+    /// Enumerate the SMC keys this host actually exposes via the `#KEY`
+    /// index selector (`kSMCGetKeyFromIndex`), or nil when index-based
+    /// enumeration is unavailable. Callers must treat nil honestly — the
+    /// temperature report falls back to the built-in candidate table and
+    /// says so instead of assuming enumeration succeeded.
+    func enumerateKeys() -> [String]?
+}
+
+extension SMCConnectionProtocol {
+    /// Default: enumeration is unavailable. Only connections that implement
+    /// the index probe override this.
+    public func enumerateKeys() -> [String]? { nil }
 }
 
 // MARK: - Raw IOKit Call
@@ -232,6 +245,24 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
     /// `smcRawCall(handle:)`; the internal test seam injects a closure so the
     /// keyInfo/read/write logic can be exercised without IOKit hardware.
     private let perform: (inout SMCParamBlock, inout SMCParamBlock) -> Bool
+
+    /// Outcome of the index-based key enumeration, cached after the first
+    /// probe so repeated `readTemperatures()` polls cost nothing.
+    private enum KeyEnumerationResult: Sendable {
+        case unavailable
+        case keys([String])
+    }
+
+    private var enumerationResult: KeyEnumerationResult?
+    private let enumerationLock = NSLock()
+
+    /// Selector for the AppleSMC index-based key lookup: the requested index
+    /// goes in `data32`, the 4-character key code comes back in `key`.
+    /// (SMCKit documents this as `kSMCGetKeyFromIndex = 8`.)
+    private static let getKeyFromIndexSelector: UInt8 = 8
+
+    /// Sanity cap for the `#KEY` count — no shipping Mac exposes more.
+    private static let maxEnumerationKeys = 4096
 
     /// The key the open-probe asks for. `#KEY` reports the total number of SMC
     /// keys and exists on every Mac that implements the SMC at all — unlike
@@ -354,6 +385,92 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
         return (dataType, out2.dataBytes(Int(dataSize)))
     }
 
+    // MARK: - Key Enumeration
+
+    /// Enumerate the SMC keys this host actually exposes.
+    ///
+    /// The `#KEY` key reports the key count; each key is then looked up by
+    /// index through the `kSMCGetKeyFromIndex` selector (index in `data32`,
+    /// key code returned in `key`). Returns nil — never an empty array —
+    /// when the connection is closed, the count cannot be read, or the
+    /// firmware rejects the index probe. macOS builds that restrict the raw
+    /// AppleSMC user client reject every key, so callers must not assume
+    /// enumeration succeeded.
+    public func enumerateKeys() -> [String]? {
+        guard isOpen else { return nil }
+
+        enumerationLock.lock()
+        if let cached = enumerationResult {
+            enumerationLock.unlock()
+            if case .keys(let keys) = cached { return keys }
+            return nil
+        }
+        enumerationLock.unlock()
+
+        // #KEY reports the total key count: a ui32 big-endian value on Apple
+        // Silicon, an ASCII decimal string on some Intel firmware. Accept
+        // both encodings.
+        guard let (_, countBytes) = readKeyRaw(Self.probeKey), !countBytes.isEmpty else {
+            cacheEnumeration(.unavailable)
+            return nil
+        }
+        let count = Self.parseKeyCount(countBytes)
+        guard count > 0 else {
+            cacheEnumeration(.unavailable)
+            return nil
+        }
+
+        var keys: [String] = []
+        for index in 0..<min(count, Self.maxEnumerationKeys) {
+            var input = SMCParamBlock()
+            input.data8 = Self.getKeyFromIndexSelector
+            input.data32 = UInt32(index)
+
+            var output = SMCParamBlock()
+            guard perform(&input, &output) else {
+                cacheEnumeration(.unavailable)
+                return nil
+            }
+            // kSMCKeyNotFound (132) — index past the end of the key table.
+            if output.result != 0 { break }
+
+            let key = smcDecodeKey(output.key)
+            // Firmwares that do not implement the index selector return empty
+            // or non-printable key codes; treat that as the end of the table.
+            guard Self.isPrintableKeyCode(key) else { break }
+            keys.append(key)
+        }
+
+        guard !keys.isEmpty else {
+            cacheEnumeration(.unavailable)
+            return nil
+        }
+        cacheEnumeration(.keys(keys))
+        return keys
+    }
+
+    private func cacheEnumeration(_ result: KeyEnumerationResult) {
+        enumerationLock.lock()
+        enumerationResult = result
+        enumerationLock.unlock()
+    }
+
+    /// Parse the `#KEY` payload: big-endian integer, or ASCII decimal string.
+    private static func parseKeyCount(_ bytes: [UInt8]) -> Int {
+        if bytes.count == 4, bytes.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 }) {
+            return Int(String(bytes: bytes, encoding: .ascii) ?? "") ?? 0
+        }
+        var value: UInt64 = 0
+        for byte in bytes { value = (value << 8) | UInt64(byte) }
+        return Int(value)
+    }
+
+    /// A valid SMC key code is exactly 4 printable ASCII characters.
+    private static func isPrintableKeyCode(_ key: String) -> Bool {
+        let utf8 = Array(key.utf8)
+        return utf8.count == 4 && utf8.allSatisfy { $0 >= 0x21 && $0 <= 0x7E }
+    }
+
     public func writeKeyRaw(_ key: String, dataType: UInt32, bytes: [UInt8]) -> Bool {
         guard isOpen, bytes.count <= 32, let out1 = keyInfo(for: key) else { return false }
 
@@ -394,12 +511,44 @@ public final class HardwareSMCConnection: SMCConnectionProtocol, @unchecked Send
 public struct SMCService: Sendable {
     private let connection: any SMCConnectionProtocol
 
-    public init(connection: any SMCConnectionProtocol = HardwareSMCConnection()) {
+    /// Test seam: pin the chip generation instead of detecting it from the
+    /// host, so generation-specific behavior is deterministic in tests.
+    /// Production callers leave it nil.
+    private let fixedGeneration: ChipGeneration?
+
+    public init(
+        connection: any SMCConnectionProtocol = HardwareSMCConnection(),
+        generation: ChipGeneration? = nil
+    ) {
         self.connection = connection
+        self.fixedGeneration = generation
     }
 
     /// Whether the SMC bridge successfully connected to the AppleSMC driver.
     public var isAvailable: Bool { connection.isOpen }
+
+    // MARK: - Capability Reporting
+
+    /// The detected Apple Silicon chip generation (`.unknown` on Intel or
+    /// when detection fails). Drives the candidate temperature table.
+    public var chipGeneration: ChipGeneration {
+        Self.detectChipGeneration()
+    }
+
+    /// Whether the host allowed index-based SMC key enumeration. False on
+    /// closed connections and on macOS builds that reject the index probe —
+    /// callers must surface this instead of silently assuming enumeration.
+    public var keyEnumerationAvailable: Bool {
+        guard connection.isOpen else { return false }
+        return connection.enumerateKeys() != nil
+    }
+
+    /// The SMC keys this host actually exposes, or nil when index-based
+    /// enumeration is unavailable.
+    public func enumerateKeys() -> [String]? {
+        guard connection.isOpen else { return nil }
+        return connection.enumerateKeys()
+    }
 
     // MARK: - Key Reading
 
@@ -494,13 +643,25 @@ public struct SMCService: Sendable {
         guard connection.isOpen else { return [] }
 
         #if arch(arm64)
-        let keys = Self.appleSiliconTempKeys
+        let keys = Self.appleSiliconTemperatureKeys(
+            for: fixedGeneration ?? Self.detectChipGeneration()
+        )
         #else
         let keys = Self.intelTempKeys
         #endif
 
+        // Reported temperatures = intersection of the candidate table and the
+        // keys the host actually exposes. Absent keys are omitted — never
+        // reported as zero or unknown. When index-based enumeration is
+        // unavailable (some macOS builds restrict the AppleSMC user client),
+        // the candidate table is used as-is; SensorService surfaces that in
+        // the report notes.
+        let enumeratedKeys = connection.enumerateKeys()
+        let knownKeys: Set<String>? = enumeratedKeys.map { Set($0) }
+
         var readings: [SensorReading] = []
         for (key, label) in keys {
+            if let knownKeys, !knownKeys.contains(key) { continue }
             if let celsius = readKeyValue(key), celsius > 0 {
                 readings.append(SensorReading(key: key, label: label, celsius: celsius))
             }
@@ -540,11 +701,77 @@ public struct SMCService: Sendable {
         return fans
     }
 
+    // MARK: - Chip Generation
+
+    /// Apple Silicon chip generation, detected from `machdep.cpu.brand_string`.
+    /// Drives which SMC temperature-key candidates are probed — the E-core
+    /// and SoC sensor namespaces have shifted between generations (see
+    /// `docs/hardware-matrix.md`).
+    public enum ChipGeneration: String, Sendable {
+        case m1 = "M1"
+        case m2 = "M2"
+        case m3 = "M3"
+        case m4 = "M4"
+
+        /// Not detected: Intel, or an unrecognized/future chip (e.g. M5).
+        case unknown = "unknown"
+
+        /// Label used in report notes.
+        public var displayName: String {
+            switch self {
+            case .unknown: return "unknown-generation"
+            default: return rawValue
+            }
+        }
+    }
+
+    /// Detect the Apple Silicon generation from `machdep.cpu.brand_string`
+    /// (e.g. "Apple M4 Pro" → `.m4`). Returns `.unknown` on Intel and on
+    /// unrecognized chips, so callers fall back to the broad candidate table.
+    public static func detectChipGeneration() -> ChipGeneration {
+        #if arch(arm64)
+        var size = 0
+        guard sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0) == 0, size > 0 else {
+            return .unknown
+        }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("machdep.cpu.brand_string", &buffer, &size, nil, 0) == 0 else {
+            return .unknown
+        }
+        // The sysctl buffer is NUL-terminated; stop at the first NUL.
+        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        guard let brand = String(bytes: bytes, encoding: .utf8) else { return .unknown }
+        return chipGeneration(fromBrandString: brand) ?? .unknown
+        #else
+        return .unknown
+        #endif
+    }
+
+    /// Parse a chip brand string into a generation. Testable without sysctl.
+    /// Returns nil for Intel and for unrecognized chips.
+    public static func chipGeneration(fromBrandString brand: String) -> ChipGeneration? {
+        let normalized = brand.uppercased()
+        for generation in [ChipGeneration.m1, .m2, .m3, .m4] {
+            if normalized.contains(generation.rawValue.uppercased()) { return generation }
+        }
+        return nil
+    }
+
     // MARK: - Key Tables
 
-    /// Apple Silicon (arm64) temperature sensor keys.
-    /// Not all keys exist on every chip — missing keys are silently skipped.
-    static let appleSiliconTempKeys: [(key: String, label: String)] = [
+    /// Candidate Apple Silicon temperature keys shared by every generation.
+    /// Rows are candidates, not guarantees: `readTemperatures` intersects
+    /// them with the host-enumerated keys, so a row a given Mac does not
+    /// expose is simply omitted.
+    ///
+    /// `TCMz` (CPU die hotspot) and `TRDX` (GPU die hotspot) are the
+    /// authoritative peak sensors (MacMonitor SENSORS.md); `Tp0x` are the
+    /// P-core cluster sensors; `TG0P`/`TM0P`/`Ts0S`/`Ta0P` are the die,
+    /// memory, SoC and ambient probes carried over from the original flat
+    /// list.
+    static let commonAppleSiliconTempKeys: [(key: String, label: String)] = [
+        ("TCMz", "CPU Die Hotspot"),
+        ("TRDX", "GPU Die Hotspot"),
         ("Tp01", "CPU Core 1"),
         ("Tp02", "CPU Core 2"),
         ("Tp03", "CPU Core 3"),
@@ -562,6 +789,43 @@ public struct SMCService: Sendable {
         ("Ts0S", "SoC Die"),
         ("Ta0P", "Ambient"),
     ]
+
+    /// CPU sensors verified on M2 and later (MacMonitor SENSORS.md). Candidate
+    /// rows — trimmed by the enumeration intersection when absent.
+    static let m2PlusCpuKeys: [(key: String, label: String)] = [
+        ("TCMb", "CPU Die (Core Max)"),
+        ("TCHP", "CPU/Charger Proximity"),
+    ]
+
+    /// E-core cluster sensor keys per generation. The E-core namespace has
+    /// shifted between chip generations: M2 exposes `Te04`–`Te06`
+    /// (MacMonitor SENSORS.md), and the M3 row (`Te05`/`Te0L`/`Te0P`/`Te0S`)
+    /// vs M4 row (`Te05`/`Te0S`/`Te09`/`Te0H`) follow prior art. These rows
+    /// could not be re-verified against a live host on macOS builds that
+    /// block unprivileged AppleSMC reads — the enumeration intersection
+    /// trims any row the host does not expose. The `unknown` row is the
+    /// union so the runtime intersection still narrows it down.
+    static let eCoreKeysByGeneration: [ChipGeneration: [String]] = [
+        .m1: [],
+        .m2: ["Te04", "Te05", "Te06"],
+        .m3: ["Te05", "Te0L", "Te0P", "Te0S"],
+        .m4: ["Te05", "Te0S", "Te09", "Te0H"],
+        .unknown: ["Te04", "Te05", "Te06", "Te09", "Te0H", "Te0L", "Te0P", "Te0S"],
+    ]
+
+    /// The full Apple Silicon candidate table for one chip generation.
+    static func appleSiliconTemperatureKeys(
+        for generation: ChipGeneration
+    ) -> [(key: String, label: String)] {
+        var keys = Self.commonAppleSiliconTempKeys
+        if generation != .m1 {
+            keys.append(contentsOf: Self.m2PlusCpuKeys)
+        }
+        for eCoreKey in Self.eCoreKeysByGeneration[generation] ?? [] {
+            keys.append((eCoreKey, "CPU E-Core Cluster"))
+        }
+        return keys
+    }
 
     /// Intel (x86_64) temperature sensor keys.
     static let intelTempKeys: [(key: String, label: String)] = [
