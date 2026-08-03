@@ -93,6 +93,17 @@ core. They require the process to run as root because they write to the Apple SM
 - [ ] Optional privileged `symtune-helper` daemon via `SMAppService` so users do
       not need to run the whole CLI as root. The helper remains Apache-2.0 in
       this repo.
+      Blocking acceptance criteria — the helper must not ship without peer
+      validation (`#236`):
+      - client authentication per `SMCHelperProtocol`: a code-signing
+        requirement pinned to the `symtune` Developer ID team and bundle
+        identifier, set on both directions of the `NSXPCConnection`;
+      - peer validation via the connection's audit token
+        (`SecCodeCopyGuestWithAttributes`), never a PID claimed by the peer;
+      - rejection of peers carrying hardened-runtime escape entitlements
+        (`allow-dyld-environment-variables`, `disable-library-validation`,
+        `allow-unsigned-executable-memory`, `allow-jit`) and a `SecCodeStatus`
+        of `valid`, `hard`, `kill`, `libraryValidation`, and `runtime`.
 - [ ] DDC/CI external-monitor brightness (IOKit I2C) — evaluate helper vs direct.
 - [ ] Tighten to Swift 6 strict concurrency (currently Swift 5 language mode;
       main friction is AppKit MainActor isolation in `DisplayService`).

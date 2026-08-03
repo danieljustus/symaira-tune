@@ -96,6 +96,40 @@ optional `symtune-helper` daemon may run with elevated privileges and expose the
 same operations over XPC, but the helper remains a convenience wrapper around
 the same core safety logic.
 
+### Privileged-helper trust boundary
+
+The planned privileged `symtune-helper` daemon (contract in
+[`SMCHelperProtocol.swift`](Sources/SymTuneCore/SMCHelperProtocol.swift)) runs
+as root, so it must answer one question before serving any request: **who may
+call the helper?** `SafetyPolicy` clamping bounds *what* can be written, not
+*by whom* — a root XPC service without peer validation accepts a connection from
+any local process, making the clamped helper a local privilege-escalation
+primitive (any unprivileged app on the machine could pin the fans or inhibit
+charging).
+
+Only clients signed by the `symtune` Developer ID team with the expected bundle
+identifier may call the helper, and the client must only accept the helper
+signed by that same team. The mandatory client-authentication contract requires:
+
+- a code-signing requirement pinned to the `symtune` Developer ID team and
+  bundle identifier, set on both directions of the `NSXPCConnection`;
+- validation of the peer's **audit token** via `SecCodeCopyGuestWithAttributes`
+  — never a PID claimed by the peer, because a PID can be reused by an
+  unrelated process after the original exits (PID-reuse race), while the audit
+  token is bound to the process the connection was accepted from;
+- rejection of peers carrying hardened-runtime escape entitlements
+  (`com.apple.security.cs.allow-dyld-environment-variables`,
+  `com.apple.security.cs.disable-library-validation`,
+  `com.apple.security.cs.allow-unsigned-executable-memory`,
+  `com.apple.security.cs.allow-jit`);
+- a `SecCodeStatus` of `valid`, `hard`, `kill`, `libraryValidation`, and
+  `runtime`.
+
+The helper must refuse the connection when any check fails. These requirements
+are blocking acceptance criteria on the helper roadmap item
+([`docs/roadmap.md`](docs/roadmap.md)) and are part of the `SMCHelperProtocol`
+contract itself.
+
 ## Write-path matrix
 
 | Path | CLI / MCP entry point | Effective range | Current status | Restoration |
