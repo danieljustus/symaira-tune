@@ -54,7 +54,15 @@ public final class SystemMetricsService: @unchecked Sendable {
         if current.memory.usedBytes == nil { notes.append("Memory metrics unavailable.") }
         if current.disk == nil { notes.append("Boot-volume disk metrics unavailable.") }
         if current.network.isEmpty { notes.append("Network metrics unavailable.") }
-        return SystemMetricsReport(cpu: cpu, memory: memory, disk: disk, network: network, notes: notes)
+        if current.power == nil { notes.append("Live power draw unavailable — SMC DC-in keys (VD0R/ID0R/PDTR) not exposed.") }
+        return SystemMetricsReport(
+            cpu: cpu,
+            memory: memory,
+            disk: disk,
+            network: network,
+            power: current.power,
+            notes: notes
+        )
     }
 
     private func utilization(_ current: [UInt64], _ old: [UInt64]?) -> Double? {

@@ -155,4 +155,73 @@ final class SMCServiceTests: XCTestCase {
     func testOpenProbeFailsWhenTheTransportCallFails() {
         XCTAssertFalse(HardwareSMCConnection.probeIndicatesOpen { _, _ in false })
     }
+
+    // MARK: - System power (readSystemPower)
+
+    private func fltKey(_ value: Double) -> FakeSMCKeyResult {
+        let raw = Float(value).bitPattern
+        return FakeSMCKeyResult(
+            dataType: smcEncodeKey("flt "),
+            bytes: [
+                UInt8((raw >> 24) & 0xFF),
+                UInt8((raw >> 16) & 0xFF),
+                UInt8((raw >> 8) & 0xFF),
+                UInt8(raw & 0xFF)
+            ]
+        )
+    }
+
+    func testReadSystemPowerNilWhenConnectionClosed() {
+        let service = SMCService(connection: FakeSMCConnection(isOpen: false))
+        XCTAssertNil(service.readSystemPower())
+    }
+
+    func testReadSystemPowerNilWhenKeysAbsent() {
+        let service = SMCService(connection: FakeSMCConnection(isOpen: true, keys: [:]))
+        XCTAssertNil(service.readSystemPower())
+    }
+
+    func testReadSystemPowerReadsAllThreeKeys() {
+        let conn = FakeSMCConnection(isOpen: true, keys: [
+            "VD0R": fltKey(20.0),
+            "ID0R": fltKey(0.5),
+            "PDTR": fltKey(10.0)
+        ])
+        let service = SMCService(connection: conn)
+
+        let power = service.readSystemPower()
+        XCTAssertEqual(power?.volts ?? 0, 20.0, accuracy: 0.0001)
+        XCTAssertEqual(power?.amps ?? 0, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(power?.watts ?? 0, 10.0, accuracy: 0.0001)
+        // Read-only: a power read must never write to the SMC.
+        XCTAssertTrue(conn.writtenKeys.isEmpty)
+    }
+
+    func testReadSystemPowerWattsConsistentWithVoltsTimesAmps() {
+        let volts = 20.3
+        let amps = 0.12
+        let watts = volts * amps
+        let service = SMCService(connection: FakeSMCConnection(isOpen: true, keys: [
+            "VD0R": fltKey(volts),
+            "ID0R": fltKey(amps),
+            "PDTR": fltKey(watts)
+        ]))
+
+        let power = service.readSystemPower()
+        guard let power, let volts = power.volts, let amps = power.amps, let watts = power.watts else {
+            return XCTFail("expected a full power report")
+        }
+        XCTAssertEqual(watts, volts * amps, accuracy: 0.0001)
+    }
+
+    func testReadSystemPowerPartialWattsOnlyStillReported() {
+        let service = SMCService(connection: FakeSMCConnection(isOpen: true, keys: [
+            "PDTR": fltKey(4.2)
+        ]))
+
+        let power = service.readSystemPower()
+        XCTAssertEqual(power?.watts ?? 0, 4.2, accuracy: 0.0001)
+        XCTAssertNil(power?.volts)
+        XCTAssertNil(power?.amps)
+    }
 }
