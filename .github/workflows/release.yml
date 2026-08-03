@@ -8,7 +8,7 @@ on:
 
 jobs:
   release:
-    runs-on: [self-hosted, macOS, X64, ARM64, macbook-tune]
+    runs-on: [self-hosted, macOS, ARM64, macbook-tune]
     permissions:
       contents: write
     steps:

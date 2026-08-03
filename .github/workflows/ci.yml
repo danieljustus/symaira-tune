@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: [self-hosted, macOS, X64, ARM64, macbook-tune]
+    runs-on: [self-hosted, macOS, ARM64, macbook-tune]
     permissions:
       contents: read
     steps:
@@ -40,7 +40,7 @@ jobs:
         run: swiftlint --strict
 
   build-test:
-    runs-on: [self-hosted, macOS, X64, ARM64, macbook-tune]
+    runs-on: [self-hosted, macOS, ARM64, macbook-tune]
     permissions:
       contents: read
     steps:
@@ -67,7 +67,7 @@ jobs:
 
   build-app:
     if: github.event_name != 'pull_request'  # PR gate = lint + SPM build-test; xcodebuild app on main/schedule
-    runs-on: [self-hosted, macOS, X64, ARM64, macbook-tune]
+    runs-on: [self-hosted, macOS, ARM64, macbook-tune]
     permissions:
       contents: read
     steps:
