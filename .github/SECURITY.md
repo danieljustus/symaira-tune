@@ -37,6 +37,8 @@ Instead, use one of these channels:
 
 `symaira-tune` interacts with hardware (Apple SMC, display brightness, power management) and runs with elevated privileges for certain features. Vulnerabilities in these privileged code paths are particularly sensitive.
 
+The future privileged `symtune-helper` daemon is a root XPC service; its client-authentication contract (code-signing requirement, audit-token validation, rejection of hardened-runtime escape entitlements — see [`SMCHelperProtocol.swift`](../Sources/SymTuneCore/SMCHelperProtocol.swift) and [SAFETY_AUDIT.md](../SAFETY_AUDIT.md)) is part of this policy's scope.
+
 ## Safety
 
 Every write path (brightness, dim, fan, charge limit) is bounded by `SafetyPolicy`. Fan and charge-limit commands require `sudo`. The tool restores original values on normal teardown or signal. See [SAFETY_AUDIT.md](../SAFETY_AUDIT.md) for the full safety model.
