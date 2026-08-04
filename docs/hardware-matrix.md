@@ -19,6 +19,7 @@ what's available on your machine.
 | `power.keepAwake` | All | All | Prevent idle sleep via IOKit power assertion. Works on every Mac. Ships in v0.1. |
 | `fan.control` | Macs with fans | Macs with fans | Core tier. SMC writes require root — run with `sudo`. Not available on fanless models (MacBook Air). |
 | `battery.chargeLimit` | Apple Silicon notebooks | Some Intel notebooks | Core tier. SMC writes require root — run with `sudo`. The IOKit/SMC keys differ between architectures. |
+| `power.draw.read` | DC-in rail only | DC-in rail only | Live volts/amps/watts via read-only SMC keys `VD0R`/`ID0R`/`PDTR`. Unprivileged. Absent (`nil`) on Macs that do not expose the keys — `doctor` reports the reason. |
 
 ### Tier and status legend
 
@@ -50,9 +51,30 @@ the key namespace for temperature sensors is not identical.
   battery). These are documented in the community SMC key reference.
 - **Apple Silicon**: The system-on-chip integrates CPU, GPU, Neural Engine,
   and memory controller on one die. The SMC key names differ, and the set of
-  exposed sensors is not a superset of the Intel keys. The `SMCService` in
-  symtune (v0.1) abstracts this behind a unified API, but `doctor` reports
-  the raw key differences for diagnostic use.
+  exposed sensors is not a superset of the Intel keys. Every generation
+  shares two authoritative peak sensors — `TCMz` (CPU die hotspot) and
+  `TRDX` (GPU die hotspot, where the SoC has a GPU) — but the remaining
+  sensor namespaces (E-core cluster, SoC) have shifted between chip
+  generations.
+
+`SMCService` (v0.2) keeps a *candidate* table per chip generation, detected
+from `machdep.cpu.brand_string`. The reported temperatures are the
+intersection of the generation's candidate row and the keys the host actually
+exposes through index-based enumeration (the `#KEY` count probe plus a
+per-index key lookup). Absent keys are omitted — never reported as zero or
+unknown. On macOS builds where the raw AppleSMC user client is restricted,
+enumeration is unavailable; `symtune sensors` then falls back to the
+candidate row and says so in `notes` instead of assuming enumeration worked.
+
+#### Apple Silicon per-generation candidate keys
+
+| Generation | E-core cluster keys | Notes |
+|---|---|---|
+| M1 | — | `Tp01`–`Tp12` P-core candidates, `TG0P` GPU die, `TM0P` memory proximity, `Ts0S` SoC, `Ta0P` ambient; enumeration trims rows to the cores present |
+| M2 | `Te04`–`Te06` | Adds `TCMb` (CPU die core max) and `TCHP` (CPU/charger proximity), verified on M2 (MacMonitor SENSORS.md) |
+| M3 | `Te05`/`Te0L`/`Te0P`/`Te0S` | E-core namespace shifted from M2 (prior art) |
+| M4 | `Te05`/`Te0S`/`Te09`/`Te0H` | M4 E-core row (prior art; could not be re-verified on macOS builds that block unprivileged AppleSMC reads — the enumeration intersection trims any row a host does not expose) |
+| unknown | union of all rows | Fallback for undetected/future chips (e.g. M5); trimmed by enumeration |
 
 Both architectures expose fan RPM keys when a fan is present: `F0Ac` on Intel,
 and equivalent keys on Apple Silicon.
@@ -172,6 +194,7 @@ of 1.0 means no extended range is available on that display.
 | `sensors.thermalPressure` | None |
 | `sensors.smc` (read) | None (unprivileged IOKit access) |
 | `battery.read` | None (unprivileged IORegistry access) |
+| `power.draw.read` | None (unprivileged SMC read) |
 | `display.edr.read` | None (AppKit, GUI session) |
 | `power.keepAwake` | None (IOKit power assertion) |
 

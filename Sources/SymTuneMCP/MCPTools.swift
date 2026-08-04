@@ -27,7 +27,7 @@ struct SensorsTool: MCPTool, @unchecked Sendable {
 
 struct BatteryTool: MCPTool, @unchecked Sendable {
     let name = "get_battery"
-    let description = "Read battery health: charge %, cycle count, capacity, condition."
+    let description = "Read battery health: charge %, cycle count, capacity, condition — plus Apple's own Maximum Capacity/Condition when available."
     let inputSchema: [String: Any] = [:]
     var isReadOnly: Bool { true }
 
@@ -49,7 +49,7 @@ struct ListDisplaysTool: MCPTool, @unchecked Sendable {
 
 struct MetricsTool: MCPTool, @unchecked Sendable {
     let name = "get_system_metrics"
-    let description = "Read system metrics: CPU utilization, memory pressure, disk usage, and network throughput."
+    let description = "Read system metrics: CPU utilization, memory pressure, disk usage, network throughput, and live power draw (volts/amps/watts, when the SMC exposes them)."
     let inputSchema: [String: Any] = [:]
     var isReadOnly: Bool { true }
 

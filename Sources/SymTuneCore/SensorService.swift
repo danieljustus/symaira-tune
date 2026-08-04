@@ -25,6 +25,17 @@ public struct SensorService: Sendable {
                 + "longer let unprivileged processes talk to the AppleSMC driver."
             )
         } else {
+            // Honest capability reporting: when index-based key enumeration is
+            // not available, the report falls back to the built-in candidate
+            // table and says so instead of silently assuming enumeration.
+            if !smc.keyEnumerationAvailable {
+                notes.append(
+                    "SMC connected but index-based key enumeration is unavailable "
+                    + "— temperatures come from the built-in "
+                    + "\(smc.chipGeneration.displayName) candidate table without "
+                    + "host key verification."
+                )
+            }
             if temperatures.isEmpty {
                 notes.append(
                     "SMC connected but no temperature sensors returned data. "

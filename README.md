@@ -108,6 +108,18 @@ $ sudo symtune fan set 0.5
 $ sudo symtune battery-limit set 80
 ```
 
+> **Why `health_percent` and Apple's "Maximum Capacity" differ.** `health_percent`
+> is symtune's own estimate, derived from the `AppleSmartBattery` IORegistry
+> keys (`AppleRawMaxCapacity` / `DesignCapacity`). It is unrounded and moves a
+> percentage point or two day to day. `apple_maximum_capacity_percent` and
+> `apple_condition` are Apple's own figures from `system_profiler
+> SPPowerDataType` — whole-percent and steady, matching System Settings. The
+> two numbers legitimately disagree; when both are present you can compare them
+> directly instead of wondering which tool is wrong. The Apple fields are
+> reported as absent when the block cannot be read or parsed (older macOS, no
+> battery, localized output), and the `system_profiler` read is cached so it
+> never runs on a refresh loop.
+
 ## MCP integration
 
 Register `symtune serve` with any MCP-capable agent host (Claude Desktop, Cursor,
