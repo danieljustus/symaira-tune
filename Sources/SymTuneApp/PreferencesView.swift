@@ -8,6 +8,8 @@ import SymTuneCore
 struct PreferencesView: View {
     @ObservedObject var manager: PreferencesManager
     let autoPrefs: UserDefaultsAutoUpdatePreferenceStore
+    @ObservedObject var aiUsage: AIUsagePreferences
+    let aiUsageCatalog: [(id: String, displayName: String)]
 
     @State private var refreshText: String = ""
     @State private var applyMessage: String?
@@ -44,6 +46,15 @@ struct PreferencesView: View {
 
                     // Units
                     unitsSection
+
+                    Divider()
+                        .background(SymairaTheme.borderGlass)
+
+                    // AI usage providers (toggles, API keys, menu-bar readout)
+                    AIUsagePreferencesSection(
+                        preferences: aiUsage,
+                        providerCatalog: aiUsageCatalog
+                    )
 
                     Divider()
                         .background(SymairaTheme.borderGlass)
