@@ -451,6 +451,9 @@ private func runWriteCommand(_ cmd: WriteCommand, rest: [String], controller: Tu
 private func dispatchCommand(_ command: String, rest: [String], controller: TuneController) throws -> Int32? {
     switch command {
     case "serve":
+        // Long-lived stdio process: watch for wake events so a configured
+        // charge limit is re-asserted after sleep (Apple Silicon).
+        controller.startWakeMonitoring()
         try MCPServer(controller: controller).run()
     case "status":
         try runStatus(rest, controller: controller)

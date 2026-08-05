@@ -118,6 +118,9 @@ public struct TuneConfig: Equatable, Sendable {
     public let fanFractionMax: Double
     public let chargeLimitMin: Int
     public let chargeLimitMax: Int
+    /// Charging is re-allowed only once the battery has dropped this many
+    /// percent below the target (band control instead of a single threshold).
+    public let chargeLimitHysteresisPercent: Int
     public let defaultProfile: String
     public let mcpMode: String
 
@@ -170,6 +173,7 @@ public struct TuneConfig: Equatable, Sendable {
         fanFractionMax: Double = SafetyPolicy.fanFractionMax,
         chargeLimitMin: Int = SafetyPolicy.chargeLimitMin,
         chargeLimitMax: Int = SafetyPolicy.chargeLimitMax,
+        chargeLimitHysteresisPercent: Int = SafetyPolicy.chargeLimitHysteresis,
         defaultProfile: String = "default",
         mcpMode: String = "full",
         metricsRefreshInterval: TimeInterval = 3.0,
@@ -191,6 +195,7 @@ public struct TuneConfig: Equatable, Sendable {
         self.fanFractionMax = fanFractionMax
         self.chargeLimitMin = chargeLimitMin
         self.chargeLimitMax = chargeLimitMax
+        self.chargeLimitHysteresisPercent = chargeLimitHysteresisPercent
         self.defaultProfile = defaultProfile
         self.mcpMode = mcpMode
         self.metricsRefreshInterval = max(metricsRefreshInterval, TuneConfig.minimumRefreshInterval)
@@ -294,12 +299,9 @@ public struct TuneConfig: Equatable, Sendable {
             chargeLimitMax: intVal(
                 "charge", "charge_limit_max",
                 "SYMTUNE_CHARGE_MAX", SafetyPolicy.chargeLimitMax),
-            defaultProfile: stringVal(
-                "general", "default_profile",
-                "SYMTUNE_DEFAULT_PROFILE", "default"),
-            mcpMode: stringVal(
-                "mcp", "mode",
-                "SYMTUNE_MCP_MODE", "full"),
+            chargeLimitHysteresisPercent: intVal("charge", "limit_hysteresis_percent", "SYMTUNE_CHARGE_HYSTERESIS", SafetyPolicy.chargeLimitHysteresis),
+            defaultProfile: stringVal("general", "default_profile", "SYMTUNE_DEFAULT_PROFILE", "default"),
+            mcpMode: stringVal("mcp", "mode", "SYMTUNE_MCP_MODE", "full"),
             // --- Metrics preferences ---
             metricsRefreshInterval: doubleVal(
                 "metrics", "refresh_interval_seconds",
@@ -325,6 +327,7 @@ public struct TuneConfig: Equatable, Sendable {
             fanFractionMax: min(config.fanFractionMax, SafetyPolicy.fanFractionMax),
             chargeLimitMin: max(config.chargeLimitMin, SafetyPolicy.chargeLimitMin),
             chargeLimitMax: min(config.chargeLimitMax, SafetyPolicy.chargeLimitMax),
+            chargeLimitHysteresisPercent: SafetyPolicy.clamp(config.chargeLimitHysteresisPercent, 1, SafetyPolicy.chargeLimitHysteresisMax),
             defaultProfile: config.defaultProfile,
             mcpMode: config.mcpMode,
             metricsRefreshInterval: config.metricsRefreshInterval,
