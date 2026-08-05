@@ -31,6 +31,12 @@ public final class AIUsageService: @unchecked Sendable {
     }
 
     private let providers: [any AIUsageProvider]
+
+    /// Known providers as (id, displayName) pairs — the catalog the UI uses
+    /// to render per-provider toggles and labels without hardcoding names.
+    public var providerCatalog: [(id: String, displayName: String)] {
+        providers.map { ($0.id, $0.displayName) }
+    }
     private let refreshInterval: TimeInterval
     private let providerTimeout: TimeInterval
     private let lock = NSLock()

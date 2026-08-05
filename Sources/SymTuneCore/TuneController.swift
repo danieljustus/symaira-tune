@@ -149,6 +149,12 @@ public final class TuneController: Sendable {
         return results
     }
 
+    /// Known AI usage providers as (id, displayName) pairs — the catalog the
+    /// UI uses for per-provider toggles and labels.
+    public var aiUsageProviderCatalog: [(id: String, displayName: String)] {
+        aiUsageService.providerCatalog
+    }
+
     /// Persist the latest metric snapshot into the bounded ring buffers. Disabled
     /// metrics receive no samples. If any enabled metric is unavailable in the
     /// report, a gap marker is inserted so renderers produce a visible break

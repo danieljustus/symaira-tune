@@ -20,6 +20,11 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     private let controller = TuneController()
     let preferencesManager: PreferencesManager
+    let aiUsagePreferences = AIUsagePreferences()
+    private(set) lazy var aiUsageModel = AIUsageViewModel(
+        controller: controller,
+        preferences: aiUsagePreferences
+    )
     private let model: TuneViewModel
     private var preferencesWindow: NSWindow?
     private var cancellables: Set<AnyCancellable> = []
@@ -66,13 +71,24 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         model.onStatusItemTextChanged = { [weak self] segments in
             self?.renderStatusItem(segments: segments)
         }
+        // The AI usage readout rides on the same status-item pipeline.
+        aiUsageModel.onStatusItemTextChanged = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.renderStatusItem(segments: self.model.statusItemSegments, force: true)
+            }
+        }
         model.start()
+        aiUsageModel.start()
         checkForUpdatesOnLaunch()
         registerSleepWakeNotifications()
     }
 
     deinit {
-        MainActor.assumeIsolated { model.stop() }
+        MainActor.assumeIsolated {
+            model.stop()
+            aiUsageModel.stop()
+        }
     }
 
     // MARK: - Update checking
@@ -94,6 +110,26 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
                 Task { @MainActor in self?.model.syncEnabledMetrics() }
             }
             .store(in: &cancellables)
+
+        // AI usage: provider toggles and the refresh interval apply live;
+        // a toggle change triggers an immediate refresh so the popover does
+        // not wait for the next scheduled tick.
+        aiUsagePreferences.$enabledProviders
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.aiUsageModel.refreshNow() }
+            }
+            .store(in: &cancellables)
+        aiUsagePreferences.$menuBarEnabled
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.aiUsageModel.refreshNow()
+                    self.renderStatusItem(segments: self.model.statusItemSegments, force: true)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Status item rendering
@@ -104,10 +140,20 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         let updateAvailable = { if case .available = updateChecker.status { return true } else { return false } }()
 
-        guard force || segments != renderedSegments else { return }
-        renderedSegments = segments
+        // The AI usage readout is appended to whatever the metrics pipeline
+        // rendered, when enabled and data is available.
+        var combined = segments
+        if !aiUsageModel.statusItemText.isEmpty {
+            if !combined.isEmpty {
+                combined.append(.text("  "))
+            }
+            combined.append(.text(aiUsageModel.statusItemText))
+        }
 
-        guard !segments.isEmpty else {
+        guard force || combined != renderedSegments else { return }
+        renderedSegments = combined
+
+        guard !combined.isEmpty else {
             renderIconFallback(button: button, updateAvailable: updateAvailable)
             return
         }
@@ -206,6 +252,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         MainStatusView(
             controller: controller,
             model: model,
+            aiUsageModel: aiUsageModel,
             updateChecker: updateChecker,
             preferencesManager: preferencesManager,
             openPreferences: { [weak self] in self?.openPreferences() },
@@ -262,7 +309,12 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             return
         }
 
-        let prefsView = PreferencesView(manager: preferencesManager, autoPrefs: autoPrefs)
+        let prefsView = PreferencesView(
+            manager: preferencesManager,
+            autoPrefs: autoPrefs,
+            aiUsage: aiUsagePreferences,
+            aiUsageCatalog: aiUsageModel.providerCatalog
+        )
         let hosting = NSHostingController(rootView: prefsView)
 
         let window = NSWindow(contentViewController: hosting)

@@ -17,6 +17,7 @@ import SymairaUpdateCheck
 struct MainStatusView: View {
     let controller: TuneController
     let model: TuneViewModel
+    let aiUsageModel: AIUsageViewModel
     @ObservedObject var updateChecker: AppUpdateChecker
     @ObservedObject var preferencesManager: PreferencesManager
     let openPreferences: () -> Void
@@ -88,6 +89,12 @@ struct MainStatusView: View {
             // Never hidden: an available update is the one thing the user has
             // not opted out of seeing.
             UpdateNotificationView(updateChecker: updateChecker)
+
+            // AI usage meters for the enabled providers (no card when none
+            // are enabled — an all-off preference set shows nothing).
+            if !aiUsageModel.rows.isEmpty {
+                AIUsageCardView(model: aiUsageModel)
+            }
 
             if shows(.metricsHistory) {
                 MetricsHistoryCard(rows: model.metricRows)
