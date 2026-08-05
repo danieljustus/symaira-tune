@@ -146,15 +146,43 @@ public final class AIUsageService: @unchecked Sendable {
     // MARK: - Refresh
 
     private func refresh(_ provider: any AIUsageProvider) async throws -> AIUsageSnapshot {
-        if let existing = lock.withLock({ inFlight[provider.id] }) {
-            return try await existing.value
+        // Single-flight: check + register the in-flight task under one lock
+        // hold so concurrent callers share the same fetch instead of
+        // double-fetching (the old check-then-register had a TOCTOU window
+        // that made the rate-limit backoff test flaky on slow runners).
+        // The rate limit is re-checked under the same hold: a refresh that
+        // was queued just before a 429 landed must not fetch afterwards.
+        enum Decision {
+            case shared(Task<AIUsageSnapshot, Error>)
+            case fresh(Task<AIUsageSnapshot, Error>)
+            case rateLimited(Date)
         }
-        let task = Task {
-            try await Self.withTimeout(seconds: providerTimeout) {
-                try await provider.fetch()
+        let decision = lock.withLock { () -> Decision in
+            if let existing = inFlight[provider.id] {
+                return .shared(existing)
             }
+            if let rateLimitedUntil = cache[provider.id]?.rateLimitedUntil,
+               rateLimitedUntil > Date() {
+                return .rateLimited(rateLimitedUntil)
+            }
+            let newTask = Task {
+                try await Self.withTimeout(seconds: providerTimeout) {
+                    try await provider.fetch()
+                }
+            }
+            inFlight[provider.id] = newTask
+            return .fresh(newTask)
         }
-        lock.withLock { inFlight[provider.id] = task }
+
+        let task: Task<AIUsageSnapshot, Error>
+        switch decision {
+        case .shared(let existing):
+            task = existing
+        case .fresh(let newTask):
+            task = newTask
+        case .rateLimited(let until):
+            throw AIUsageError.rateLimited(provider.id, retryAfter: until.timeIntervalSinceNow)
+        }
 
         do {
             let snapshot = try await task.value
