@@ -61,7 +61,7 @@ AGENTS
 
   version [--check-for-updates] | help
 
-  --check-for-updates    Check GitHub for a newer version (non-blocking, writes notices to stderr).
+  --check-for-updates    Check GitHub for a newer version (writes notices to stderr, waits up to ~5s).
 """
 
 func emitJSON<T: Encodable>(_ value: T) throws {
@@ -84,8 +84,11 @@ func emitErr(_ line: String) {
 func runVersion(checkForUpdates: Bool) {
     emit("symtune \(TuneVersion.current)")
     guard checkForUpdates else { return }
-    // Fire-and-forget update check: never block the CLI, emit notices to stderr
-    // so scripts parsing stdout still get clean version output.
+    // The explicitly requested check must actually print its notice before
+    // the process exits: block until the detached check finishes, with a
+    // bounded wait as a safety net (the checker itself times out after ~1s,
+    // so the worst case adds ~1s for this flag).
+    let done = DispatchSemaphore(value: 0)
     Task.detached {
         if let info = await UpdateChecker.checkForUpdate(),
            info.updateAvailable,
@@ -93,7 +96,9 @@ func runVersion(checkForUpdates: Bool) {
         {
             emitErr("A new version (\(info.latestVersion)) is available. Download: \(url)")
         }
+        done.signal()
     }
+    _ = done.wait(timeout: .now() + 5)
 }
 
 /// Pull the first parseable Double out of the remaining args (accepts an
