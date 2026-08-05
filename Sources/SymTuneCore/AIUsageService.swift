@@ -190,26 +190,22 @@ public final class AIUsageService: @unchecked Sendable {
             throw AIUsageError.rateLimited(provider.id, retryAfter: until.timeIntervalSinceNow)
         }
 
+        defer {
+            lock.withLock { inFlight[provider.id] = nil }
+        }
         do {
             let snapshot = try await task.value
             lock.withLock {
                 cache[provider.id]?.snapshot = snapshot
                 cache[provider.id]?.rateLimitedUntil = nil
-                inFlight[provider.id] = nil
             }
             return snapshot
         } catch let error as AIUsageError {
             if case .rateLimited(_, let retryAfter) = error {
                 lock.withLock {
                     cache[provider.id]?.rateLimitedUntil = Date().addingTimeInterval(retryAfter ?? 60)
-                    inFlight[provider.id] = nil
                 }
-            } else {
-                lock.withLock { inFlight[provider.id] = nil }
             }
-            throw error
-        } catch {
-            lock.withLock { inFlight[provider.id] = nil }
             throw error
         }
     }
