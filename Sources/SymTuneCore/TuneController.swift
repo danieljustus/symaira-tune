@@ -63,7 +63,16 @@ public final class TuneController: Sendable {
             isChargeLimitSupported: { [chargeLimit] in chargeLimit.detectKeyFamily() != nil },
             appleHealthProvider: batterySource == nil ? SystemProfilerBatteryHealthProvider.shared : nil
         )
-        self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
+        self.smcRestoreTracker = SMCRestoreTracker(
+            smc: smc,
+            fanControl: fanControl,
+            chargeLimit: chargeLimit,
+            dataDir: resolvedDataDir
+        )
+        // Consume a restore record left by a previous process that was killed
+        // before it could restore (SIGKILL, panic, forced power-off). This runs
+        // before any new override can be applied.
+        smcRestoreTracker.consumePersistedRestore()
         self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
         self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource(smc: smc))
         self.metricsHistory = MetricsHistoryService(capacity: 120)
@@ -138,88 +147,6 @@ public final class TuneController: Sendable {
     public func batteryReport() -> BatteryReport { battery.read() }
 
     public func displaysReport() -> DisplaysReport { displays.list() }
-
-    public func permissions() -> PermissionStatus {
-        let smcWritable = smc.isAvailable
-        var notes: [String] = [
-            smcWritable
-                ? "SMC write access available. Fan and charge-limit writes require root (run with sudo)."
-                : "SMC write access unavailable. Fan and charge-limit features require a real Mac and root privileges.",
-        ]
-        if config.isMCPReadOnly {
-            notes.append("MCP server mode is read-only (write tools hidden from tools/list).")
-        } else {
-            notes.append("MCP server mode is full (all write tools available).")
-        }
-        return PermissionStatus(
-            privilegedHelperInstalled: smcWritable,
-            historyWritable: historyService.isWritable,
-            mcpMode: config.mcpMode,
-            notes: notes
-        )
-    }
-
-    public func capabilities() -> CapabilityReport {
-        let batteryPresent = battery.read().present
-        let edrCapable = displays.anyEDRCapable()
-        let smcAvailable = sensors.smcAvailable
-        let smcWritable = smc.isAvailable
-
-        let caps: [Capability] = [
-            Capability(id: "sensors.thermalPressure", available: true, tier: "core",
-                       detail: "Coarse thermal pressure from ProcessInfo (nominal…critical)."),
-            Capability(id: "sensors.smc", available: smcAvailable, tier: "core",
-                       detail: smcAvailable
-                           ? "Detailed die temps & fan RPM via AppleSMC IOKit (unprivileged)."
-                           : "SMC connection unavailable — detailed sensors not accessible."),
-            Capability(id: "battery.read", available: batteryPresent, tier: "core",
-                       detail: batteryPresent ? "AppleSmartBattery health readout." : "No battery present."),
-            Capability(id: "display.edr.read", available: edrCapable, tier: "core",
-                       detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
-            Capability(id: "display.brightness.extended.set", available: edrCapable, tier: "core",
-                       detail: edrCapable
-                            ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
-                            : "No EDR-capable display detected — extended brightness unavailable."),
-            Capability(id: "display.dim.set", available: true, tier: "core",
-                       detail: "Sub-minimum software dim overlay via transparent NSWindow."),
-            Capability(id: "display.brightness.set", available: true, tier: "core",
-                       detail: "Built-in display brightness get/set via DisplayServices/IOKit."),
-            Capability(id: "display.warmth.set", available: true, tier: "core",
-                       detail: "Color temperature warmth via CGSetDisplayTransferByTable gamma LUT."),
-            Capability(id: "power.keepAwake", available: true, tier: "core",
-                       detail: "Prevent idle sleep via IOKit power assertion."),
-            Capability(id: "fan.control", available: smcWritable, tier: "core",
-                       detail: smcWritable
-                            ? "Fan speed control via SMC. Requires root for writes."
-                            : "SMC unavailable — fan control not possible."),
-            Capability(id: "battery.chargeLimit", available: smcWritable, tier: "core",
-                       detail: smcWritable
-                            ? "Battery charge limiting via SMC. Requires root for writes."
-                            : "SMC unavailable — charge limiting not possible."),
-            powerDrawCapability(),
-        ]
-
-        var recommendations: [String] = []
-        if !edrCapable {
-            recommendations.append("No EDR-capable display detected; extended brightness will be unavailable here.")
-        }
-        if !batteryPresent {
-            recommendations.append("No battery detected; battery features are not applicable on this Mac.")
-        }
-        if recommendations.isEmpty {
-            recommendations.append("Core features are ready. Run `symtune serve` to expose them over MCP.")
-        }
-
-        return CapabilityReport(
-            tool: "symtune",
-            version: TuneVersion.current,
-            macosVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            architecture: Self.architecture,
-            capabilities: caps,
-            permissions: permissions(),
-            recommendations: recommendations
-        )
-    }
 
     // MARK: - Keep awake
 
@@ -582,5 +509,91 @@ extension TuneController {
             guard let hw = smc.readKeyUInt("CHLC").map({ Int($0) }) else { return (nil, nil) }
             return (target, hw == target ? .active : .lapsed)
         }
+    }
+}
+
+// MARK: - Capability & permission reporting
+
+extension TuneController {
+    public func permissions() -> PermissionStatus {
+        let smcWritable = smc.isAvailable
+        var notes: [String] = [
+            smcWritable
+                ? "SMC write access available. Fan and charge-limit writes require root (run with sudo)."
+                : "SMC write access unavailable. Fan and charge-limit features require a real Mac and root privileges.",
+        ]
+        if config.isMCPReadOnly {
+            notes.append("MCP server mode is read-only (write tools hidden from tools/list).")
+        } else {
+            notes.append("MCP server mode is full (all write tools available).")
+        }
+        return PermissionStatus(
+            privilegedHelperInstalled: smcWritable,
+            historyWritable: historyService.isWritable,
+            mcpMode: config.mcpMode,
+            notes: notes
+        )
+    }
+
+    public func capabilities() -> CapabilityReport {
+        let batteryPresent = battery.read().present
+        let edrCapable = displays.anyEDRCapable()
+        let smcAvailable = sensors.smcAvailable
+        let smcWritable = smc.isAvailable
+
+        let caps: [Capability] = [
+            Capability(id: "sensors.thermalPressure", available: true, tier: "core",
+                       detail: "Coarse thermal pressure from ProcessInfo (nominal…critical)."),
+            Capability(id: "sensors.smc", available: smcAvailable, tier: "core",
+                       detail: smcAvailable
+                           ? "Detailed die temps & fan RPM via AppleSMC IOKit (unprivileged)."
+                           : "SMC connection unavailable — detailed sensors not accessible."),
+            Capability(id: "battery.read", available: batteryPresent, tier: "core",
+                       detail: batteryPresent ? "AppleSmartBattery health readout." : "No battery present."),
+            Capability(id: "display.edr.read", available: edrCapable, tier: "core",
+                       detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
+            Capability(id: "display.brightness.extended.set", available: edrCapable, tier: "core",
+                       detail: edrCapable
+                            ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
+                            : "No EDR-capable display detected — extended brightness unavailable."),
+            Capability(id: "display.dim.set", available: true, tier: "core",
+                       detail: "Sub-minimum software dim overlay via transparent NSWindow."),
+            Capability(id: "display.brightness.set", available: true, tier: "core",
+                       detail: "Built-in display brightness get/set via DisplayServices/IOKit."),
+            Capability(id: "display.warmth.set", available: true, tier: "core",
+                       detail: "Color temperature warmth via CGSetDisplayTransferByTable gamma LUT."),
+            Capability(id: "power.keepAwake", available: true, tier: "core",
+                       detail: "Prevent idle sleep via IOKit power assertion."),
+            Capability(id: "fan.control", available: smcWritable, tier: "core",
+                       detail: smcWritable
+                            ? "Fan speed control via SMC. Requires root for writes."
+                            : "SMC unavailable — fan control not possible."),
+            Capability(id: "battery.chargeLimit", available: smcWritable, tier: "core",
+                       detail: smcWritable
+                            ? "Battery charge limiting via SMC. Requires root for writes."
+                            : "SMC unavailable — charge limiting not possible."),
+            powerDrawCapability(),
+        ]
+
+        var recommendations: [String] = []
+        if !edrCapable {
+            recommendations.append("No EDR-capable display detected; extended brightness will be unavailable here.")
+        }
+        if !batteryPresent {
+            recommendations.append("No battery detected; battery features are not applicable on this Mac.")
+        }
+        if recommendations.isEmpty {
+            recommendations.append("Core features are ready. Run `symtune serve` to expose them over MCP.")
+        }
+
+        return CapabilityReport(
+            tool: "symtune",
+            version: TuneVersion.current,
+            macosVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            architecture: Self.architecture,
+            capabilities: caps,
+            permissions: permissions(),
+            recommendations: recommendations
+        )
     }
 }

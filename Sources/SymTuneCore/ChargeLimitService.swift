@@ -25,7 +25,7 @@ public enum ChargeLimitError: Error, Sendable, CustomStringConvertible {
 }
 
 /// Detected SMC charge-limit key family for the current platform.
-public enum ChargeLimitKeyFamily: Sendable, Equatable {
+public enum ChargeLimitKeyFamily: Sendable, Equatable, Codable {
     case chte
     case ch0b
     case chlc

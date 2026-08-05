@@ -6,6 +6,14 @@ import Foundation
 /// This is the SMC counterpart to `OverrideTracker` (which handles display
 /// overrides). The controller is responsible for calling `restoreAll()` on
 /// teardown and from its signal handlers.
+///
+/// On top of the in-memory tracking, the captured originals are persisted to a
+/// `0600` JSON file in the state directory at capture time. A process that is
+/// killed (`SIGKILL`, panic, OOM, forced power-off) cannot run any restore
+/// path, so the next process start consumes the leftover file before any new
+/// override is applied — inverting the restore from "on shutdown" to
+/// "on next start", the only point at which a process is guaranteed to be
+/// alive.
 final class SMCRestoreTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var fanOriginals: [Int: (mode: UInt8, targetRPM: Double)] = [:]
@@ -17,11 +25,32 @@ final class SMCRestoreTracker: @unchecked Sendable {
     private let smc: SMCService
     private let fanControl: FanControlService
     private let chargeLimit: ChargeLimitService
+    private let restoreFileURL: URL
 
-    init(smc: SMCService, fanControl: FanControlService, chargeLimit: ChargeLimitService) {
+    init(
+        smc: SMCService,
+        fanControl: FanControlService,
+        chargeLimit: ChargeLimitService,
+        dataDir: URL? = nil
+    ) {
         self.smc = smc
         self.fanControl = fanControl
         self.chargeLimit = chargeLimit
+        self.restoreFileURL = (dataDir ?? ConfigPaths().dataDir)
+            .appendingPathComponent("smc-restore.json")
+    }
+
+    /// Architecture string recorded next to captured values so a restore file
+    /// from a different machine (or a firmware that changed key families) is
+    /// never applied blindly.
+    static var currentArchitecture: String {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return "unknown"
+        #endif
     }
 
     // MARK: - Fan tracking
@@ -30,10 +59,8 @@ final class SMCRestoreTracker: @unchecked Sendable {
     func saveFanOriginal(fanIndex: Int) {
         guard smc.isAvailable else { return }
         lock.lock()
-        defer { lock.unlock() }
-        guard fanOriginals[fanIndex] == nil else { return }
-        guard let state = fanControl.originalState(fanIndex: fanIndex) else { return }
-        if let mode = state.mode {
+        let alreadyTracked = fanOriginals[fanIndex] != nil
+        if !alreadyTracked, let state = fanControl.originalState(fanIndex: fanIndex), let mode = state.mode {
             fanOriginals[fanIndex] = (mode, state.targetRPM ?? 0)
             hasOverrides = true
         }
@@ -42,6 +69,8 @@ final class SMCRestoreTracker: @unchecked Sendable {
             originalFSBitmask = FanControlService.originalFSBitmask(smc: smc)
         }
         #endif
+        lock.unlock()
+        persistIfNeeded()
     }
 
     // MARK: - Charge tracking
@@ -50,17 +79,104 @@ final class SMCRestoreTracker: @unchecked Sendable {
     func saveChargeOriginal() {
         guard smc.isAvailable else { return }
         lock.lock()
-        defer { lock.unlock() }
-        guard originalChargeInhibit == nil else { return }
-        guard let family = chargeLimit.detectKeyFamily() else { return }
-        activeChargeKeyFamily = family
-        switch family {
-        case .chte, .ch0b:
-            originalChargeInhibit = chargeLimit.readInhibitState() ?? false
-        case .chlc:
-            originalChargeInhibit = smc.readKeyUInt("CHLC") == 100
+        if originalChargeInhibit == nil, let family = chargeLimit.detectKeyFamily() {
+            activeChargeKeyFamily = family
+            switch family {
+            case .chte, .ch0b:
+                originalChargeInhibit = chargeLimit.readInhibitState() ?? false
+            case .chlc:
+                originalChargeInhibit = smc.readKeyUInt("CHLC") == 100
+            }
+            hasOverrides = true
         }
-        hasOverrides = true
+        lock.unlock()
+        persistIfNeeded()
+    }
+
+    // MARK: - Persistence
+
+    /// Persist the current originals to the state directory so a killed
+    /// process leaves a recoverable trail. Atomic write + `0600` perms.
+    private func persistIfNeeded() {
+        lock.lock()
+        guard hasOverrides else {
+            lock.unlock()
+            return
+        }
+        let record = SMCRestoreRecord(
+            architecture: Self.currentArchitecture,
+            chargeKeyFamily: activeChargeKeyFamily,
+            fanOriginals: fanOriginals
+                .sorted { $0.key < $1.key }
+                .map { FanOriginal(fanIndex: $0.key, mode: $0.value.mode, targetRpm: $0.value.targetRPM) },
+            fsBitmask: originalFSBitmask,
+            chargeInhibit: originalChargeInhibit
+        )
+        lock.unlock()
+
+        do {
+            try StateFilePermissions.ensureDirectory(restoreFileURL.deletingLastPathComponent())
+            let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            let data = try encoder.encode(record)
+            try data.write(to: restoreFileURL, options: .atomic)
+            StateFilePermissions.applyFilePermissions(at: restoreFileURL)
+        } catch {
+            fputs("symtune: warning: failed to persist SMC restore state: \(error.localizedDescription)\n", stderr)
+        }
+    }
+
+    /// Apply a restore record left by a previous process that died before it
+    /// could restore, then remove the file. Called once at startup, before any
+    /// new override is applied.
+    ///
+    /// The file is never trusted blindly: a stale file from a different
+    /// architecture is discarded entirely, and charge values are only applied
+    /// when the recorded key family still matches the current platform.
+    func consumePersistedRestore() {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: restoreFileURL.path) else { return }
+
+        guard smc.isAvailable else { return }
+
+        guard let data = try? Data(contentsOf: restoreFileURL) else { return }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let record = try? decoder.decode(SMCRestoreRecord.self, from: data) else {
+            // Corrupt leftovers cannot be trusted and must never be applied
+            // later by accident — discard them.
+            fputs("symtune: warning: discarding unreadable SMC restore file\n", stderr)
+            try? fm.removeItem(at: restoreFileURL)
+            return
+        }
+
+        guard record.version == SMCRestoreRecord.currentVersion,
+              record.architecture == Self.currentArchitecture else {
+            fputs(
+                "symtune: warning: ignoring stale SMC restore file (architecture/version mismatch)\n",
+                stderr
+            )
+            try? fm.removeItem(at: restoreFileURL)
+            return
+        }
+
+        let fans = Dictionary(
+            uniqueKeysWithValues: record.fanOriginals.map { ($0.fanIndex, ($0.mode, $0.targetRpm)) }
+        )
+        restoreFans(fans, record.fsBitmask)
+
+        if let family = record.chargeKeyFamily, let charge = record.chargeInhibit {
+            if family == chargeLimit.detectKeyFamily() {
+                restoreCharge(charge, family)
+            } else {
+                fputs(
+                    "symtune: warning: skipping SMC charge restore (recorded key family no longer matches)\n",
+                    stderr
+                )
+            }
+        }
+
+        try? fm.removeItem(at: restoreFileURL)
     }
 
     // MARK: - Restore
@@ -81,6 +197,9 @@ final class SMCRestoreTracker: @unchecked Sendable {
         guard smc.isAvailable else { return }
         restoreFans(fanOriginalsCopy, fsCopy)
         restoreCharge(chargeInhibit, chargeFamily)
+        // A clean restore clears the persisted trail; a killed process leaves
+        // the file for the next start to consume.
+        try? FileManager.default.removeItem(at: restoreFileURL)
     }
 
     private func restoreFans(
