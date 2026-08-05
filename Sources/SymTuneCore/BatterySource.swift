@@ -50,13 +50,65 @@ public protocol BatterySource: Sendable {
 
 /// Production battery source that reads from the `AppleSmartBattery` IORegistry node.
 public struct HardwareBatterySource: BatterySource, Sendable {
-    public init() {}
+    /// The `IOPowerSources` API surface used by the fallback, resolved via
+    /// `dlopen`/`dlsym` at runtime. Both closures return retained objects the
+    /// caller owns (mirroring the `Copy` naming convention of the C API).
+    struct PowerSourcesAPI: Sendable {
+        let copyPowerSourcesInfo: @Sendable () -> CFTypeRef?
+        let copyDescriptionList: @Sendable (CFTypeRef) -> CFArray?
+    }
+
+    private let serviceLookup: @Sendable () -> io_service_t
+    private let loadAPI: @Sendable () -> PowerSourcesAPI?
+
+    public init() {
+        self.serviceLookup = {
+            IOServiceGetMatchingService(
+                kIOMainPortDefault,
+                IOServiceMatching("AppleSmartBattery")
+            )
+        }
+        self.loadAPI = { HardwareBatterySource.loadPowerSourcesAPI() }
+    }
+
+    /// Test seam: inject the service lookup and the IOPowerSources loader so
+    /// every branch of `readProperties()` (including the hardware fallback)
+    /// is unit-testable without a battery.
+    init(
+        serviceLookup: @escaping @Sendable () -> io_service_t,
+        loadAPI: @escaping @Sendable () -> PowerSourcesAPI?
+    ) {
+        self.serviceLookup = serviceLookup
+        self.loadAPI = loadAPI
+    }
+
+    /// Resolve `IOPowerSourcesCopyPowerSourcesInfo` /
+    /// `IOPowerSourcesCopyDescriptionList` from the IOKit framework. Returns
+    /// `nil` when the symbols are unavailable (defensive; they exist on every
+    /// supported macOS). Internal so tests can exercise the real loader.
+    static func loadPowerSourcesAPI() -> PowerSourcesAPI? {
+        let handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_NOW)
+        guard let handle else { return nil }
+        defer { dlclose(handle) }
+
+        typealias InfoFunc = @convention(c) () -> Unmanaged<CFTypeRef>?
+        typealias ListFunc = @convention(c) (CFTypeRef) -> Unmanaged<CFArray>?
+
+        guard let infoSym = dlsym(handle, "IOPowerSourcesCopyPowerSourcesInfo"),
+              let listSym = dlsym(handle, "IOPowerSourcesCopyDescriptionList") else {
+            return nil
+        }
+        let infoFn = unsafeBitCast(infoSym, to: InfoFunc.self)
+        let listFn = unsafeBitCast(listSym, to: ListFunc.self)
+
+        return PowerSourcesAPI(
+            copyPowerSourcesInfo: { infoFn()?.takeRetainedValue() },
+            copyDescriptionList: { listFn($0)?.takeRetainedValue() }
+        )
+    }
 
     public func readProperties() -> BatterySourceResult {
-        let service = IOServiceGetMatchingService(
-            kIOMainPortDefault,
-            IOServiceMatching("AppleSmartBattery")
-        )
+        let service = serviceLookup()
         guard service != 0 else {
             return readPowerSourcesFallback()
         }
@@ -82,29 +134,13 @@ public struct HardwareBatterySource: BatterySource, Sendable {
     }
 
     private func readPowerSourcesFallback() -> BatterySourceResult {
-        // Dynamically resolve IOPowerSources functions using dlopen/dlsym to avoid import constraints
-        let handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_NOW)
-        guard let handle else { return .unavailable }
-        defer { dlclose(handle) }
+        guard let api = loadAPI() else { return .unavailable }
 
-        typealias IOPowerSourcesCopyPowerSourcesInfoFunc = @convention(c) () -> Unmanaged<CFTypeRef>?
-        typealias IOPowerSourcesCopyDescriptionListFunc = @convention(c) (CFTypeRef) -> Unmanaged<CFArray>?
-
-        guard let copyPowerSourcesInfoSym = dlsym(handle, "IOPowerSourcesCopyPowerSourcesInfo"),
-              let copyDescriptionListSym = dlsym(handle, "IOPowerSourcesCopyDescriptionList") else {
+        guard let snapshot = api.copyPowerSourcesInfo() else {
             return .unavailable
         }
 
-        let copyPowerSourcesInfo = unsafeBitCast(copyPowerSourcesInfoSym, to: IOPowerSourcesCopyPowerSourcesInfoFunc.self)
-        let copyDescriptionList = unsafeBitCast(copyDescriptionListSym, to: IOPowerSourcesCopyDescriptionListFunc.self)
-
-        guard let snapshotRef = copyPowerSourcesInfo() else {
-            return .unavailable
-        }
-        let snapshot = snapshotRef.takeRetainedValue()
-
-        guard let sourcesRef = copyDescriptionList(snapshot),
-              let sources = sourcesRef.takeRetainedValue() as? [[String: Any]] else {
+        guard let sources = api.copyDescriptionList(snapshot) as? [[String: Any]] else {
             return .unavailable
         }
 
