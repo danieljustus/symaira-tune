@@ -165,7 +165,7 @@ final class TuneViewModel {
         let snapshot = await Task.detached(priority: .utility) {
             HardwareSnapshot(
                 metrics: controller.metricsReport(),
-                sensors: wantsDetail ? controller.sensors_report() : nil,
+                sensors: wantsDetail ? controller.sensorsReport() : nil,
                 battery: wantsDetail ? controller.batteryReport() : nil
             )
         }.value

@@ -21,7 +21,7 @@ struct SensorsTool: MCPTool, @unchecked Sendable {
     var isReadOnly: Bool { true }
 
     func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
-        controller.sensors_report()
+        controller.sensorsReport()
     }
 }
 
