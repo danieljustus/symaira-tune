@@ -50,12 +50,34 @@ final class FakeProvider: AIUsageProvider, @unchecked Sendable {
     let displayName: String
     let isConfigured: Bool
     let strategies: [any AIUsageStrategy]
+    let directError: AIUsageError?
+    private let lock = NSLock()
+    private var invocationCount = 0
 
-    init(id: String, displayName: String = "Fake", isConfigured: Bool = true, strategies: [any AIUsageStrategy]) {
+    init(
+        id: String,
+        displayName: String = "Fake",
+        isConfigured: Bool = true,
+        strategies: [any AIUsageStrategy],
+        directError: AIUsageError? = nil
+    ) {
         self.id = id
         self.displayName = displayName
         self.isConfigured = isConfigured
         self.strategies = strategies
+        self.directError = directError
+    }
+
+    var calls: Int {
+        lock.withLock { invocationCount }
+    }
+
+    func fetch() async throws -> AIUsageSnapshot {
+        lock.withLock { invocationCount += 1 }
+        if let directError {
+            throw directError
+        }
+        return try await AIUsageStrategyChain.run(strategies)
     }
 }
 
@@ -201,6 +223,53 @@ final class AIUsageServiceTests: XCTestCase {
         let afterExpiry = try await service.usage(for: "fake")
         XCTAssertGreaterThan(strategy.calls, callsDuringBackoff, "refresh must resume after the backoff expires")
         XCTAssertEqual(afterExpiry.providerID, "fake")
+    }
+
+    func testRateLimitBackoffWithoutCachedSnapshotThrowsUntilExpiry() async {
+        let strategy = FakeStrategy(source: "api", outcome: .failure(.rateLimited("fake", retryAfter: 60)))
+        let provider = FakeProvider(
+            id: "fake",
+            strategies: [strategy],
+            directError: .rateLimited("fake", retryAfter: 60)
+        )
+        let service = AIUsageService(providers: [provider])
+
+        do {
+            _ = try await service.usage(for: "fake")
+            XCTFail("expected the initial rate limit")
+        } catch let error as AIUsageError {
+            guard case .redacted(let message) = error else {
+                return XCTFail("expected a redacted rate-limit error, got \(error)")
+            }
+            XCTAssertTrue(message.contains("rate limited"))
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
+
+        do {
+            _ = try await service.usage(for: "fake")
+            XCTFail("expected the cached rate limit")
+        } catch let error as AIUsageError {
+            guard case .rateLimited = error else {
+                return XCTFail("expected rateLimited, got \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
+        XCTAssertEqual(provider.calls, 1, "an active backoff must not refetch without a cached snapshot")
+    }
+
+    func testConcurrentRequestsShareOneFetch() async throws {
+        let strategy = FakeStrategy(source: "api", outcome: .sleepThenSuccess(0.05, snapshot()))
+        let provider = FakeProvider(id: "fake", strategies: [strategy])
+        let service = AIUsageService(providers: [provider])
+
+        async let first = service.usage(for: "fake")
+        async let second = service.usage(for: "fake")
+        let (firstSnapshot, secondSnapshot) = try await (first, second)
+
+        XCTAssertEqual(firstSnapshot, secondSnapshot)
+        XCTAssertEqual(strategy.calls, 1, "concurrent callers must share the in-flight fetch")
     }
 
     // MARK: Timeout + concurrency
