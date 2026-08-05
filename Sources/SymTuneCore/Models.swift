@@ -192,6 +192,17 @@ public struct CapabilityReport: Codable, Sendable {
 
 // MARK: - Active Overrides
 
+/// Enforcement state of a charge limit as verified against the SMC.
+/// On Apple Silicon the inhibit bit is volatile and resets on sleep, so a
+/// tracked limit can silently stop being enforced; `lapsed` reports exactly
+/// that discrepancy instead of pretending the limit is still in force.
+public enum ChargeLimitEnforcementState: String, Codable, Sendable, Equatable {
+    /// The hardware still reports the inhibit bit / value we applied.
+    case active
+    /// A limit is configured but the hardware no longer enforces it.
+    case lapsed
+}
+
 public struct ActiveOverrides: Codable, Sendable, Equatable {
     public let brightness: Double?
     public let dim: Double?
@@ -199,8 +210,13 @@ public struct ActiveOverrides: Codable, Sendable, Equatable {
     public let edrBrightness: Double?
     /// Active uniform fan fraction when fans are in manual mode.
     public let fanFraction: Double?
-    /// Active charge limit percent, if a charge-limit key is set.
+    /// Configured charge limit percent (the value this process applied),
+    /// while a limit is set. Reported regardless of enforcement so a lapsed
+    /// limit stays visible.
     public let chargeLimitPercent: Int?
+    /// `active` when the SMC still enforces the configured limit, `lapsed`
+    /// when it does not, `nil` when no limit is configured.
+    public let chargeLimitState: ChargeLimitEnforcementState?
 
     public init(
         brightness: Double? = nil,
@@ -208,7 +224,8 @@ public struct ActiveOverrides: Codable, Sendable, Equatable {
         warmth: Double? = nil,
         edrBrightness: Double? = nil,
         fanFraction: Double? = nil,
-        chargeLimitPercent: Int? = nil
+        chargeLimitPercent: Int? = nil,
+        chargeLimitState: ChargeLimitEnforcementState? = nil
     ) {
         self.brightness = brightness
         self.dim = dim
@@ -216,6 +233,7 @@ public struct ActiveOverrides: Codable, Sendable, Equatable {
         self.edrBrightness = edrBrightness
         self.fanFraction = fanFraction
         self.chargeLimitPercent = chargeLimitPercent
+        self.chargeLimitState = chargeLimitState
     }
 }
 

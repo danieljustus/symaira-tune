@@ -128,9 +128,69 @@ final class TuneControllerFanChargeTests: XCTestCase {
         XCTAssertEqual(controller.activeOverrides().fanFraction ?? 0, 0.5, accuracy: 0.01)
     }
 
-    func testActiveChargeLimitPercent() {
+    func testActiveChargeLimitPercent() throws {
         let controller = makeController(keys: ["CHTE": ui32(1)])
+        // A hardware inhibit bit with no limit applied by this process is not
+        // reported as an override — only limits this process set are tracked.
+        XCTAssertNil(controller.activeOverrides().chargeLimitPercent)
+        XCTAssertNil(controller.activeOverrides().chargeLimitState)
+
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CHTE": ui32(0)])
+        let batterySource = FakeBatterySource(result: .success(BatteryProperties(externalConnected: true)))
+        let controller2 = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        try controller2.applyChargeLimit(percent: 80)
+        XCTAssertEqual(controller2.activeOverrides().chargeLimitPercent, 80)
+        XCTAssertEqual(controller2.activeOverrides().chargeLimitState, .active)
+
+        // The exact percent the user requested is reported (not a hardcoded 80).
+        try controller2.clearChargeLimit()
+        try controller2.applyChargeLimit(percent: 85)
+        XCTAssertEqual(controller2.activeOverrides().chargeLimitPercent, 85)
+    }
+
+    func testChargeLimitLapseDetectedWhenHardwareDisagrees() throws {
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CHTE": ui32(0)])
+        let batterySource = FakeBatterySource(result: .success(BatteryProperties(externalConnected: true)))
+        let controller = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        try controller.applyChargeLimit(percent: 80)
+        XCTAssertEqual(controller.activeOverrides().chargeLimitState, .active)
+
+        // Simulate the volatile Apple Silicon inhibit bit resetting (sleep,
+        // firmware decision) behind the process's back.
+        conn.keys["CHTE"] = FakeSMCKeyResult(dataType: smcEncodeKey("ui32"), bytes: [0, 0, 0, 0])
         XCTAssertEqual(controller.activeOverrides().chargeLimitPercent, 80)
+        XCTAssertEqual(controller.activeOverrides().chargeLimitState, .lapsed)
+
+        // A clear restores honest reporting.
+        try controller.clearChargeLimit()
+        XCTAssertNil(controller.activeOverrides().chargeLimitPercent)
+        XCTAssertNil(controller.activeOverrides().chargeLimitState)
+    }
+
+    func testChargeLimitLapseDetectedOnCH0B() throws {
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CH0B": ui8(0)])
+        let batterySource = FakeBatterySource(result: .success(BatteryProperties(externalConnected: true)))
+        let controller = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        try controller.applyChargeLimit(percent: 80)
+        XCTAssertEqual(controller.activeOverrides().chargeLimitState, .active)
+
+        conn.keys["CH0B"] = FakeSMCKeyResult(dataType: smcEncodeKey("ui8 "), bytes: [0])
+        XCTAssertEqual(controller.activeOverrides().chargeLimitState, .lapsed)
     }
 }
 
