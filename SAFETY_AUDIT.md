@@ -220,6 +220,28 @@ and the handled termination signals. It cannot cover `SIGKILL`, kernel panic,
 process crash before cleanup, forced power-off, or hardware/OS failures during
 restoration.
 
+### Persisted restore (crash-safe path)
+
+To close that gap, `SMCRestoreTracker` writes the captured SMC originals (fan
+mode, target RPM, Intel `FS!` bitmask, charge-inhibit state) to a `0600` JSON
+file in the state directory (`~/.local/share/symtune/smc-restore.json`, owner =
+invoking user even under `sudo`) at the moment they are captured — before any
+write is applied. This inverts the restore from "on shutdown" to "on next
+start", which is the only point at which a process is guaranteed to be alive:
+
+- A clean restore (normal exit, `SIGINT`/`SIGTERM`, `symtune restore`) removes
+  the file.
+- A killed process leaves the file behind; the next CLI invocation or app
+  launch consumes it at startup (applies the recorded originals to the SMC,
+  then deletes it) before any new override is applied.
+- The file records the architecture and charge-limit key family alongside the
+  values. A file from a different architecture or with a key family the current
+  firmware no longer exposes is discarded, never applied; charge values are
+  skipped on key-family mismatch.
+- Unreadable/corrupt files are discarded, never applied.
+
+The in-memory restore path is unchanged; the file is advisory and additive.
+
 There is one current semantic limitation that callers must know:
 `TuneController.restoreAll()` restores the tracker-backed brightness, warmth, EDR,
 fan, and charge-limit state, but does not currently call `resetDim()`. Use

@@ -59,7 +59,16 @@ public final class TuneController: Sendable {
             isChargeLimitSupported: { [chargeLimit] in chargeLimit.detectKeyFamily() != nil },
             appleHealthProvider: batterySource == nil ? SystemProfilerBatteryHealthProvider.shared : nil
         )
-        self.smcRestoreTracker = SMCRestoreTracker(smc: smc, fanControl: fanControl, chargeLimit: chargeLimit)
+        self.smcRestoreTracker = SMCRestoreTracker(
+            smc: smc,
+            fanControl: fanControl,
+            chargeLimit: chargeLimit,
+            dataDir: resolvedDataDir
+        )
+        // Consume a restore record left by a previous process that was killed
+        // before it could restore (SIGKILL, panic, forced power-off). This runs
+        // before any new override can be applied.
+        smcRestoreTracker.consumePersistedRestore()
         self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
         self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource(smc: smc))
         self.metricsHistory = MetricsHistoryService(capacity: 120)
