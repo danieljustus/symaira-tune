@@ -97,6 +97,23 @@ final class SymTuneCLITests: XCTestCase {
         XCTAssert(output.contains("network"))
     }
 
+    func testAIUsageHelp() throws {
+        let output = try runCommand(args: ["ai-usage", "--help"])
+        XCTAssert(output.contains("ai-usage"))
+        XCTAssert(output.contains("--json"))
+    }
+
+    func testAIUsageUnknownFlag() throws {
+        _ = try runCommand(args: ["ai-usage", "--nope"], expectFailure: true)
+    }
+
+    func testAIUsageJSONListsProviders() throws {
+        // No key configured on test machines → provider listed as not set up.
+        let output = try runCommand(args: ["ai-usage", "--json"])
+        XCTAssert(output.contains("openrouter"))
+        XCTAssert(output.contains("provider_id"))
+    }
+
     // MARK: - Helpers
 
     /// Run `symtune` with the given arguments and return stderr (merged with stdout).

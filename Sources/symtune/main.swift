@@ -18,6 +18,7 @@ READ COMMANDS
   displays               Displays with EDR headroom / extended-brightness capability (JSON).
   permissions            Permission & SMC write status (JSON).
   metrics                System metrics: CPU, memory, disk, network (JSON).
+  ai-usage [--json]      AI subscription/token usage per provider (read-only).
 
 POWER
   awake [--display] [--seconds N]
@@ -459,18 +460,6 @@ private func dispatchCommand(_ command: String, rest: [String], controller: Tune
         try runStatus(rest, controller: controller)
     case "history":
         try runHistory(rest, controller: controller)
-    case "doctor":
-        try emitJSON(controller.capabilities())
-    case "sensors":
-        try emitJSON(controller.sensorsReport())
-    case "battery":
-        try emitJSON(controller.batteryReport())
-    case "displays":
-        try emitJSON(controller.displaysReport())
-    case "permissions":
-        try emitJSON(controller.permissions())
-    case "metrics":
-        try runMetrics(rest, controller: controller)
     case "awake":
         try runAwake(rest, controller: controller)
     case "brightness":
@@ -575,7 +564,9 @@ func runMain() -> Int32 {
 
     let result: Int32
     do {
-        if let code = try dispatchCommand(command, rest: rest, controller: controller) {
+        if try runReadCommand(command, rest: rest, controller: controller) {
+            result = ExitCode.ok.rawValue
+        } else if let code = try dispatchCommand(command, rest: rest, controller: controller) {
             result = code
         } else {
             emitErr("symtune: unknown command '\(command)'")

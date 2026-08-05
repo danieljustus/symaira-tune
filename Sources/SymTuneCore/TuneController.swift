@@ -35,6 +35,9 @@ public final class TuneController: Sendable {
     /// NSWorkspace notification center; reconciles the charge limit on wake.
     nonisolated(unsafe) private var wakeMonitor: PowerWakeMonitor?
 
+    /// Aggregates AI-usage providers (OpenRouter, …) into one report.
+    private let aiUsageService: AIUsageService
+
     public init(
         config: TuneConfig = TuneConfig(),
         displayWrite: (any DisplayWriteServiceProtocol)? = nil,
@@ -42,7 +45,8 @@ public final class TuneController: Sendable {
         batterySource: (any BatterySource)? = nil,
         dataDir: URL? = nil,
         keepAwakeSource: (any PowerAssertionSource)? = nil,
-        metricsSource: (any SystemMetricsSource)? = nil
+        metricsSource: (any SystemMetricsSource)? = nil,
+        aiUsageProviders: [any AIUsageProvider]? = nil
     ) {
         self.config = config
         self.displayWrite = displayWrite ?? HardwareDisplayWriteService(
@@ -81,6 +85,9 @@ public final class TuneController: Sendable {
         self.metricsHistory = MetricsHistoryService(capacity: 120)
         // Sync enabled metrics from config into the history buffers
         metricsHistory.ensureBuffers(for: config.enabledMetrics)
+        self.aiUsageService = AIUsageService(
+            providers: aiUsageProviders ?? [OpenRouterUsageProvider()]
+        )
         self.restoreTracker = OverrideTracker(
             displayService: displays,
             edrOverlay: edrOverlay,
@@ -125,6 +132,22 @@ public final class TuneController: Sendable {
     // MARK: - Metrics History (delegates to MetricsHistoryService)
 
     public func metricsReport() -> SystemMetricsReport { metricsService.read() }
+
+    /// Aggregate AI-usage snapshot across all configured providers.
+    ///
+    /// Synchronous bridge over the async service: the service bounds every
+    /// provider fetch with its own timeout, so this call is guaranteed to
+    /// return within (providerTimeout × depth) — never hangs the CLI/MCP.
+    public func aiUsageReport() -> [AIUsageService.ProviderResult] {
+        let semaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var results: [AIUsageService.ProviderResult] = []
+        Task {
+            results = await aiUsageService.usageAll()
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return results
+    }
 
     /// Persist the latest metric snapshot into the bounded ring buffers. Disabled
     /// metrics receive no samples. If any enabled metric is unavailable in the

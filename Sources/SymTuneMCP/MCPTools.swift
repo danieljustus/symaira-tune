@@ -58,6 +58,17 @@ struct MetricsTool: MCPTool, @unchecked Sendable {
     }
 }
 
+struct GetAIUsageTool: MCPTool, @unchecked Sendable {
+    let name = "get_ai_usage"
+    let description = "Read AI subscription/token usage per provider (OpenRouter, …). Read-only; never returns credential material. Unconfigured providers report as not set up."
+    let inputSchema: [String: Any] = [:]
+    var isReadOnly: Bool { true }
+
+    func invoke(arguments: [String: Any], controller: TuneController, keepAwakeToken: inout KeepAwakeToken?) throws -> Encodable {
+        controller.aiUsageReport()
+    }
+}
+
 // MARK: - Keep-awake (session-level)
 
 struct KeepAwakeTool: MCPTool, @unchecked Sendable {

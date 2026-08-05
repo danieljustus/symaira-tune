@@ -12,7 +12,7 @@ import Foundation
 /// - everything that leaves this service is secret-redacted.
 public final class AIUsageService: @unchecked Sendable {
     /// Result of one provider in an aggregate read: snapshot or redacted error.
-    public struct ProviderResult: Sendable, Equatable {
+    public struct ProviderResult: Sendable, Equatable, Codable {
         public let providerID: String
         public let snapshot: AIUsageSnapshot?
         /// Redacted error description; `nil` on success.

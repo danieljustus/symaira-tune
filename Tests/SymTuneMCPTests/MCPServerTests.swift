@@ -203,6 +203,42 @@ final class MCPServerToolCallTests: XCTestCase {
         XCTAssertTrue(text?.contains("network") == true)
     }
 
+    func testCallGetAIUsageListsProviders() throws {
+        // No key configured on CI/test machines → unconfigured report, no network.
+        let result = try callTool("get_ai_usage")
+        let content = result["content"] as? [[String: Any]]
+        XCTAssertNotNil(content?.first?["text"])
+        let text = content?.first?["text"] as? String
+        XCTAssertTrue(text?.contains("openrouter") == true)
+        // The not-configured path must not be an error.
+        XCTAssertEqual(result["isError"] as? Bool, false)
+    }
+
+    func testGetAIUsageToolIsReadOnly() throws {
+        // Read-only tools stay available in read-only MCP mode.
+        let config = TuneConfig(mcpMode: "read-only")
+        let readOnlyServer = MCPServer(controller: TuneController(), config: config)
+        let roList = try readOnlyServer.dispatch(method: "tools/list", params: [:])
+        let roNames = (roList["tools"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+        XCTAssertTrue(roNames.contains("get_ai_usage"), "read-only tool must stay in read-only mode")
+        XCTAssertFalse(roNames.contains("set_fan"))
+    }
+
+    func testGetAIUsageSchemaIsEmptyObject() throws {
+        guard let schema = try? server.dispatch(method: "tools/list", params: [:]),
+              let tools = schema["tools"] as? [[String: Any]],
+              let tool = tools.first(where: { $0["name"] as? String == "get_ai_usage" }),
+              let inputSchema = tool["inputSchema"] as? [String: Any]
+        else {
+            XCTFail("get_ai_usage schema missing")
+            return
+        }
+        // Empty input schema is normalized to the standard empty object shape.
+        XCTAssertEqual(inputSchema["type"] as? String, "object")
+        let props = inputSchema["properties"] as? [String: Any]
+        XCTAssertEqual(props?.isEmpty ?? false, true)
+    }
+
     func testCallSetDim() throws {
         let result = try callTool("set_dim", arguments: ["value": 0.5])
         XCTAssertEqual(result["isError"] as? Bool, false)
