@@ -223,7 +223,7 @@ struct CodexWindow: Decodable {
         case limit
         // convertFromSnakeCase normalizes reset_date → resetDate, so the
         // stored key must round-trip through that exact pair.
-        case resetDate = "resetDate"
+        case resetDate
     }
 }
 
@@ -239,7 +239,7 @@ struct CodexAdditionalRateLimit: Decodable {
         case title
         case utilized
         case limit
-        case resetDate = "resetDate"
+        case resetDate
     }
 }
 
