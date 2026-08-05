@@ -75,6 +75,7 @@ core. They require the process to run as root because they write to the Apple SM
 ## v0.8.0 — Design system alignment (current)
 
 - [x] Menu-bar app migrated onto the shared `SymairaTheme` design system from `symaira-appkit`: type scale (`symairaText` roles), color tokens, spacing/radius tokens, shared text field style (`#226`).
+- [x] AI-usage fundamentals: `AIUsageSnapshot`/`AIUsageProvider`/`AIUsageService` in the core, OpenRouter provider (Keychain API key, credits API), CLI `symtune ai-usage [--json]` and MCP `get_ai_usage` (`#242`, `#243`, `#254`).
 
 ## v0.7.0 — Configurable popover
 

@@ -10,6 +10,17 @@ public enum AIUsageUnit: Codable, Sendable, Equatable {
     case credits
     case currency(String)
     case percent
+
+    /// Human-readable unit label for tables and CLI output.
+    public var unitLabel: String {
+        switch self {
+        case .tokens: return "tokens"
+        case .requests: return "requests"
+        case .credits: return "credits"
+        case .currency(let code): return code
+        case .percent: return "%"
+        }
+    }
 }
 
 /// One normalized usage meter (e.g. "this session", "this week", "credits").
