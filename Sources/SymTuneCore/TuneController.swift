@@ -28,6 +28,10 @@ public final class TuneController: Sendable {
     private let powerLock = NSLock()
     nonisolated(unsafe) private var activeTokensCount = 0
 
+    /// The charge limit this process applied; status cross-checks it against
+    /// the live SMC inhibit state instead of trusting tracked state alone.
+    private let chargeLimitState = ChargeLimitState()
+
     public init(
         config: TuneConfig = TuneConfig(),
         displayWrite: (any DisplayWriteServiceProtocol)? = nil,
@@ -271,13 +275,15 @@ public final class TuneController: Sendable {
     // MARK: - Status Snapshot & Active Overrides
 
     public func activeOverrides() -> ActiveOverrides {
-        ActiveOverrides(
+        let charge = activeChargeLimit()
+        return ActiveOverrides(
             brightness: restoreTracker.hasBrightnessOverride() ? (try? getBuiltinBrightness()) : nil,
             dim: getDimLevel() < 1.0 ? getDimLevel() : nil,
             warmth: getWarmthLevel() > 0.0 ? getWarmthLevel() : nil,
             edrBrightness: restoreTracker.hasEDROverride() ? restoreTracker.appliedEDRBrightness : nil,
             fanFraction: activeFanFraction(),
-            chargeLimitPercent: activeChargeLimitPercent()
+            chargeLimitPercent: charge.percent,
+            chargeLimitState: charge.state
         )
     }
 
@@ -295,18 +301,6 @@ public final class TuneController: Sendable {
         }
         let avg = fractions.reduce(0, +) / Double(fractions.count)
         return avg
-    }
-
-    private func activeChargeLimitPercent() -> Int? {
-        guard smc.isAvailable, let family = chargeLimit.detectKeyFamily() else { return nil }
-        switch family {
-        case .chte:
-            return smc.readKeyUInt32("CHTE").map { $0 == 1 ? 80 : nil } ?? nil
-        case .ch0b:
-            return smc.readKeyUInt("CH0B").map { $0 == 2 ? 80 : nil } ?? nil
-        case .chlc:
-            return smc.readKeyUInt("CHLC").map { Int($0) }
-        }
     }
 
     public func statusReport() -> StatusReport {
@@ -410,6 +404,7 @@ public final class TuneController: Sendable {
     public func restoreAll() {
         restoreTracker.restoreAll()
         smcRestoreTracker.restoreAll()
+        chargeLimitState.clear()
         logHistory(action: "restore", result: "success")
     }
 
@@ -535,6 +530,7 @@ extension TuneController {
             try SMCWritePolicy.requireACPower(battery: battery)
             smcRestoreTracker.saveChargeOriginal()
             try chargeLimit.applyChargeLimit(percent: percent, config: config)
+            chargeLimitState.set(clamped)
             logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: Double(clamped), result: "success")
         } catch let error as SMCWritePolicy.ValidationError {
             logHistory(action: "battery-limit.set", requested: Double(percent), clamped: Double(clamped), applied: nil, result: "failed", error: error)
@@ -548,6 +544,7 @@ extension TuneController {
     public func clearChargeLimit() throws {
         do {
             try chargeLimit.clearChargeLimit()
+            chargeLimitState.clear()
             logHistory(action: "battery-limit.clear", result: "success")
         } catch {
             logHistory(action: "battery-limit.clear", result: "failed", error: error)
@@ -565,5 +562,25 @@ extension TuneController {
                 ? "Live DC-in power draw (volts/amps/watts) via SMC keys VD0R/ID0R/PDTR."
                 : "SMC DC-in power keys (VD0R/ID0R/PDTR) not exposed on this Mac — live power draw unavailable."
         )
+    }
+
+    /// The configured charge limit (the value this process applied) and its
+    /// enforcement state, cross-checked against the live SMC. On Apple Silicon
+    /// the inhibit bit resets on sleep, so a tracked limit is only reported as
+    /// `active` when the hardware still agrees with it.
+    private func activeChargeLimit() -> (percent: Int?, state: ChargeLimitEnforcementState?) {
+        guard let target = chargeLimitState.percent,
+              smc.isAvailable,
+              let family = chargeLimit.detectKeyFamily() else {
+            return (nil, nil)
+        }
+        switch family {
+        case .chte, .ch0b:
+            guard let inhibited = chargeLimit.readInhibitState() else { return (nil, nil) }
+            return (target, inhibited ? .active : .lapsed)
+        case .chlc:
+            guard let hw = smc.readKeyUInt("CHLC").map({ Int($0) }) else { return (nil, nil) }
+            return (target, hw == target ? .active : .lapsed)
+        }
     }
 }

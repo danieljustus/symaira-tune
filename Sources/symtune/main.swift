@@ -331,7 +331,11 @@ func runStatus(_ args: [String], controller: TuneController) throws {
                 anyOverride = true
             }
             if let charge = o.chargeLimitPercent {
-                emit("- Charge Limit: \(charge)%")
+                var line = "- Charge Limit: \(charge)%"
+                if let state = o.chargeLimitState {
+                    line += " (\(state.rawValue))"
+                }
+                emit(line)
                 anyOverride = true
             }
             if !anyOverride {
