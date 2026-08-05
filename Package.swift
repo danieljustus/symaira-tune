@@ -49,7 +49,8 @@ let package = Package(
         ),
         .testTarget(
             name: "SymTuneCoreTests",
-            dependencies: ["SymTuneCore"]
+            dependencies: ["SymTuneCore"],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "SymTuneMCPTests",
