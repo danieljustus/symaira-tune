@@ -28,7 +28,19 @@ Fan/SMC control, DDC, and shipping a global `symtune` CLI for agents are
 incompatible with the App Store sandbox. `symtune` is built for **notarized
 direct distribution / Homebrew cask** (the same channel as `symaira-terminal`).
 
-## Install (from source)
+## Install
+
+The recommended way is the Homebrew cask, which installs both the `symtune`
+CLI and the menu-bar app:
+
+```bash
+brew install danieljustus/tap/symtune
+```
+
+Prebuilt binaries (DMG with `SymairaTune.app` and the CLI) are also attached
+to each [release](https://github.com/danieljustus/symaira-tune/releases/latest).
+
+### Install from source (alternative)
 
 ```bash
 git clone <repo-url> && cd symaira-tune
