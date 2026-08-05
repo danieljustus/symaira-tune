@@ -285,6 +285,33 @@ final class TuneConfigTests: XCTestCase {
         XCTAssertEqual(config.extendedBrightnessMax, SafetyPolicy.extendedBrightnessMax)
     }
 
+    // MARK: Charge-limit hysteresis
+
+    func testChargeLimitHysteresisDefaultsAndClamps() {
+        XCTAssertEqual(
+            TuneConfig().chargeLimitHysteresisPercent,
+            SafetyPolicy.chargeLimitHysteresis
+        )
+
+        let overMax = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_CHARGE_HYSTERESIS": "999"]
+        )
+        XCTAssertEqual(overMax.chargeLimitHysteresisPercent, SafetyPolicy.chargeLimitHysteresisMax)
+
+        let underMin = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_CHARGE_HYSTERESIS": "0"]
+        )
+        XCTAssertEqual(underMin.chargeLimitHysteresisPercent, 1)
+
+        let inBand = TuneConfig.load(
+            paths: ConfigPaths(),
+            env: ["SYMTUNE_CHARGE_HYSTERESIS": "8"]
+        )
+        XCTAssertEqual(inBand.chargeLimitHysteresisPercent, 8)
+    }
+
     // MARK: Missing / malformed config
 
     func testMissingConfigFileReturnsDefaults() {

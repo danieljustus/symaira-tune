@@ -41,6 +41,8 @@ public enum SafetyPolicy: Sendable {
     /// Hysteresis band used by the charge-limit controller: re-allow charging
     /// only when the battery has dropped this far below the target.
     public static let chargeLimitHysteresis = 5
+    /// Upper clamp for the user-configurable hysteresis value.
+    public static let chargeLimitHysteresisMax = 20
 
     // MARK: Thermal emergency threshold.
     /// If any die sensor exceeds this temperature, manual fan writes are

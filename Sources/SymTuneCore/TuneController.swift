@@ -31,6 +31,10 @@ public final class TuneController: Sendable {
     /// the live SMC inhibit state instead of trusting tracked state alone.
     private let chargeLimitState = ChargeLimitState()
 
+    /// IOKit wake observer used by long-lived processes without an
+    /// NSWorkspace notification center; reconciles the charge limit on wake.
+    nonisolated(unsafe) private var wakeMonitor: PowerWakeMonitor?
+
     public init(
         config: TuneConfig = TuneConfig(),
         displayWrite: (any DisplayWriteServiceProtocol)? = nil,
@@ -515,6 +519,55 @@ extension TuneController {
             guard let hw = smc.readKeyUInt("CHLC").map({ Int($0) }) else { return (nil, nil) }
             return (target, hw == target ? .active : .lapsed)
         }
+    }
+
+    // MARK: - Charge-limit reconciliation
+
+    /// Start the IOKit wake monitor (long-lived processes such as `symtune
+    /// serve`). The menu-bar app uses `NSWorkspace.didWakeNotification`
+    /// instead; both paths end up here. Idempotent.
+    public func startWakeMonitoring() {
+        if wakeMonitor == nil {
+            wakeMonitor = PowerWakeMonitor { [weak self] in
+                self?.reconcileChargeLimit()
+            }
+        }
+        wakeMonitor?.start()
+    }
+
+    /// Reconcile the configured charge limit against the live battery after a
+    /// wake: on Apple Silicon the inhibit bit is volatile and resets on sleep.
+    ///
+    /// Drives charging between a band instead of a single threshold — inhibit
+    /// at/above the target, re-allow only once the battery has dropped
+    /// `chargeLimitHysteresisPercent` below it, and keep the current state
+    /// while the battery sits inside the band. Intel `CHLC` persists and needs
+    /// no re-assertion.
+    public func reconcileChargeLimit() {
+        #if arch(arm64)
+        guard let target = chargeLimitState.percent,
+              smc.isAvailable,
+              let family = chargeLimit.detectKeyFamily() else { return }
+        switch family {
+        case .chte, .ch0b:
+            guard let percent = batteryReport().currentCapacityPercent else { return }
+            let inhibited = chargeLimit.readInhibitState() ?? false
+            let hysteresis = config.chargeLimitHysteresisPercent
+            if percent >= target {
+                if !inhibited {
+                    // Lapsed on wake (or never re-applied): re-assert.
+                    try? chargeLimit.applyChargeLimit(percent: target, config: config)
+                }
+            } else if percent <= target - hysteresis, inhibited {
+                // Dropped below the band: release the inhibit.
+                try? chargeLimit.clearChargeLimit()
+            }
+        case .chlc:
+            break
+        }
+        #else
+        // Intel CHLC persists; nothing to re-assert on wake.
+        #endif
     }
 }
 

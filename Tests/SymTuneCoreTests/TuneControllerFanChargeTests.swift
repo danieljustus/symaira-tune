@@ -192,6 +192,90 @@ final class TuneControllerFanChargeTests: XCTestCase {
         conn.keys["CH0B"] = FakeSMCKeyResult(dataType: smcEncodeKey("ui8 "), bytes: [0])
         XCTAssertEqual(controller.activeOverrides().chargeLimitState, .lapsed)
     }
+
+    // MARK: - Wake re-assert + hysteresis (part B of #232)
+
+    private func battery(_ percent: Int) -> BatteryProperties {
+        BatteryProperties(
+            externalConnected: true,
+            rawMaxCapacity: 100,
+            rawCurrentCapacity: percent
+        )
+    }
+
+    func testReconcileReassertsLapsedLimitAfterWake() throws {
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CHTE": ui32(0)])
+        let batterySource = FakeBatterySource(result: .success(battery(80)))
+        let controller = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        try controller.applyChargeLimit(percent: 80)
+        XCTAssertEqual(conn.keys["CHTE"]?.bytes, [0, 0, 0, 1])
+
+        // Wake: the volatile inhibit bit reset behind the process's back.
+        conn.keys["CHTE"] = FakeSMCKeyResult(dataType: smcEncodeKey("ui32"), bytes: [0, 0, 0, 0])
+        controller.reconcileChargeLimit()
+
+        // Re-asserted because the battery is still at/above the target.
+        XCTAssertEqual(conn.keys["CHTE"]?.bytes, [0, 0, 0, 1])
+        XCTAssertEqual(controller.activeOverrides().chargeLimitState, .active)
+    }
+
+    func testReconcileKeepsActiveLimitWithoutRewrite() throws {
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CHTE": ui32(0)])
+        let batterySource = FakeBatterySource(result: .success(battery(80)))
+        let controller = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        try controller.applyChargeLimit(percent: 80)
+        let writesBefore = conn.writtenKeys.count
+
+        controller.reconcileChargeLimit()
+
+        XCTAssertEqual(conn.writtenKeys.count, writesBefore, "no redundant writes while the limit is active")
+        XCTAssertEqual(conn.keys["CHTE"]?.bytes, [0, 0, 0, 1])
+    }
+
+    func testReconcileHoldsInsideHysteresisBand() throws {
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CHTE": ui32(0)])
+        let batterySource = FakeBatterySource(result: .success(battery(80)))
+        let controller = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        try controller.applyChargeLimit(percent: 80)
+
+        // 76% is inside the band (80 - 5 hysteresis): still inhibited.
+        batterySource.result = .success(battery(76))
+        controller.reconcileChargeLimit()
+        XCTAssertEqual(conn.keys["CHTE"]?.bytes, [0, 0, 0, 1], "no release inside the hysteresis band")
+
+        // 75% is at the band edge: release.
+        batterySource.result = .success(battery(75))
+        controller.reconcileChargeLimit()
+        XCTAssertEqual(conn.keys["CHTE"]?.bytes, [0, 0, 0, 0], "inhibit released at target - hysteresis")
+    }
+
+    func testReconcileDoesNothingWithoutConfiguredLimit() {
+        let conn = FakeSMCConnection(isOpen: true, keys: ["CHTE": ui32(1)])
+        let batterySource = FakeBatterySource(result: .success(battery(80)))
+        let controller = TuneController(
+            config: TuneConfig(),
+            displayWrite: MockDisplayWriteService(),
+            smcService: SMCService(connection: conn),
+            batterySource: batterySource
+        )
+        controller.reconcileChargeLimit()
+        XCTAssertTrue(conn.writtenKeys.isEmpty, "no reconcile writes without a configured limit")
+    }
 }
 
 // MARK: - TuneController Error Mapping Tests

@@ -298,5 +298,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     @objc private func handleWake() {
         model.recordWakeGap()
+        // The Apple Silicon charge-limit inhibit bit resets on sleep; re-assert
+        // the configured limit (band-controlled) after every wake.
+        controller.reconcileChargeLimit()
     }
 }
