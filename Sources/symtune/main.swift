@@ -459,7 +459,7 @@ private func dispatchCommand(_ command: String, rest: [String], controller: Tune
     case "doctor":
         try emitJSON(controller.capabilities())
     case "sensors":
-        try emitJSON(controller.sensors_report())
+        try emitJSON(controller.sensorsReport())
     case "battery":
         try emitJSON(controller.batteryReport())
     case "displays":

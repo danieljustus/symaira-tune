@@ -11,12 +11,11 @@ final class TuneControllerSensorsKeepAwakeTests: XCTestCase {
 
     // MARK: - sensorsReport (line 98)
 
-    /// Covers line 98: sensorsReport() delegates to sensors_report().
-    /// Asserts the returned SensorReport has a recognised thermal-pressure label
-    /// and the expected field shape.
+    /// Covers the sensorsReport() facade: returns a SensorReport with a
+    /// recognised thermal-pressure label and the expected field shape.
     func testSensorsReportReturnsValidReport() {
         let controller = TuneController()
-        let report = controller.sensors_report()
+        let report = controller.sensorsReport()
 
         // Thermal pressure must be one of the known labels
         let knownLabels = ["nominal", "fair", "serious", "critical", "unknown"]
@@ -32,7 +31,7 @@ final class TuneControllerSensorsKeepAwakeTests: XCTestCase {
         XCTAssertNotNil(report.fans)
         XCTAssertNotNil(report.notes)
 
-        // sensorsReport() and sensors_report() must return the same data
+        // The deprecated shim forwards to the new name with identical data
         let alt = controller.sensors_report()
         XCTAssertEqual(report.thermalPressure, alt.thermalPressure)
         XCTAssertEqual(report.smcSupported, alt.smcSupported)

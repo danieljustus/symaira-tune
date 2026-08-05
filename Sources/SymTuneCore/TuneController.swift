@@ -21,7 +21,6 @@ public final class TuneController: Sendable {
     private let keepAwakeCoordinator: KeepAwakeCoordinator
     private let metricsService: SystemMetricsService
     public let metricsHistory: MetricsHistoryService
-    nonisolated(unsafe) private var helperClient: (any SMCHelperProtocol)?
 
     public let dataDir: URL
     private let historyService: HistoryService
@@ -118,7 +117,6 @@ public final class TuneController: Sendable {
     }
 
     // MARK: - Reads
-    public func sensors_report() -> SensorReport { sensors.read() }
 
     // MARK: - Metrics History (delegates to MetricsHistoryService)
 
@@ -231,7 +229,7 @@ public final class TuneController: Sendable {
     }
 
     public func statusReport() -> StatusReport {
-        let sensorsRep = sensors_report()
+        let sensorsRep = sensorsReport()
         let batteryRep = batteryReport()
         let displaysRep = displaysReport()
         let overrides = activeOverrides()
@@ -417,6 +415,14 @@ public final class TuneController: Sendable {
 }
 
 extension TuneController {
+    // MARK: - Reads
+
+    public func sensorsReport() -> SensorReport { sensors.read() }
+
+    /// Deprecated forwarding shim: use ``sensorsReport()``.
+    @available(*, deprecated, renamed: "sensorsReport")
+    public func sensors_report() -> SensorReport { sensorsReport() }
+
     public func applyFan(fraction: Double) throws {
         let clamped = SMCWritePolicy.clampFanFraction(fraction, min: config.fanFractionMin, max: config.fanFractionMax)
         do {
