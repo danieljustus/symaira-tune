@@ -47,8 +47,8 @@ symtune (executable)  →  SymTuneMCP  →  SymTuneCore
 - **Public/pro boundary**: no billing/tenant/cloud code here. SMC-write features
   (fan, charge limit) belong behind the privileged Pro helper — implement the
   core capability here first, then let the private repo consume it.
-- **Zero stdout pollution in `serve`**: stdout carries only Content-Length-framed
-  JSON-RPC frames. All logs/diagnostics go to stderr.
+- **Zero stdout pollution in `serve`**: stdout carries only newline-delimited
+  JSON-RPC frames (MCP spec stdio framing, via `SymairaMCP`). All logs go to stderr.
 - **No third-party SPM dependencies** without a strong reason — system frameworks
   only, so the binary stays trivial to build, sign, and notarize.
 - **JSON is snake_case**: encoders use `.convertToSnakeCase`. Keep Swift

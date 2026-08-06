@@ -13,7 +13,7 @@ let package = Package(
         .executable(name: "SymTuneApp", targets: ["SymTuneApp"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/danieljustus/symaira-appkit.git", branch: "main"),
+        .package(url: "https://github.com/danieljustus/symaira-appkit.git", exact: "0.8.1"),
     ],
     targets: [
         .target(
@@ -25,7 +25,10 @@ let package = Package(
         ),
         .target(
             name: "SymTuneMCP",
-            dependencies: ["SymTuneCore"]
+            dependencies: [
+                "SymTuneCore",
+                .product(name: "SymairaMCP", package: "symaira-appkit"),
+            ]
         ),
         .executableTarget(
             name: "symtune",
@@ -54,7 +57,10 @@ let package = Package(
         ),
         .testTarget(
             name: "SymTuneMCPTests",
-            dependencies: ["SymTuneMCP"]
+            dependencies: [
+                "SymTuneMCP",
+                .product(name: "SymairaMCP", package: "symaira-appkit"),
+            ]
         ),
         .testTarget(
             name: "SymTuneCLITests",

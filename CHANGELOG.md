@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- MCP server migrated from the hand-rolled JSON-RPC/stdio implementation to
+  the shared `SymairaMCP` module from `symaira-appkit` (exact-pinned 0.8.1):
+  `TuneMCPServer` registers `tools/list`/`tools/call` on
+  `MCPServer.withMethodHandler(_:)` over `MCPStdioTransport`. The tool list
+  (names, descriptions, schemas incl. safety bounds) is unchanged; the wire
+  framing is now newline-delimited JSON-RPC per the MCP spec (`#285`).
+- `symaira-appkit` is now pinned `exact: "0.8.1"` instead of `branch: "main"`
+  (`#286`).
+
 ### Added
 - AI usage tracking for 10 providers: OpenRouter, Nous Portal, Moonshot, Codex, GitHub Copilot, Kimi Code, OpenCode, Cursor, Antigravity, Claude (`#268`–`#281`).
 - CLI `symtune ai-usage` command and MCP `get_ai_usage` tool (`#270`).

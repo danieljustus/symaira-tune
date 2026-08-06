@@ -1,23 +1,24 @@
 import XCTest
+import SymairaMCP
 @testable import SymTuneMCP
-import SymTuneCore
+@testable import SymTuneCore
 
 final class MCPArgumentsTests: XCTestCase {
 
     // MARK: - requireDouble
 
-    func testRequireDoubleAcceptsStringNumber() throws {
-        let value = try requireDouble("3.14", name: "value")
+    func testRequireDoubleAcceptsNumber() throws {
+        let value = try requireDouble(.number(3.14), name: "value")
         XCTAssertEqual(value, 3.14, accuracy: 0.001)
     }
 
-    func testRequireDoubleAcceptsNSNumber() throws {
-        let value = try requireDouble(2.71 as NSNumber, name: "value")
-        XCTAssertEqual(value, 2.71, accuracy: 0.001)
+    func testRequireDoubleAcceptsStringNumber() throws {
+        let value = try requireDouble(.string("3.14"), name: "value")
+        XCTAssertEqual(value, 3.14, accuracy: 0.001)
     }
 
     func testRequireDoubleRejectsInvalidString() {
-        XCTAssertThrowsError(try requireDouble("not-a-number", name: "value")) { error in
+        XCTAssertThrowsError(try requireDouble(.string("not-a-number"), name: "value")) { error in
             guard case TuneError.usage(let msg) = error else {
                 return XCTFail("Expected .usage, got \(error)")
             }
@@ -36,18 +37,18 @@ final class MCPArgumentsTests: XCTestCase {
 
     // MARK: - requireInt
 
-    func testRequireIntAcceptsStringNumber() throws {
-        let value = try requireInt("42", name: "count")
+    func testRequireIntAcceptsNumber() throws {
+        let value = try requireInt(.number(42), name: "count")
         XCTAssertEqual(value, 42)
     }
 
-    func testRequireIntAcceptsNSNumber() throws {
-        let value = try requireInt(7 as NSNumber, name: "count")
-        XCTAssertEqual(value, 7)
+    func testRequireIntAcceptsStringNumber() throws {
+        let value = try requireInt(.string("42"), name: "count")
+        XCTAssertEqual(value, 42)
     }
 
     func testRequireIntRejectsInvalidString() {
-        XCTAssertThrowsError(try requireInt("not-an-int", name: "count")) { error in
+        XCTAssertThrowsError(try requireInt(.string("not-an-int"), name: "count")) { error in
             guard case TuneError.usage(let msg) = error else {
                 return XCTFail("Expected .usage, got \(error)")
             }

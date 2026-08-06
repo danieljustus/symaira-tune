@@ -42,10 +42,13 @@ The only target with logic or IOKit access.
 
 ### `SymTuneMCP`
 
-- Minimal stdio JSON-RPC/MCP transport with Content-Length framing.
-- `initialize`, `tools/list`, `tools/call`, `ping`.
-- One place for tool schemas + argument validation. Holds at most one keep-awake
-  assertion for the server's lifetime.
+- Thin facade (`TuneMCPServer`) over the shared `SymairaMCP` module from
+  `symaira-appkit`: registers the `tools/list` and `tools/call` handlers on
+  `MCPServer.withMethodHandler(_:)`, served over `MCPStdioTransport`
+  (newline-delimited JSON-RPC, per the MCP spec's stdio framing).
+- `initialize`, `tools/list`, `tools/call`, `ping` are owned by `SymairaMCP`.
+- One place for tool schemas + argument validation (`TuneToolRegistry`),
+  including JSON Schema `minimum`/`maximum` safety bounds.
 
 ### `symtune` (CLI)
 

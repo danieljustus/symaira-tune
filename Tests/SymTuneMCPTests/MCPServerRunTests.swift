@@ -1,131 +1,110 @@
 import XCTest
+import SymairaMCP
 @testable import SymTuneMCP
-import SymTuneCore
+@testable import SymTuneCore
 
+/// End-to-end tests over the wire: drive `TuneMCPServer` through
+/// `MCPStdioTransport` and verify JSON-RPC behaviour (handshake, ping,
+/// notifications, error mapping) as a client would see it.
 final class MCPServerRunTests: XCTestCase {
-
-    private func makeServer(transport: MCPTransportProtocol) -> MCPServer {
-        MCPServer(transport: transport)
-    }
-
-    private func jsonData(_ object: [String: Any]) throws -> Data {
-        try JSONSerialization.data(withJSONObject: object)
-    }
 
     // MARK: - run() loop
 
-    func testRunInitializeReturnsResponse() throws {
-        let transport = FakeMCPTransport()
-        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 1, "method": "initialize"])]
-        let server = makeServer(transport: transport)
-        try server.run()
-        XCTAssertEqual(transport.sent.count, 1)
-        let response = transport.sent[0]
-        XCTAssertEqual(response["id"] as? Int, 1)
-        XCTAssertNotNil(response["result"])
+    func testRunInitializeReturnsResponse() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        try mcpSend(#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#, to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.id, .number(1))
+        let result = try XCTUnwrap(try mcpDecodeResult(envelope, as: MCPInitializeResult.self))
+        XCTAssertNotNil(result.protocolVersion)
+        XCTAssertNotNil(result.capabilities)
+        XCTAssertEqual(result.serverInfo.name, "symtune")
+        XCTAssertEqual(result.serverInfo.version, TuneVersion.current)
     }
 
-    func testRunPingReturnsEmptyResult() throws {
-        let transport = FakeMCPTransport()
-        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 2, "method": "ping"])]
-        let server = makeServer(transport: transport)
-        try server.run()
-        XCTAssertEqual(transport.sent.count, 1)
-        let response = transport.sent[0]
-        XCTAssertEqual(response["id"] as? Int, 2)
-        XCTAssertNotNil(response["result"])
+    func testRunPingReturnsEmptyResult() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        try mcpSend(#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#, to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.id, .number(2))
+        XCTAssertEqual(envelope.result, .object([:]))
     }
 
-    func testRunNotificationIsIgnored() throws {
-        let transport = FakeMCPTransport()
-        transport.messages = [try jsonData(["jsonrpc": "2.0", "method": "notifications/initialized"])]
-        let server = makeServer(transport: transport)
-        try server.run()
-        XCTAssertEqual(transport.sent.count, 0)
+    func testRunNotificationIsIgnored() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        // A notification must not produce a response: the next line read must
+        // be the response to the subsequent ping.
+        try mcpSend(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, to: harness.clientWrite)
+        try mcpSend(#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#, to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.id, .number(3))
+        XCTAssertNotNil(envelope.result)
     }
 
-    func testRunUnknownMethodReturnsInvalidParamsError() throws {
-        let transport = FakeMCPTransport()
-        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 3, "method": "unknown/method"])]
-        let server = makeServer(transport: transport)
-        try server.run()
-        XCTAssertEqual(transport.sent.count, 1)
-        let response = transport.sent[0]
-        XCTAssertEqual(response["id"] as? Int, 3)
-        let error = response["error"] as? [String: Any]
-        XCTAssertEqual(error?["code"] as? Int, -32602)
+    func testRunUnknownMethodReturnsMethodNotFoundError() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        try mcpSend(#"{"jsonrpc":"2.0","id":4,"method":"unknown/method"}"#, to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.id, .number(4))
+        XCTAssertNil(envelope.result)
+        XCTAssertEqual(envelope.error?.code, -32601)
     }
 
-    func testRunUnsupportedToolReturnsMethodNotFoundError() throws {
-        let transport = FakeMCPTransport()
-        transport.messages = [try jsonData([
-            "jsonrpc": "2.0",
-            "id": 4,
-            "method": "tools/call",
-            "params": [
-                "name": "nonexistent_tool",
-                "arguments": ["fraction": 0.5]
-            ]
-        ])]
-        let server = makeServer(transport: transport)
-        try server.run()
-        XCTAssertEqual(transport.sent.count, 1)
-        let response = transport.sent[0]
-        XCTAssertEqual(response["id"] as? Int, 4)
-        let error = response["error"] as? [String: Any]
-        XCTAssertEqual(error?["code"] as? Int, -32601)
-        let data = error?["data"] as? [String: Any]
-        XCTAssertNotNil(data?["exitCode"])
+    func testRunUnsupportedToolReturnsInternalError() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        try mcpSend(#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"nonexistent_tool","arguments":{"fraction":0.5}}}"#, to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.id, .number(5))
+        XCTAssertNil(envelope.result)
+        XCTAssertEqual(envelope.error?.code, -32603)
+        XCTAssertTrue(envelope.error?.message.contains("Unknown tool") == true)
     }
 
-    func testRunNonTuneErrorCaughtAsInternalError() throws {
-        let transport = FakeMCPTransport(failSendOnIndices: [0])
-        transport.messages = [try jsonData(["jsonrpc": "2.0", "id": 5, "method": "ping"])]
-        let server = makeServer(transport: transport)
-        try server.run()
-        XCTAssertEqual(transport.sent.count, 1)
-        let response = transport.sent[0]
-        XCTAssertEqual(response["id"] as? Int, 5)
-        let error = response["error"] as? [String: Any]
-        XCTAssertEqual(error?["code"] as? Int, -32603)
+    func testRunMalformedJSONReturnsParseError() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        try mcpSend("this is not json", to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.error?.code, -32700)
     }
 
-    // MARK: - jsonRPCCode mapping
+    func testRunInvalidRequestReturnsInvalidRequestError() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
 
-    func testJsonRPCCodeMapping() {
-        let server = MCPServer()
-        XCTAssertEqual(server.jsonRPCCode(for: .usage("x")), -32602)
-        XCTAssertEqual(server.jsonRPCCode(for: .unsupported("x")), -32601)
-        XCTAssertEqual(server.jsonRPCCode(for: .notImplemented("x")), -32601)
-        XCTAssertEqual(server.jsonRPCCode(for: .config("x")), -32603)
-        XCTAssertEqual(server.jsonRPCCode(for: .permission("x")), -32603)
-        XCTAssertEqual(server.jsonRPCCode(for: .failed("x")), -32603)
-    }
-}
-
-// MARK: - Fake transport
-
-final class FakeMCPTransport: MCPTransportProtocol {
-    var messages: [Data] = []
-    var sent: [[String: Any]] = []
-    private var sendAttempts = 0
-    private var failSendOnIndices: Set<Int> = []
-
-    init(failSendOnIndices: [Int] = []) {
-        self.failSendOnIndices = Set(failSendOnIndices)
+        try mcpSend(#"{"jsonrpc":"2.0","id":6}"#, to: harness.clientWrite)
+        let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+        XCTAssertEqual(envelope.error?.code, -32600)
     }
 
-    func readMessage() throws -> Data? {
-        guard !messages.isEmpty else { return nil }
-        return messages.removeFirst()
+    func testRunEOFEndsServerLoop() async throws {
+        let harness = try MCPTestHarness.make()
+
+        try mcpSend(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#, to: harness.clientWrite)
+        _ = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+
+        try harness.clientWrite.close()
+        try await harness.serverTask.value
     }
 
-    func send(_ payload: [String: Any]) throws {
-        let index = sendAttempts
-        sendAttempts += 1
-        if failSendOnIndices.contains(index) {
-            throw NSError(domain: "test", code: 1, userInfo: nil)
-        }
-        sent.append(payload)
+    func testRunStopEndsServerLoop() async throws {
+        let harness = try MCPTestHarness.make()
+
+        try mcpSend(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#, to: harness.clientWrite)
+        _ = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+
+        harness.server.stop()
+        try await harness.serverTask.value
     }
 }
