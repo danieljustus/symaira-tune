@@ -6,7 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.8.0] — 2026-07-31
+### Added
+- AI usage tracking for 10 providers: OpenRouter, Nous Portal, Moonshot, Codex, GitHub Copilot, Kimi Code, OpenCode, Cursor, Antigravity, Claude (`#268`–`#281`).
+- CLI `symtune ai-usage` command and MCP `get_ai_usage` tool (`#270`).
+- AI usage popover card, preferences toggles, keychain-backed credentials, and menu-bar readout (`#281`).
+- Cache backoff and in-flight cleanup for AI usage service (`#282`).
+
+### Fixed
+- Charge limit re-assertion after wake with hysteresis band (`#267`).
+- SMC pre-override state persistence so a killed process cannot strand hardware (`#263`).
+- Lapsed charge limit reporting with exact applied percent (`#262`).
+- CLI `version --check-for-updates` waits for its notice before exiting (`#265`).
+- CodeQL Action updated to 4.37.5 (`#283`).
+
+### Added
+- SMC generation-aware temperature tables plus dynamic key enumeration (`#233`, `#240`).
+- Battery Apple health numbers and live power draw reporting (`#234`, `#235`).
+
+## [0.9.0] — 2026-08-06
 
 ### Added
 - Menu-bar app migrated onto the shared Symaira design system (`SymairaTheme` from `symaira-appkit`): type-scale text roles (`symairaText`), color/spacing/radius tokens, and the shared text field style (`#226`).
