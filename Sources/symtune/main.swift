@@ -455,7 +455,7 @@ private func dispatchCommand(_ command: String, rest: [String], controller: Tune
         // Long-lived stdio process: watch for wake events so a configured
         // charge limit is re-asserted after sleep (Apple Silicon).
         controller.startWakeMonitoring()
-        try MCPServer(controller: controller).run()
+        try TuneMCPServer(controller: controller).run()
     case "status":
         try runStatus(rest, controller: controller)
     case "history":

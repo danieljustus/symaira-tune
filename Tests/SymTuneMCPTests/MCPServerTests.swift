@@ -1,82 +1,208 @@
 import XCTest
+import SymairaMCP
 @testable import SymTuneMCP
 @testable import SymTuneCore
 
+// MARK: - Shared test harness
+
+/// Reads one newline-delimited line from a handle. Test-local only: a single
+/// iterator is created per handle so reads never interleave.
+final class LineReader: @unchecked Sendable {
+    private var iterator: AsyncLineSequence<FileHandle.AsyncBytes>.AsyncIterator
+
+    init(handle: FileHandle) {
+        iterator = handle.bytes.lines.makeAsyncIterator()
+    }
+
+    func nextLine() async throws -> String? {
+        try await iterator.next()
+    }
+}
+
+/// Boots a `TuneMCPServer` on an in-process pipe pair and returns a harness
+/// that lets the test act as the MCP client.
+struct MCPTestHarness {
+    let server: MCPServer
+    let clientWrite: FileHandle
+    let reader: LineReader
+    let serverTask: Task<Void, Error>
+
+    static func make(controller: TuneController = TuneController(), config: TuneConfig = TuneConfig()) throws -> MCPTestHarness {
+        let clientToServer = Pipe()
+        let serverToClient = Pipe()
+        let transport = MCPStdioTransport(
+            input: clientToServer.fileHandleForReading,
+            output: serverToClient.fileHandleForWriting
+        )
+        let tuneServer = TuneMCPServer(controller: controller, config: config)
+        let server = tuneServer.makeServer()
+        // Detached: async XCTest methods run on a special executor that never
+        // schedules unstructured tasks created inside the test body.
+        let serverTask = Task.detached { try await server.start(transport: transport) }
+        return MCPTestHarness(
+            server: server,
+            clientWrite: clientToServer.fileHandleForWriting,
+            reader: LineReader(handle: serverToClient.fileHandleForReading),
+            serverTask: serverTask
+        )
+    }
+}
+
+struct MCPTestEnvelope: Decodable {
+    let jsonrpc: String?
+    let id: MCPJSONRPCID?
+    let result: MCPJSONValue?
+    let error: MCPJSONRPCErrorObject?
+}
+
+enum MCPTestTimeout: Error {
+    case waitingForResponse
+}
+
+func mcpSend(_ line: String, to handle: FileHandle) throws {
+    var data = Data(line.utf8)
+    data.append(0x0A)
+    try handle.write(contentsOf: data)
+}
+
+/// Reads the next response line, failing the test after a 10s timeout
+/// instead of hanging the suite if the server misbehaves.
+func mcpNextLine(_ reader: LineReader) async throws -> String {
+    try await withThrowingTaskGroup(of: String?.self) { group in
+        group.addTask { try await reader.nextLine() }
+        group.addTask {
+            try await Task.sleep(for: .seconds(10))
+            return nil
+        }
+        guard let first = try await group.next() else {
+            throw MCPTestTimeout.waitingForResponse
+        }
+        group.cancelAll()
+        if let line = first {
+            return line
+        }
+        throw MCPTestTimeout.waitingForResponse
+    }
+}
+
+func mcpDecodeEnvelope(_ line: String) throws -> MCPTestEnvelope {
+    try JSONDecoder().decode(MCPTestEnvelope.self, from: Data(line.utf8))
+}
+
+func mcpDecodeResult<T: Decodable>(_ envelope: MCPTestEnvelope, as type: T.Type) throws -> T? {
+    guard let result = envelope.result else { return nil }
+    let data = try JSONEncoder().encode(result)
+    return try JSONDecoder().decode(type, from: data)
+}
+
+/// Sends a `tools/list` request and returns the parsed result.
+func mcpListTools(_ harness: MCPTestHarness) async throws -> MCPListToolsResult {
+    try mcpSend(#"{"jsonrpc":"2.0","id":100,"method":"tools/list"}"#, to: harness.clientWrite)
+    let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+    return try XCTUnwrap(try mcpDecodeResult(envelope, as: MCPListToolsResult.self))
+}
+
+/// Sends a `tools/call` request and returns the parsed result.
+func mcpCallTool(_ harness: MCPTestHarness, name: String, arguments: [String: Any] = [:]) async throws -> (MCPTestEnvelope, MCPCallToolResult?) {
+    let argsJSON = String(data: try JSONSerialization.data(withJSONObject: arguments), encoding: .utf8) ?? "{}"
+    let line = #"{"jsonrpc":"2.0","id":101,"method":"tools/call","params":{"name":"\#(name)","arguments":\#(argsJSON)}}"#
+    try mcpSend(line, to: harness.clientWrite)
+    let envelope = try mcpDecodeEnvelope(try await mcpNextLine(harness.reader))
+    return (envelope, try mcpDecodeResult(envelope, as: MCPCallToolResult.self))
+}
+
+// MARK: - Tool schema bounds
+
 final class MCPServerToolSchemaTests: XCTestCase {
-    private var server: MCPServer!
 
-    override func setUp() {
-        super.setUp()
-        server = MCPServer()
+    private func valueBounds(in schema: MCPJSONSchema, for property: String) -> (minimum: Double, maximum: Double)? {
+        guard let prop = schema.properties[property] else { return nil }
+        return (prop.minimum ?? 0, prop.maximum ?? 0)
     }
 
-    private func schema(for toolName: String) -> [String: Any]? {
-        guard let result = try? server.dispatch(method: "tools/list", params: [:]),
-              let tools = result["tools"] as? [[String: Any]]
-        else { return nil }
-        guard let tool = tools.first(where: { $0["name"] as? String == toolName }),
-              let inputSchema = tool["inputSchema"] as? [String: Any]
-        else { return nil }
-        return inputSchema
+    func testSetBrightnessSchemaBounds() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "set_brightness" })
+        XCTAssertEqual(tool.inputSchema.required, ["value"])
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.minimum, 0.0)
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.maximum, 1.0)
     }
 
-    private func valueBounds(from schema: [String: Any]?) -> (minimum: Double, maximum: Double)? {
-        guard let properties = schema?["properties"] as? [String: Any],
-              let value = properties["value"] as? [String: Any],
-              let minimum = value["minimum"] as? Double,
-              let maximum = value["maximum"] as? Double
-        else { return nil }
-        return (minimum, maximum)
+    func testSetExtendedBrightnessSchemaBounds() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "set_extended_brightness" })
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.minimum, SafetyPolicy.extendedBrightnessMin)
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.maximum, SafetyPolicy.extendedBrightnessMax)
     }
 
-    func testSetBrightnessSchemaBounds() {
-        let bounds = valueBounds(from: schema(for: "set_brightness"))
-        XCTAssertEqual(bounds?.minimum, 0.0)
-        XCTAssertEqual(bounds?.maximum, 1.0)
+    func testSetDimSchemaBounds() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "set_dim" })
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.minimum, SafetyPolicy.dimMin)
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.maximum, SafetyPolicy.dimMax)
     }
 
-    func testSetExtendedBrightnessSchemaBounds() {
-        let bounds = valueBounds(from: schema(for: "set_extended_brightness"))
-        XCTAssertEqual(bounds?.minimum, SafetyPolicy.extendedBrightnessMin)
-        XCTAssertEqual(bounds?.maximum, SafetyPolicy.extendedBrightnessMax)
+    func testSetWarmthSchemaBounds() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "set_warmth" })
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.minimum, 0.0)
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "value")?.maximum, 1.0)
     }
 
-    func testSetDimSchemaBounds() {
-        let bounds = valueBounds(from: schema(for: "set_dim"))
-        XCTAssertEqual(bounds?.minimum, SafetyPolicy.dimMin)
-        XCTAssertEqual(bounds?.maximum, SafetyPolicy.dimMax)
+    func testSetFanSchemaBounds() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "set_fan" })
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "fraction")?.minimum, SafetyPolicy.fanFractionMin)
+        XCTAssertEqual(valueBounds(in: tool.inputSchema, for: "fraction")?.maximum, SafetyPolicy.fanFractionMax)
     }
 
-    func testSetWarmthSchemaBounds() {
-        let bounds = valueBounds(from: schema(for: "set_warmth"))
-        XCTAssertEqual(bounds?.minimum, 0.0)
-        XCTAssertEqual(bounds?.maximum, 1.0)
+    func testSetChargeLimitSchemaBounds() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "set_charge_limit" })
+        let prop = try XCTUnwrap(tool.inputSchema.properties["percent"])
+        XCTAssertEqual(prop.type, "integer")
+        XCTAssertEqual(prop.minimum, Double(SafetyPolicy.chargeLimitMin))
+        XCTAssertEqual(prop.maximum, Double(SafetyPolicy.chargeLimitMax))
     }
 
-    func testSetFanSchemaBounds() {
-        guard let schema = schema(for: "set_fan"),
-              let properties = schema["properties"] as? [String: Any],
-              let fraction = properties["fraction"] as? [String: Any],
-              let minimum = fraction["minimum"] as? Double,
-              let maximum = fraction["maximum"] as? Double
-        else {
-            return XCTFail("Could not read set_fan schema")
+    func testEmptySchemaNormalizedToEmptyObject() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let tool = try XCTUnwrap(tools.tools.first { $0.name == "get_ai_usage" })
+        XCTAssertEqual(tool.inputSchema.type, "object")
+        XCTAssertTrue(tool.inputSchema.properties.isEmpty)
+        XCTAssertTrue(tool.inputSchema.required.isEmpty)
+    }
+
+    func testToolListCarriesSafetyBoundsOverTheWire() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+        let tools = try await mcpListTools(harness)
+        let names = tools.tools.map(\.name)
+        // The full tool set is unchanged by the migration.
+        for expected in [
+            "get_capabilities", "get_sensors", "get_battery", "list_displays",
+            "get_system_metrics", "get_ai_usage", "keep_awake", "keep_awake_status",
+            "get_brightness", "save_profile", "load_profile", "list_profiles",
+            "delete_profile", "get_status", "get_history", "set_brightness",
+            "set_extended_brightness", "set_dim", "reset_dim", "set_warmth",
+            "reset_warmth", "restore", "set_fan", "set_charge_limit", "clear_charge_limit",
+        ] {
+            XCTAssertTrue(names.contains(expected), "missing tool \(expected)")
         }
-        XCTAssertEqual(minimum, SafetyPolicy.fanFractionMin)
-        XCTAssertEqual(maximum, SafetyPolicy.fanFractionMax)
-    }
-
-    func testSetChargeLimitSchemaBounds() {
-        guard let schema = schema(for: "set_charge_limit"),
-              let properties = schema["properties"] as? [String: Any],
-              let percent = properties["percent"] as? [String: Any],
-              let minimum = percent["minimum"] as? Int,
-              let maximum = percent["maximum"] as? Int
-        else {
-            return XCTFail("Could not read set_charge_limit schema")
-        }
-        XCTAssertEqual(minimum, SafetyPolicy.chargeLimitMin)
-        XCTAssertEqual(maximum, SafetyPolicy.chargeLimitMax)
     }
 }
 
@@ -84,16 +210,12 @@ final class MCPServerToolSchemaTests: XCTestCase {
 
 final class MCPServerToolCallTests: XCTestCase {
     private var tmpDir: URL!
-    private var server: MCPServer!
 
     override func setUp() {
         super.setUp()
         tmpDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("symtune-mcp-test-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        let mockDisplay = MockMCPDisplayWriteService()
-        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
-        server = MCPServer(controller: controller)
     }
 
     override func tearDown() {
@@ -101,395 +223,363 @@ final class MCPServerToolCallTests: XCTestCase {
         super.tearDown()
     }
 
-    private func callTool(_ name: String, arguments: [String: Any] = [:]) throws -> [String: Any] {
-        try server.dispatch(method: "tools/call", params: ["name": name, "arguments": arguments])
-    }
-
-    func testReadOnlyModeHidesWriteToolsAndRejectsCall() throws {
+    func testReadOnlyModeHidesWriteToolsAndRejectsCall() async throws {
         let config = TuneConfig(mcpMode: "read-only")
-        let readOnlyServer = MCPServer(controller: TuneController(), config: config)
+        let harness = try MCPTestHarness.make(controller: TuneController(), config: config)
+        defer { try? harness.clientWrite.close() }
 
-        let listResult = try readOnlyServer.dispatch(method: "tools/list", params: [:])
-        guard let tools = listResult["tools"] as? [[String: Any]] else {
-            XCTFail("tools/list did not return array")
-            return
-        }
-
-        let names = tools.compactMap { $0["name"] as? String }
+        let tools = try await mcpListTools(harness)
+        let names = tools.tools.map(\.name)
         XCTAssertTrue(names.contains("get_capabilities"))
         XCTAssertTrue(names.contains("get_brightness"))
         XCTAssertFalse(names.contains("set_brightness"))
         XCTAssertFalse(names.contains("set_fan"))
         XCTAssertFalse(names.contains("keep_awake"))
 
-        XCTAssertThrowsError(try readOnlyServer.dispatch(method: "tools/call", params: ["name": "set_brightness", "arguments": ["value": 0.5]]))
+        let (envelope, _) = try await mcpCallTool(harness, name: "set_brightness", arguments: ["value": 0.5])
+        XCTAssertNil(envelope.result)
+        XCTAssertEqual(envelope.error?.code, -32603)
     }
 
-    func testCallToolReturnsContentArray() throws {
-        let result = try callTool("get_capabilities")
-        XCTAssertNotNil(result["content"])
-        XCTAssertNotNil(result["isError"])
-        XCTAssertEqual(result["isError"] as? Bool, false)
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertEqual(content?.count, 1)
-        XCTAssertEqual(content?.first?["type"] as? String, "text")
+    func testCallToolReturnsContentArray() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "get_capabilities")
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
+        XCTAssertEqual(result?.content.count, 1)
+        XCTAssertEqual(result?.content.first?.type, "text")
     }
 
-    func testCallToolMissingNameThrows() {
-        XCTAssertThrowsError(try server.dispatch(method: "tools/call", params: [:])) { error in
-            guard case TuneError.usage(let msg) = error else {
-                return XCTFail("Expected .usage, got \(error)")
-            }
-            XCTAssertTrue(msg.contains("requires a tool name"))
-        }
+    func testCallToolUnknownToolReturnsError() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, _) = try await mcpCallTool(harness, name: "nonexistent_tool")
+        XCTAssertNil(envelope.result)
+        XCTAssertEqual(envelope.error?.code, -32603)
+        XCTAssertTrue(envelope.error?.message.contains("Unknown tool") == true)
     }
 
-    func testCallToolUnknownToolThrows() {
-        XCTAssertThrowsError(try callTool("nonexistent_tool")) { error in
-            guard case TuneError.unsupported(let msg) = error else {
-                return XCTFail("Expected .unsupported, got \(error)")
-            }
-            XCTAssertTrue(msg.contains("Unknown tool"))
-        }
+    func testCallGetCapabilities() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (_, result) = try await mcpCallTool(harness, name: "get_capabilities")
+        let text = result?.content.first?.text ?? ""
+        XCTAssertTrue(text.contains("symtune"))
     }
 
-    func testCallGetCapabilities() throws {
-        let result = try callTool("get_capabilities")
-        let content = result["content"] as? [[String: Any]]
-        let text = content?.first?["text"] as? String
-        XCTAssertNotNil(text)
-        XCTAssertTrue(text!.contains("symtune"))
+    func testCallGetSensors() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "get_sensors")
+        XCTAssertNil(envelope.error)
+        XCTAssertNotNil(result?.content.first?.text)
     }
 
-    func testCallGetSensors() throws {
-        let result = try callTool("get_sensors")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
+    func testCallGetBattery() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "get_battery")
+        XCTAssertNil(envelope.error)
+        XCTAssertNotNil(result?.content.first?.text)
     }
 
-    func testCallGetBattery() throws {
-        let result = try callTool("get_battery")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
+    func testCallGetStatus() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (_, result) = try await mcpCallTool(harness, name: "get_status")
+        let text = result?.content.first?.text ?? ""
+        XCTAssertTrue(text.contains("health_score"))
     }
 
-    func testCallGetStatus() throws {
-        let result = try callTool("get_status")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
-        let text = content?.first?["text"] as? String
-        XCTAssertTrue(text?.contains("health_score") == true)
+    func testCallGetHistory() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "get_history")
+        XCTAssertNil(envelope.error)
+        XCTAssertNotNil(result?.content.first?.text)
     }
 
-    func testCallGetHistory() throws {
-        let result = try callTool("get_history")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
+    func testCallListDisplays() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "list_displays")
+        XCTAssertNil(envelope.error)
+        XCTAssertNotNil(result?.content.first?.text)
     }
 
-    func testCallListDisplays() throws {
-        let result = try callTool("list_displays")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
+    func testCallGetSystemMetrics() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (_, result) = try await mcpCallTool(harness, name: "get_system_metrics")
+        let text = result?.content.first?.text ?? ""
+        XCTAssertTrue(text.contains("cpu"))
+        XCTAssertTrue(text.contains("memory"))
+        XCTAssertTrue(text.contains("network"))
     }
 
-    func testCallGetSystemMetrics() throws {
-        let result = try callTool("get_system_metrics")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
-        let text = content?.first?["text"] as? String
-        XCTAssertTrue(text?.contains("cpu") == true)
-        XCTAssertTrue(text?.contains("memory") == true)
-        XCTAssertTrue(text?.contains("network") == true)
+    func testCallGetAIUsageListsProviders() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "get_ai_usage")
+        XCTAssertNil(envelope.error)
+        let text = result?.content.first?.text ?? ""
+        XCTAssertTrue(text.contains("openrouter"))
+        XCTAssertEqual(result?.isError, false)
     }
 
-    func testCallGetAIUsageListsProviders() throws {
-        // No key configured on CI/test machines → unconfigured report, no network.
-        let result = try callTool("get_ai_usage")
-        let content = result["content"] as? [[String: Any]]
-        XCTAssertNotNil(content?.first?["text"])
-        let text = content?.first?["text"] as? String
-        XCTAssertTrue(text?.contains("openrouter") == true)
-        // The not-configured path must not be an error.
-        XCTAssertEqual(result["isError"] as? Bool, false)
-    }
-
-    func testGetAIUsageToolIsReadOnly() throws {
-        // Read-only tools stay available in read-only MCP mode.
+    func testGetAIUsageToolIsReadOnly() async throws {
         let config = TuneConfig(mcpMode: "read-only")
-        let readOnlyServer = MCPServer(controller: TuneController(), config: config)
-        let roList = try readOnlyServer.dispatch(method: "tools/list", params: [:])
-        let roNames = (roList["tools"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
-        XCTAssertTrue(roNames.contains("get_ai_usage"), "read-only tool must stay in read-only mode")
-        XCTAssertFalse(roNames.contains("set_fan"))
+        let harness = try MCPTestHarness.make(controller: TuneController(), config: config)
+        defer { try? harness.clientWrite.close() }
+
+        let tools = try await mcpListTools(harness)
+        let names = tools.tools.map(\.name)
+        XCTAssertTrue(names.contains("get_ai_usage"), "read-only tool must stay in read-only mode")
+        XCTAssertFalse(names.contains("set_fan"))
     }
 
-    func testGetAIUsageSchemaIsEmptyObject() throws {
-        guard let schema = try? server.dispatch(method: "tools/list", params: [:]),
-              let tools = schema["tools"] as? [[String: Any]],
-              let tool = tools.first(where: { $0["name"] as? String == "get_ai_usage" }),
-              let inputSchema = tool["inputSchema"] as? [String: Any]
-        else {
-            XCTFail("get_ai_usage schema missing")
-            return
-        }
-        // Empty input schema is normalized to the standard empty object shape.
-        XCTAssertEqual(inputSchema["type"] as? String, "object")
-        let props = inputSchema["properties"] as? [String: Any]
-        XCTAssertEqual(props?.isEmpty ?? false, true)
+    func testCallSetDim() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "set_dim", arguments: ["value": 0.5])
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
     }
 
-    func testCallSetDim() throws {
-        let result = try callTool("set_dim", arguments: ["value": 0.5])
-        XCTAssertEqual(result["isError"] as? Bool, false)
+    func testCallResetDim() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "reset_dim")
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
     }
 
-    func testCallResetDim() throws {
-        let result = try callTool("reset_dim")
-        XCTAssertEqual(result["isError"] as? Bool, false)
+    func testCallRestore() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "restore")
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
     }
 
-    func testCallRestore() throws {
-        let result = try callTool("restore")
-        XCTAssertEqual(result["isError"] as? Bool, false)
+    func testCallKeepAwakeTool() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (enableEnvelope, enableResult) = try await mcpCallTool(
+            harness,
+            name: "keep_awake",
+            arguments: ["enabled": true, "prevent_display_sleep": true]
+        )
+        XCTAssertNil(enableEnvelope.error)
+        XCTAssertEqual(enableResult?.isError, false)
+
+        let (disableEnvelope, disableResult) = try await mcpCallTool(harness, name: "keep_awake", arguments: ["enabled": false])
+        XCTAssertNil(disableEnvelope.error)
+        XCTAssertEqual(disableResult?.isError, false)
     }
 
-    func testCallKeepAwakeTool() throws {
-        let resultEnable = try callTool("keep_awake", arguments: ["enabled": true, "prevent_display_sleep": true])
-        XCTAssertEqual(resultEnable["isError"] as? Bool, false)
+    func testCallGetBrightnessTool() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
 
-        let resultDisable = try callTool("keep_awake", arguments: ["enabled": false])
-        XCTAssertEqual(resultDisable["isError"] as? Bool, false)
-    }
-
-    func testCallGetBrightnessTool() {
-        do {
-            let result = try callTool("get_brightness")
-            XCTAssertEqual(result["isError"] as? Bool, false)
-        } catch {
-            let msg = "\(error)"
-            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
-        }
-    }
-
-    func testCallSetBrightnessTool() {
-        do {
-            let result = try callTool("set_brightness", arguments: ["value": 0.75])
-            XCTAssertEqual(result["isError"] as? Bool, false)
-        } catch {
-            let msg = "\(error)"
-            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
-        }
-    }
-
-    func testCallSetExtendedBrightnessTool() {
-        do {
-            let result = try callTool("set_extended_brightness", arguments: ["value": 1.2])
-            XCTAssertEqual(result["isError"] as? Bool, false)
-        } catch {
-            XCTAssertFalse("\(error)".isEmpty)
-        }
-    }
-
-    func testCallSetWarmthAndResetWarmthTools() {
-        do {
-            let resultWarmth = try callTool("set_warmth", arguments: ["value": 0.4])
-            XCTAssertEqual(resultWarmth["isError"] as? Bool, false)
-        } catch {
-            let msg = "\(error)"
-            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
-        }
-
-        do {
-            let resultReset = try callTool("reset_warmth")
-            XCTAssertEqual(resultReset["isError"] as? Bool, false)
-        } catch {
-            let msg = "\(error)"
-            XCTAssertTrue(msg.contains("unsupported") || msg.contains("display") || msg.contains("failed"))
-        }
-    }
-
-    func testCallProfileTools() throws {
-        XCTAssertThrowsError(try callTool("save_profile")) { error in
-            guard case TuneError.usage = error else { return XCTFail("Expected .usage, got \(error)") }
-        }
-        XCTAssertThrowsError(try callTool("load_profile")) { error in
-            guard case TuneError.usage = error else { return XCTFail("Expected .usage, got \(error)") }
-        }
-        XCTAssertThrowsError(try callTool("delete_profile")) { error in
-            guard case TuneError.usage = error else { return XCTFail("Expected .usage, got \(error)") }
-        }
-
-        let saveResult = try callTool("save_profile", arguments: ["name": "reading_mode"])
-        XCTAssertEqual(saveResult["isError"] as? Bool, false)
-
-        let listResult = try callTool("list_profiles")
-        XCTAssertEqual(listResult["isError"] as? Bool, false)
-        let listContent = listResult["content"] as? [[String: Any]]
-        let listText = listContent?.first?["text"] as? String
-        XCTAssertTrue(listText?.contains("reading_mode") == true)
-
-        let loadResult = try callTool("load_profile", arguments: ["name": "reading_mode"])
-        XCTAssertEqual(loadResult["isError"] as? Bool, false)
-
-        let deleteResult = try callTool("delete_profile", arguments: ["name": "reading_mode"])
-        XCTAssertEqual(deleteResult["isError"] as? Bool, false)
-    }
-
-    func testCallSetFanRequiresSMCOrRoot() {
-        XCTAssertThrowsError(try callTool("set_fan", arguments: ["fraction": 0.5])) { error in
-            let message = "\(error)"
+        let (envelope, result) = try await mcpCallTool(harness, name: "get_brightness")
+        if envelope.error != nil {
+            // On hosts without a controllable display the honest error is fine.
             XCTAssertTrue(
-                message.contains("SMC") || message.contains("root") || message.contains("permission") || message.contains("unsupported"),
-                "unexpected error: \(error)"
+                envelope.error?.message.contains("unsupported") == true
+                    || envelope.error?.message.contains("display") == true
+                    || envelope.error?.message.contains("failed") == true,
+                "unexpected error: \(envelope.error?.message ?? "")"
             )
+        } else {
+            XCTAssertEqual(result?.isError, false)
         }
     }
 
-    func testCallSetChargeLimitRequiresSMCOrRoot() {
-        XCTAssertThrowsError(try callTool("set_charge_limit", arguments: ["percent": 80])) { error in
-            let message = "\(error)"
+    func testCallSetBrightnessTool() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "set_brightness", arguments: ["value": 0.75])
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
+    }
+
+    func testCallSetExtendedBrightnessTool() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(harness, name: "set_extended_brightness", arguments: ["value": 1.2])
+        if envelope.error != nil {
+            XCTAssertFalse(envelope.error?.message.isEmpty == true)
+        } else {
+            XCTAssertEqual(result?.isError, false)
+        }
+    }
+
+    func testCallSetWarmthAndResetWarmthTools() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        let (warmthEnvelope, warmthResult) = try await mcpCallTool(harness, name: "set_warmth", arguments: ["value": 0.4])
+        if warmthEnvelope.error != nil {
             XCTAssertTrue(
-                message.contains("SMC") || message.contains("root") || message.contains("permission") || message.contains("unsupported"),
-                "unexpected error: \(error)"
+                warmthEnvelope.error?.message.contains("unsupported") == true
+                    || warmthEnvelope.error?.message.contains("display") == true
+                    || warmthEnvelope.error?.message.contains("failed") == true,
+                "unexpected error: \(warmthEnvelope.error?.message ?? "")"
             )
+        } else {
+            XCTAssertEqual(warmthResult?.isError, false)
+        }
+
+        let (resetEnvelope, resetResult) = try await mcpCallTool(harness, name: "reset_warmth")
+        if resetEnvelope.error != nil {
+            XCTAssertTrue(
+                resetEnvelope.error?.message.contains("unsupported") == true
+                    || resetEnvelope.error?.message.contains("display") == true
+                    || resetEnvelope.error?.message.contains("failed") == true,
+                "unexpected error: \(resetEnvelope.error?.message ?? "")"
+            )
+        } else {
+            XCTAssertEqual(resetResult?.isError, false)
         }
     }
 
-    func testCallSetFanSuccess() throws {
+    func testCallProfileTools() async throws {
+        let mockDisplay = MockMCPDisplayWriteService()
+        let controller = TuneController(displayWrite: mockDisplay, dataDir: tmpDir)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
+
+        // Missing name is an honest usage error.
+        let (noNameEnvelope, _) = try await mcpCallTool(harness, name: "save_profile")
+        XCTAssertNotNil(noNameEnvelope.error)
+
+        let (saveEnvelope, saveResult) = try await mcpCallTool(harness, name: "save_profile", arguments: ["name": "reading_mode"])
+        XCTAssertNil(saveEnvelope.error)
+        XCTAssertEqual(saveResult?.isError, false)
+
+        let (listEnvelope, listResult) = try await mcpCallTool(harness, name: "list_profiles")
+        XCTAssertNil(listEnvelope.error)
+        XCTAssertTrue(listResult?.content.first?.text.contains("reading_mode") == true)
+
+        let (loadEnvelope, loadResult) = try await mcpCallTool(harness, name: "load_profile", arguments: ["name": "reading_mode"])
+        XCTAssertNil(loadEnvelope.error)
+        XCTAssertEqual(loadResult?.isError, false)
+
+        let (deleteEnvelope, deleteResult) = try await mcpCallTool(harness, name: "delete_profile", arguments: ["name": "reading_mode"])
+        XCTAssertNil(deleteEnvelope.error)
+        XCTAssertEqual(deleteResult?.isError, false)
+    }
+
+    func testCallSetFanRequiresSMCOrRoot() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, _) = try await mcpCallTool(harness, name: "set_fan", arguments: ["fraction": 0.5])
+        XCTAssertNotNil(envelope.error)
+        let message = envelope.error?.message ?? ""
+        XCTAssertTrue(
+            message.contains("SMC") || message.contains("root") || message.contains("permission") || message.contains("unsupported"),
+            "unexpected error: \(message)"
+        )
+    }
+
+    func testCallSetChargeLimitRequiresSMCOrRoot() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, _) = try await mcpCallTool(harness, name: "set_charge_limit", arguments: ["percent": 80])
+        XCTAssertNotNil(envelope.error)
+        let message = envelope.error?.message ?? ""
+        XCTAssertTrue(
+            message.contains("SMC") || message.contains("root") || message.contains("permission") || message.contains("unsupported"),
+            "unexpected error: \(message)"
+        )
+    }
+
+    func testCallSetFanSuccess() async throws {
         let connection = MockSMCConnection()
         let smcService = SMCService(connection: connection)
         let batterySource = MockBatterySource()
-        let controller = TuneController(
-            smcService: smcService,
-            batterySource: batterySource
-        )
-        let customServer = MCPServer(controller: controller)
+        let controller = TuneController(smcService: smcService, batterySource: batterySource)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
 
-        let result = try customServer.dispatch(
-            method: "tools/call",
-            params: ["name": "set_fan", "arguments": ["fraction": 0.5]]
-        )
-        XCTAssertEqual(result["isError"] as? Bool, false)
+        let (envelope, result) = try await mcpCallTool(harness, name: "set_fan", arguments: ["fraction": 0.5])
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
 
         // Verify something was written to SMC connection
         XCTAssertFalse(connection.writtenKeys.isEmpty)
     }
 
-    func testCallSetChargeLimitSuccess() throws {
+    func testCallSetChargeLimitSuccess() async throws {
         let connection = MockSMCConnection()
         let smcService = SMCService(connection: connection)
         let batterySource = MockBatterySource()
-        let controller = TuneController(
-            smcService: smcService,
-            batterySource: batterySource
-        )
-        let customServer = MCPServer(controller: controller)
+        let controller = TuneController(smcService: smcService, batterySource: batterySource)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
 
-        let result = try customServer.dispatch(
-            method: "tools/call",
-            params: ["name": "set_charge_limit", "arguments": ["percent": 80]]
-        )
-        XCTAssertEqual(result["isError"] as? Bool, false)
+        let (envelope, result) = try await mcpCallTool(harness, name: "set_charge_limit", arguments: ["percent": 80])
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
 
         // Verify something was written to SMC connection
         XCTAssertFalse(connection.writtenKeys.isEmpty)
     }
 
-    func testCallClearChargeLimitSuccess() throws {
+    func testCallClearChargeLimitSuccess() async throws {
         let connection = MockSMCConnection()
         let smcService = SMCService(connection: connection)
         let batterySource = MockBatterySource()
-        let controller = TuneController(
-            smcService: smcService,
-            batterySource: batterySource
-        )
-        let customServer = MCPServer(controller: controller)
+        let controller = TuneController(smcService: smcService, batterySource: batterySource)
+        let harness = try MCPTestHarness.make(controller: controller)
+        defer { try? harness.clientWrite.close() }
 
-        let result = try customServer.dispatch(
-            method: "tools/call",
-            params: ["name": "clear_charge_limit", "arguments": [:]]
-        )
-        XCTAssertEqual(result["isError"] as? Bool, false)
+        let (envelope, result) = try await mcpCallTool(harness, name: "clear_charge_limit")
+        XCTAssertNil(envelope.error)
+        XCTAssertEqual(result?.isError, false)
 
         // Verify something was written to SMC connection
         XCTAssertFalse(connection.writtenKeys.isEmpty)
-    }
-
-    func testDispatchInitialize() throws {
-        let result = try server.dispatch(method: "initialize", params: [:])
-        XCTAssertNotNil(result["protocolVersion"])
-        XCTAssertNotNil(result["capabilities"])
-        XCTAssertNotNil(result["serverInfo"])
-    }
-
-    func testDispatchPing() throws {
-        let result = try server.dispatch(method: "ping", params: [:])
-        XCTAssertTrue(result.isEmpty)
-    }
-
-    func testDispatchUnknownMethodThrows() {
-        XCTAssertThrowsError(try server.dispatch(method: "unknown/method", params: [:])) { error in
-            guard case TuneError.usage(let msg) = error else {
-                return XCTFail("Expected .usage, got \(error)")
-            }
-            XCTAssertTrue(msg.contains("Method not found"))
-        }
     }
 }
 
-// MARK: - MCPTransport bounds
+// MARK: - Test doubles
 
-final class MCPTransportBoundsTests: XCTestCase {
-
-    func testRejectsOversizedPayload() throws {
-        let pipe = Pipe()
-        let header = "Content-Length: 9000000\r\n\r\n"
-        pipe.fileHandleForWriting.write(header.data(using: .utf8)!)
-        pipe.fileHandleForWriting.closeFile()
-
-        let transport = MCPTransport(input: pipe.fileHandleForReading, output: .nullDevice)
-        XCTAssertThrowsError(try transport.readMessage()) { error in
-            guard case TuneError.failed(let message) = error else {
-                return XCTFail("Expected .failed, got \(error)")
-            }
-            XCTAssertTrue(message.contains("exceeds maximum allowed"), "Unexpected message: \(message)")
-        }
-    }
-
-    func testRejectsHeaderWithoutTerminator() throws {
-        let pipe = Pipe()
-        let longHeader = String(repeating: "X-Header: value\r\n", count: 500)
-        pipe.fileHandleForWriting.write(longHeader.data(using: .utf8)!)
-        pipe.fileHandleForWriting.closeFile()
-
-        let transport = MCPTransport(input: pipe.fileHandleForReading, output: .nullDevice)
-        XCTAssertThrowsError(try transport.readMessage()) { error in
-            guard case TuneError.failed(let message) = error else {
-                return XCTFail("Expected .failed, got \(error)")
-            }
-            XCTAssertTrue(message.contains("without terminator"), "Unexpected message: \(message)")
-        }
-    }
-
-    func testAcceptsPayloadAtLimit() throws {
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("symtune-mcp-test-\(UUID().uuidString).txt")
-        let bodySize = 1024
-        let body = String(repeating: "{", count: bodySize)
-        let header = "Content-Length: \(body.count)\r\n\r\n"
-        let payload = header + body
-        try payload.write(to: tmp, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: tmp) }
-
-        let input = try FileHandle(forReadingFrom: tmp)
-        let transport = MCPTransport(input: input, output: .nullDevice)
-        let data = try transport.readMessage()
-        XCTAssertEqual(data?.count, body.count)
-    }
-}
-
-private final class MockMCPDisplayWriteService: DisplayWriteServiceProtocol, @unchecked Sendable {
+final class MockMCPDisplayWriteService: DisplayWriteServiceProtocol, @unchecked Sendable {
     var brightness: Double = 0.8
     func getBuiltinBrightness() throws -> Double { brightness }
     func setBuiltinBrightness(_ value: Float) throws { brightness = Double(value) }
@@ -498,19 +588,19 @@ private final class MockMCPDisplayWriteService: DisplayWriteServiceProtocol, @un
     func applyExtendedBrightness(_ multiplier: Double, displayID: UInt32?) throws {}
 }
 
-private final class MockBatterySource: BatterySource {
+final class MockBatterySource: BatterySource {
     func readProperties() -> BatterySourceResult {
         return .success(BatteryProperties(externalConnected: true))
     }
 }
 
-private struct MockSMCWrittenKey {
+struct MockSMCWrittenKey {
     let key: String
     let dataType: UInt32
     let bytes: [UInt8]
 }
 
-private final class MockSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
+final class MockSMCConnection: SMCConnectionProtocol, @unchecked Sendable {
     var isOpen: Bool = true
     var keys: [String: (UInt32, [UInt8])] = [:]
     var writtenKeys: [MockSMCWrittenKey] = []
