@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-08-10
+
+### Fixed
+- MCP `keep_awake` durations are now bounded and validated: negative,
+  non-finite, and durations above 86,400 seconds (24 hours) are rejected
+  with a clear error, and the advertised tool schema exposes the accepted
+  range (`#292`).
+
+### Maintenance
+- Added contributor guidance and a branch-protection emergency procedure;
+  required CI checks now also run for documentation-only pull requests
+  (`#294`).
+- Added integration coverage for the public MCP stdio run path (`#293`).
+
 ## [0.9.0] — 2026-08-07
 
 ### Changed
