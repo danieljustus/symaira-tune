@@ -144,10 +144,24 @@ jobs:
 
       - name: Create DMG
         run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          # Standard installer layout: app + /Applications drop link.
+          cp -R build/SymairaTune.app "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          # Branded volume icon from the app bundle.
+          if [ -f "$STAGING/SymairaTune.app/Contents/Resources/AppIcon.icns" ]; then
+            cp "$STAGING/SymairaTune.app/Contents/Resources/AppIcon.icns" "$STAGING/.VolumeIcon.icns"
+            SetFile -a C "$STAGING" 2>/dev/null || true
+          fi
+          # The CLI stays a documented second payload (release notes below).
+          cp build/symtune "$STAGING/symtune"
           hdiutil create -volname "SymairaTune" \
-            -srcfolder build \
+            -srcfolder "$STAGING" \
             -ov -format UDZO \
-            "symtune-${{ steps.version.outputs.VERSION }}.dmg"
+            "symtune-$VERSION.dmg"
 
       - name: Notarize DMG
         if: steps.signing.outputs.SIGNED == 'true'
@@ -160,17 +174,16 @@ jobs:
             echo "Apple notarization credentials are incomplete — skipping notarization."
             exit 0
           fi
-          xcrun notarytool submit \
-            "symtune-${{ steps.version.outputs.VERSION }}.dmg" \
+          DMG="symtune-${{ steps.version.outputs.VERSION }}.dmg"
+          xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --wait
-          xcrun stapler staple "build/SymairaTune.app"
-          hdiutil create -volname "SymairaTune" \
-            -srcfolder build \
-            -ov -format UDZO \
-            "symtune-${{ steps.version.outputs.VERSION }}.dmg"
+          # Staple the FINAL DMG. The DMG is the distributed artifact; stapling
+          # only the app and recreating the DMG drops the ticket (issue #297).
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
 
       - name: Generate release notes
         id: notes
