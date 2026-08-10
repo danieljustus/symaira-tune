@@ -13,6 +13,13 @@ final class KeychainCredentialsTests: XCTestCase {
     /// Round-trips a value through the Keychain. Skips (not fails) when the
     /// test environment has no usable keyring (e.g. headless CI).
     func testWriteReadDeleteRoundTrip() throws {
+        // Headless CI: SecItemAdd blocks forever in the securityd
+        // authorization prompt instead of failing fast (observed on the
+        // self-hosted runner, 0% CPU, stuck in xpc_connection_send_message
+        // with reply sync). Skip like the PTY tests do.
+        if ProcessInfo.processInfo.environment["CI"] == "true" {
+            throw XCTSkip("keychain authorization prompt hangs in headless CI")
+        }
         let secret = "test-secret-\(UUID().uuidString)"
         guard KeychainCredentials.write(service: service, account: account, value: secret) else {
             throw XCTSkip("keychain unavailable in this environment")
