@@ -165,6 +165,12 @@ restored in the same way. Read the full, implementation-grounded model in
 [`SAFETY_AUDIT.md`](SAFETY_AUDIT.md). See also [`NOTICE`](NOTICE) and
 [`docs/commercial-boundary.md`](docs/commercial-boundary.md).
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the build,
+test, and lint workflow, branch and PR expectations, and where to ask questions.
+All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 Apache-2.0 © 2026 Daniel Justus. Inspired by Macs Fan Control and BrightIntosh (no code
