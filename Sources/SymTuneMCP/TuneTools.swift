@@ -152,6 +152,11 @@ struct KeepAwakeTool: TuneTool {
     let name = "keep_awake"
     let description = "Start or stop a keep-awake session. Prevents idle/system sleep and optionally display sleep. Runs indefinitely without duration_seconds. Returns full session state."
 
+    /// Maximum accepted keep-awake duration in seconds (24 hours). Mirrors
+    /// the CLI's awake cap so the MCP tool cannot retain a sleep assertion
+    /// beyond the CLI contract.
+    static let maxDurationSeconds: TimeInterval = 86_400
+
     var inputSchema: MCPJSONSchema {
         MCPJSONSchema(
             properties: [
@@ -165,7 +170,9 @@ struct KeepAwakeTool: TuneTool {
                 ),
                 "duration_seconds": MCPJSONSchemaProperty(
                     type: "number",
-                    description: "Optional session duration in seconds. Omit for an indefinite session."
+                    description: "Optional session duration in seconds, between 0 and 86400 (24 hours). Omit for an indefinite session.",
+                    minimum: 0,
+                    maximum: KeepAwakeTool.maxDurationSeconds
                 ),
             ],
             required: ["enabled"]
@@ -177,7 +184,7 @@ struct KeepAwakeTool: TuneTool {
         let preventDisplaySleep = arguments["prevent_display_sleep"]?.boolValue ?? false
 
         if enabled {
-            let duration = arguments["duration_seconds"]?.doubleValue
+            let duration = try Self.validatedDuration(arguments["duration_seconds"])
             return try controller.beginKeepAwakeSession(
                 duration: duration,
                 preventDisplaySleep: preventDisplaySleep,
@@ -187,6 +194,28 @@ struct KeepAwakeTool: TuneTool {
             controller.endKeepAwakeSession()
             return KeepAwakeSession.inactive
         }
+    }
+
+    /// Validates the optional `duration_seconds` argument against the
+    /// 24-hour keep-awake contract. Returns `nil` when the argument is
+    /// omitted or null (indefinite session). Accepts 0 and 86400 as valid
+    /// boundaries; throws a clear usage error for negative, non-finite
+    /// (NaN/±infinity), or > 86400 values.
+    private static func validatedDuration(_ value: MCPJSONValue?) throws -> TimeInterval? {
+        guard let value, value != .null else { return nil }
+        guard let duration = value.doubleValue else {
+            throw TuneError.usage("keep_awake duration_seconds must be a number.")
+        }
+        guard duration.isFinite else {
+            throw TuneError.usage("keep_awake duration_seconds must be finite.")
+        }
+        guard duration >= 0 else {
+            throw TuneError.usage("keep_awake duration_seconds must be non-negative.")
+        }
+        guard duration <= maxDurationSeconds else {
+            throw TuneError.usage("keep_awake duration_seconds must not exceed \(Int(maxDurationSeconds)) seconds (24 hours).")
+        }
+        return duration
     }
 }
 
