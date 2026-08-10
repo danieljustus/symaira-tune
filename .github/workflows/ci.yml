@@ -9,11 +9,9 @@ on:
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'LICENSE'
-      - '.github/ISSUE_TEMPLATE/**'
+    # Required checks (lint, build-test) must be reported on every PR —
+    # including docs-only PRs — or the main-protection ruleset can never
+    # pass for them. No paths-ignore here.
   schedule:
     - cron: '43 5 * * 1'  # weekly Monday 05:43 UTC — full suite incl. app build
 
