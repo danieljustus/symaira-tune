@@ -174,6 +174,38 @@ final class EDROverlayServiceTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(service.engagedBrightness(for: displayA)), 1.5, accuracy: 0.0001)
     }
 
+    /// macOS does not grant the full headroom at once — it ramps up over a
+    /// second or two after EDR engages. The boost has to follow, or a request
+    /// for +45% stays stuck at whatever was available in the first instant.
+    func testBoostFollowsHeadroomAsTheSystemRampsItUp() throws {
+        nonisolated(unsafe) var granted = 1.2
+        let io = FakeGammaIO()
+        let service = EDROverlayService(
+            gamma: DisplayGammaController(io: io),
+            headroomProvider: { _ in granted },
+            triggerFactory: { _ in FakeTrigger() }
+        )
+
+        try service.applyExtendedBrightness(1.45, displayID: displayA)
+        XCTAssertEqual(try XCTUnwrap(service.engagedBrightness(for: displayA)), 1.2, accuracy: 0.0001,
+                       "clamped to the headroom available at apply time")
+
+        // The panel opens up while the watch is running. Spin the run loop so
+        // the watch task gets scheduled; no expectation, to keep the test free
+        // of non-Sendable captures.
+        granted = 2.0
+        let deadline = Date().addingTimeInterval(6)
+        while Date() < deadline {
+            if let applied = service.engagedBrightness(for: displayA), applied >= 1.45 - 0.001 { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        XCTAssertEqual(try XCTUnwrap(service.engagedBrightness(for: displayA)), 1.45, accuracy: 0.001,
+                       "the watch must re-apply as the granted headroom grows")
+        XCTAssertEqual(try XCTUnwrap(io.written[displayA].flatMap(\.red.last)), 1.45, accuracy: 0.001)
+        service.removeAllOverlays()
+    }
+
     // MARK: - Error paths
 
     func testApplyThrowsWhenMultiplierBelowMinimum() {

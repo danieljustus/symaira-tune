@@ -90,14 +90,18 @@ struct LiveSummaryStrip: View {
         .accessibilityIdentifier(id)
     }
 
+    // Both chips go through the shared core formatter rather than formatting
+    // here: `totalUtilization` is a fraction, not a percentage, and a second
+    // copy of that knowledge in the view is exactly how this strip first
+    // shipped a CPU reading of "0%" next to a metrics card saying 26%.
     private var cpuText: String {
-        guard let utilization = model.metrics?.cpu.totalUtilization else { return "—" }
-        return String(format: "%.0f%%", utilization)
+        guard let report = model.metrics else { return "—" }
+        return MetricFormatting.fallbackValue(.cpu, report: report) ?? "—"
     }
 
     private var memoryText: String {
-        guard let used = model.metrics?.memory.usedBytes else { return "—" }
-        return MetricFormatting.bytes(used)
+        guard let report = model.metrics else { return "—" }
+        return MetricFormatting.fallbackValue(.memory, report: report) ?? "—"
     }
 
     /// Sensors are only polled while the panel is open, so the very first frame

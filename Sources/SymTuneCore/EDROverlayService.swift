@@ -64,6 +64,8 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
     static let engageTimeout: TimeInterval = 20.0
     /// Poll cadence while waiting for EDR to engage.
     static let engagePollInterval: TimeInterval = 0.25
+    /// Tolerance for "the request is fully applied".
+    static let headroomEpsilon = 0.005
     /// How far the gamma lift may go **without** EDR headroom.
     ///
     /// Without headroom, output above SDR white clips instead of getting
@@ -234,23 +236,30 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
         let ids = Array(targets.keys)
         lock.unlock()
         for id in ids {
-            try? applyBoostIfEngaged(id)
+            _ = try? applyBoostIfEngaged(id)
         }
     }
 
     // MARK: - Engagement
 
-    /// Write the boost for the headroom the display currently grants.
+    /// Write the boost for the headroom the display currently grants, and keep
+    /// watching until the request is met.
     ///
     /// With EDR engaged the full requested range is available. Without it, a
     /// capped software lift is applied instead — a real brightening that clips
-    /// highlights, reported as such — while the poll keeps asking the system to
-    /// engage EDR so the boost can be upgraded to the full value.
-    private func applyBoostIfEngaged(_ displayID: CGDirectDisplayID) throws {
+    /// highlights, reported as such.
+    ///
+    /// Either way the watch keeps running while the applied value is short of
+    /// the request. That is not just for the moment EDR engages: the granted
+    /// headroom then *grows* over a second or two (measured on an XDR panel:
+    /// 1.2 → 12.6). Clamping once at apply time left a request for +45% stuck
+    /// at the +20% that happened to be available in that instant.
+    @discardableResult
+    private func applyBoostIfEngaged(_ displayID: CGDirectDisplayID) throws -> Bool {
         lock.lock()
         guard let target = targets[displayID] else {
             lock.unlock()
-            return
+            return true
         }
         let requested = target.requested
         lock.unlock()
@@ -266,8 +275,6 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
             : min(requested, Self.softwareBoostCap)
         let mode: ExtendedBrightnessMode = isEngaged ? .extendedRange : .softwareLift
 
-        if !isEngaged { startEngagePoll(displayID) }
-
         try gamma.setBoost(Float(effective), displayID: displayID)
 
         lock.lock()
@@ -277,10 +284,18 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
             targets[displayID] = updated
         }
         lock.unlock()
+
+        let satisfied = effective >= requested - Self.headroomEpsilon
+        if !satisfied { startHeadroomWatch(displayID) }
+        return satisfied
     }
 
-    /// Poll until the display reports EDR headroom, then write the boost.
-    private func startEngagePoll(_ displayID: CGDirectDisplayID) {
+    /// Poll the granted headroom and re-apply while the request is unmet.
+    ///
+    /// Ends as soon as the requested multiplier is fully applied, or when the
+    /// window closes — a display that never grants headroom keeps the capped
+    /// software lift rather than being polled forever.
+    private func startHeadroomWatch(_ displayID: CGDirectDisplayID) {
         lock.lock()
         guard engageTasks[displayID] == nil else {
             lock.unlock()
@@ -293,17 +308,18 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
             while !Task.isCancelled, Date() < deadline {
                 try? await Task.sleep(for: .seconds(Self.engagePollInterval))
                 guard let self, !Task.isCancelled else { return }
-                guard let trigger = self.trigger(for: displayID) else { return }
-
-                if let granted = self.headroomProvider(displayID),
-                   granted > Self.engagedHeadroomThreshold {
+                // Target gone: the user went back to neutral.
+                guard self.trigger(for: displayID) != nil else {
                     self.forgetEngageTask(displayID)
-                    try? self.applyBoostIfEngaged(displayID)
                     return
                 }
-                // Keep presenting frames: a trigger that stops rendering can
-                // stop counting as on-screen EDR content.
-                trigger.render()
+                // Re-applies against the *current* headroom; also re-renders the
+                // trigger, since content that stops being presented can stop
+                // counting as on-screen EDR.
+                if (try? self.applyBoostIfEngaged(displayID)) == true {
+                    self.forgetEngageTask(displayID)
+                    return
+                }
             }
             self?.forgetEngageTask(displayID)
         }
