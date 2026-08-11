@@ -21,6 +21,7 @@ final class ConfigWriteReadRoundTripTests: XCTestCase {
         cpu_unit = "full"
 
         [popover]
+        cards_version = 2
         cards = ["display_controls", "system_status"]
         """
         let table = TOMLParser().parse(written)
@@ -29,6 +30,8 @@ final class ConfigWriteReadRoundTripTests: XCTestCase {
         XCTAssertEqual(styles[.cpu], MetricStyle(label: .icon, scale: .absolute, unit: .full))
         XCTAssertNil(styles[.memory])
 
+        // A list written at the current vocabulary version is authoritative:
+        // the two cards left out stay out.
         XCTAssertEqual(
             TuneConfig.parseCardSet(table: table),
             [.displayControls, .systemStatus]

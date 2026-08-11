@@ -129,17 +129,14 @@ final class OverrideTracker: @unchecked Sendable {
             restoreBrightness(brightness)
         }
 
-        if warmth != nil {
+        // Removing the boost hands the gamma table back to ColorSync, which
+        // also clears warmth; the direct call is the fallback for a
+        // warmth-only session and a belt-and-braces reset either way.
+        edrOverlay?.removeAllOverlays()
+        if warmth != nil || edrHeadroom != nil {
+            DisplayGammaController.shared.resetAll()
             CGDisplayRestoreColorSyncSettings()
         }
-
-        // Restore original EDR headroom before removing the overlay so the display
-        // returns to its pre-symtune level rather than falling back to SDR.
-        if let edrHeadroom,
-           DisplayHelpers.builtinDisplayIDOrNil() != nil {
-            try? edrOverlay?.applyExtendedBrightness(edrHeadroom, displayID: nil)
-        }
-        edrOverlay?.removeAllOverlays()
         onRestore?()
     }
 

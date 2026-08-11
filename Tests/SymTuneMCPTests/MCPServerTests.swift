@@ -195,7 +195,8 @@ final class MCPServerToolSchemaTests: XCTestCase {
         // The full tool set is unchanged by the migration.
         for expected in [
             "get_capabilities", "get_sensors", "get_battery", "list_displays",
-            "get_system_metrics", "get_ai_usage", "keep_awake", "keep_awake_status",
+            "get_system_metrics", "get_top_processes", "get_ai_usage",
+            "keep_awake", "keep_awake_status",
             "get_brightness", "save_profile", "load_profile", "list_profiles",
             "delete_profile", "get_status", "get_history", "set_brightness",
             "set_extended_brightness", "set_dim", "reset_dim", "set_warmth",

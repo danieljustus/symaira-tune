@@ -26,6 +26,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         preferences: aiUsagePreferences
     )
     private let model: TuneViewModel
+    private let processesModel: ProcessesViewModel
     private var preferencesWindow: NSWindow?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -64,6 +65,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         let preferences = PreferencesManager(config: TuneConfig())
         self.preferencesManager = preferences
         self.model = TuneViewModel(controller: controller, preferences: preferences)
+        self.processesModel = ProcessesViewModel(controller: controller)
         super.init()
         configureButton()
         setupPopover()
@@ -253,6 +255,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             controller: controller,
             model: model,
             aiUsageModel: aiUsageModel,
+            processesModel: processesModel,
             updateChecker: updateChecker,
             preferencesManager: preferencesManager,
             openPreferences: { [weak self] in self?.openPreferences() },
@@ -334,6 +337,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         // Drop back to the idle tier: metrics only, at a glanceable cadence.
         model.setDetailVisible(false)
+        // The process card's `onDisappear` is not guaranteed for a popover that
+        // is torn down; stop sampling explicitly so a closed panel costs nothing.
+        processesModel.setVisible(false)
     }
 
     // MARK: - Sleep/Wake gap markers
@@ -353,5 +359,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         // The Apple Silicon charge-limit inhibit bit resets on sleep; re-assert
         // the configured limit (band-controlled) after every wake.
         controller.reconcileChargeLimit()
+        // macOS also resets the display's gamma table across sleep, which drops
+        // an active brightness boost or warmth shift without telling anyone.
+        controller.reassertDisplayOverrides()
     }
 }

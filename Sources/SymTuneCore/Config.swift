@@ -391,13 +391,48 @@ public struct TuneConfig: Equatable, Sendable {
 
     /// Parse the popover card set. An explicit empty list is honoured — a user
     /// who turned every card off gets an empty panel, not a silent reset.
+    ///
+    /// A list written *before a card existed* cannot be an opinion about that
+    /// card, so cards newer than the stored vocabulary are added rather than
+    /// silently hidden by every pre-existing config. `cards_version` marks which
+    /// vocabulary the writer had: at the current version the list is
+    /// authoritative, so turning a card off keeps it off.
+    ///
+    /// Adding a card therefore means: add it to ``PopoverCard/allCases``, add it
+    /// to ``cardVocabulary`` for the *next* version, and bump
+    /// ``popoverCardsSchemaVersion``.
     static func parseCardSet(
         table: TOMLTable, section: String = "popover", key: String = "cards",
         fallback: [PopoverCard] = PopoverCard.allCases
     ) -> Set<PopoverCard> {
         guard let arr = table[section, key]?.stringArrayValue else { return Set(fallback) }
         let known = Set(PopoverCard.allCases.map(\.rawValue))
-        return Set(arr.filter { known.contains($0) }.map(PopoverCard.init(rawValue:)))
+        var cards = Set(arr.filter { known.contains($0) }.map(PopoverCard.init(rawValue:)))
+
+        // Empty means "show nothing", whatever the version.
+        guard !arr.isEmpty else { return cards }
+
+        let version = table[section, "cards_version"]?.intValue ?? 1
+        guard version < popoverCardsSchemaVersion else { return cards }
+        let vocabulary = cardVocabulary(version: version)
+        for card in PopoverCard.allCases where !vocabulary.contains(card.rawValue) {
+            cards.insert(card)
+        }
+        return cards
+    }
+
+    /// Current `[popover] cards` vocabulary version, written alongside the list.
+    public static let popoverCardsSchemaVersion = 2
+
+    /// Card identifiers a writer at `version` could name. Version 1 is the
+    /// unversioned list that shipped through v0.9.1.
+    static func cardVocabulary(version: Int) -> Set<String> {
+        let v1: Set<String> = [
+            "display_controls", "keep_awake", "fan_control",
+            "system_status", "metrics_history", "displays",
+        ]
+        guard version >= 2 else { return v1 }
+        return Set(PopoverCard.allCases.map(\.rawValue))
     }
 
     private static func parseMetricSet(

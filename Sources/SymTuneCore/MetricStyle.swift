@@ -301,11 +301,13 @@ public struct PopoverCard: RawRepresentable, Hashable, Codable, Sendable, CaseIt
     public static let keepAwake = PopoverCard(rawValue: "keep_awake")
     public static let fanControl = PopoverCard(rawValue: "fan_control")
     public static let systemStatus = PopoverCard(rawValue: "system_status")
+    public static let topProcesses = PopoverCard(rawValue: "top_processes")
     public static let metricsHistory = PopoverCard(rawValue: "metrics_history")
     public static let displays = PopoverCard(rawValue: "displays")
 
     public static var allCases: [PopoverCard] {
-        [.displayControls, .keepAwake, .fanControl, .systemStatus, .metricsHistory, .displays]
+        [.displayControls, .keepAwake, .fanControl, .systemStatus, .topProcesses,
+         .metricsHistory, .displays]
     }
 
     public var displayName: String {
@@ -314,6 +316,7 @@ public struct PopoverCard: RawRepresentable, Hashable, Codable, Sendable, CaseIt
         case .keepAwake: return "Keep Awake"
         case .fanControl: return "Fan Control"
         case .systemStatus: return "System Status"
+        case .topProcesses: return "Top Processes"
         case .metricsHistory: return "System Metrics"
         case .displays: return "Connected Displays"
         default: return rawValue

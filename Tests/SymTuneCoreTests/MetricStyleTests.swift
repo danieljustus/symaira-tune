@@ -189,23 +189,59 @@ final class PopoverCardTests: XCTestCase {
         XCTAssertEqual(TuneConfig().visibleCards, Set(PopoverCard.allCases))
     }
 
+    /// Cards newer than the v1 vocabulary. A v1 (unversioned) list cannot be an
+    /// opinion about them, so they are added rather than hidden.
+    private var cardsAddedAfterVersionOne: Set<PopoverCard> {
+        Set(PopoverCard.allCases.filter { !TuneConfig.cardVocabulary(version: 1).contains($0.rawValue) })
+    }
+
     func testCardSetParsesFromThePopoverSection() {
         let table = TOMLParser().parse("""
         [popover]
+        cards_version = \(TuneConfig.popoverCardsSchemaVersion)
         cards = ["display_controls", "system_status"]
         """)
+        // At the current vocabulary version the list is authoritative: a card
+        // the user turned off stays off.
         XCTAssertEqual(
             TuneConfig.parseCardSet(table: table),
-            [.displayControls, .systemStatus]
+            Set<PopoverCard>([.displayControls, .systemStatus])
         )
     }
 
     func testUnknownCardNamesAreIgnoredRatherThanFailingTheWholeList() {
         let table = TOMLParser().parse("""
         [popover]
+        cards_version = \(TuneConfig.popoverCardsSchemaVersion)
         cards = ["display_controls", "teleporter"]
         """)
-        XCTAssertEqual(TuneConfig.parseCardSet(table: table), [.displayControls])
+        XCTAssertEqual(TuneConfig.parseCardSet(table: table), Set<PopoverCard>([.displayControls]))
+    }
+
+    /// A config written by an older release lists every card that existed then.
+    /// The card added afterwards has to appear, or the feature ships invisible
+    /// for everyone who already used the app.
+    func testACardAddedAfterTheConfigWasWrittenBecomesVisible() {
+        let table = TOMLParser().parse("""
+        [popover]
+        cards = ["display_controls", "keep_awake", "fan_control", "system_status", "metrics_history", "displays"]
+        """)
+        let parsed = TuneConfig.parseCardSet(table: table)
+        XCTAssertTrue(parsed.contains(.topProcesses))
+        XCTAssertEqual(parsed, Set(PopoverCard.allCases))
+        XCTAssertFalse(cardsAddedAfterVersionOne.isEmpty, "the v1 vocabulary must stay frozen")
+    }
+
+    /// The same legacy list, minus one card the user had turned off: the opt-out
+    /// survives, and only the genuinely new card is added.
+    func testALegacyOptOutIsPreserved() {
+        let table = TOMLParser().parse("""
+        [popover]
+        cards = ["display_controls", "keep_awake", "system_status", "metrics_history", "displays"]
+        """)
+        let parsed = TuneConfig.parseCardSet(table: table)
+        XCTAssertFalse(parsed.contains(.fanControl))
+        XCTAssertTrue(parsed.contains(.topProcesses))
     }
 
     /// Turning every card off is a real choice, not a config error — it must

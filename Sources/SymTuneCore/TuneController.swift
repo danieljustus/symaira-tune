@@ -20,6 +20,7 @@ public final class TuneController: Sendable {
     private let smcRestoreTracker: SMCRestoreTracker
     private let keepAwakeCoordinator: KeepAwakeCoordinator
     private let metricsService: SystemMetricsService
+    private let processUsage: ProcessUsageService
     public let metricsHistory: MetricsHistoryService
 
     public let dataDir: URL
@@ -46,7 +47,8 @@ public final class TuneController: Sendable {
         dataDir: URL? = nil,
         keepAwakeSource: (any PowerAssertionSource)? = nil,
         metricsSource: (any SystemMetricsSource)? = nil,
-        aiUsageProviders: [any AIUsageProvider]? = nil
+        aiUsageProviders: [any AIUsageProvider]? = nil,
+        processSource: (any ProcessSampleSource)? = nil
     ) {
         self.config = config
         self.displayWrite = displayWrite ?? HardwareDisplayWriteService(
@@ -82,6 +84,7 @@ public final class TuneController: Sendable {
         smcRestoreTracker.consumePersistedRestore()
         self.keepAwakeCoordinator = KeepAwakeCoordinator(source: keepAwakeSource ?? HardwarePowerAssertionSource())
         self.metricsService = SystemMetricsService(source: metricsSource ?? HardwareSystemMetricsSource(smc: smc))
+        self.processUsage = ProcessUsageService(source: processSource ?? LibprocProcessSampleSource())
         self.metricsHistory = MetricsHistoryService(capacity: 120)
         // Sync enabled metrics from config into the history buffers
         metricsHistory.ensureBuffers(for: config.enabledMetrics)
@@ -132,6 +135,22 @@ public final class TuneController: Sendable {
     // MARK: - Metrics History (delegates to MetricsHistoryService)
 
     public func metricsReport() -> SystemMetricsReport { metricsService.read() }
+
+    /// The processes currently using the most CPU or memory.
+    ///
+    /// CPU is a rate, so it is differenced against the previous call on this
+    /// controller: the first call after launch (or after
+    /// ``resetProcessBaseline()``) ranks by memory and reports no CPU figures.
+    public func topProcesses(
+        sortedBy: ProcessSortKey = .cpu,
+        limit: Int = ProcessUsageService.defaultLimit
+    ) -> ProcessUsageReport {
+        processUsage.report(sortedBy: sortedBy, limit: limit)
+    }
+
+    /// Drop the CPU baseline so the next ``topProcesses(sortedBy:limit:)`` call
+    /// starts fresh instead of averaging across an idle gap.
+    public func resetProcessBaseline() { processUsage.resetBaseline() }
 
     /// Aggregate AI-usage snapshot across all configured providers.
     ///
@@ -318,6 +337,40 @@ public final class TuneController: Sendable {
         }
     }
 
+    /// What extended brightness is actually doing right now.
+    ///
+    /// Requested and effective are two different things: the display has to
+    /// engage EDR before a boost can be written, and the boost is clamped to
+    /// the headroom the panel granted. The UI reports this rather than assuming
+    /// the requested value took effect.
+    public func extendedBrightnessStatus() -> ExtendedBrightnessStatus {
+        guard let displayID = DisplayHelpers.builtinDisplayIDOrNil() else {
+            return ExtendedBrightnessStatus(
+                requested: nil,
+                effective: nil,
+                availableHeadroom: nil,
+                isSupported: false
+            )
+        }
+        return ExtendedBrightnessStatus(
+            requested: edrOverlay.currentHeadroom(for: displayID),
+            effective: edrOverlay.engagedBrightness(for: displayID),
+            mode: edrOverlay.brightnessMode(for: displayID),
+            availableHeadroom: edrOverlay.systemEDRHeadroom(for: displayID),
+            isSupported: displays.anyEDRCapable()
+        )
+    }
+
+    /// Re-apply display overrides the system dropped behind our back.
+    ///
+    /// macOS resets the gamma table on sleep/wake and on display
+    /// reconfiguration, which silently cancels an active brightness boost or
+    /// warmth shift. Called from the app's wake handler.
+    public func reassertDisplayOverrides() {
+        edrOverlay.reassert()
+        DisplayGammaController.shared.reassert()
+    }
+
     public func applyDim(_ value: Double) throws {
         let clamped = SafetyPolicy.clamp(value, config.dimMin, config.dimMax)
         dimOverlay.applyDim(Float(clamped))
@@ -352,6 +405,9 @@ public final class TuneController: Sendable {
     public func resetWarmth() throws {
         do {
             try displayWrite.resetWarmth()
+            // Keep the tracked value in step, or `getWarmthLevel()` (and the
+            // popover slider reading it) would keep reporting the old shift.
+            restoreTracker.saveWarmth(0)
             logHistory(action: "warmth.reset", result: "success")
         } catch {
             logHistory(action: "warmth.reset", result: "failed", error: error)
@@ -642,14 +698,19 @@ extension TuneController {
                        detail: edrCapable ? "At least one display reports EDR headroom." : "No EDR-capable display detected."),
             Capability(id: "display.brightness.extended.set", available: edrCapable, tier: "core",
                        detail: edrCapable
-                            ? "Extended/EDR brightness via on-screen EDR layer, clamped 1.0–1.6."
+                            ? "Extended brightness via a 1×1 EDR trigger layer plus a gamma boost, "
+                              + "clamped to 1.0–1.6 and to the headroom the display grants."
                             : "No EDR-capable display detected — extended brightness unavailable."),
             Capability(id: "display.dim.set", available: true, tier: "core",
                        detail: "Sub-minimum software dim overlay via transparent NSWindow."),
             Capability(id: "display.brightness.set", available: true, tier: "core",
                        detail: "Built-in display brightness get/set via DisplayServices/IOKit."),
             Capability(id: "display.warmth.set", available: true, tier: "core",
-                       detail: "Color temperature warmth via CGSetDisplayTransferByTable gamma LUT."),
+                       detail: "Color temperature warmth as a gamma-LUT shift on the display's own "
+                             + "calibration curve, composed with any brightness boost."),
+            Capability(id: "processes.read", available: true, tier: "core",
+                       detail: "Per-process CPU and memory usage via libproc. Processes owned by "
+                             + "other users (root) are not readable without elevation."),
             Capability(id: "power.keepAwake", available: true, tier: "core",
                        detail: "Prevent idle sleep via IOKit power assertion."),
             Capability(id: "fan.control", available: smcWritable, tier: "core",

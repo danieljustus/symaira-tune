@@ -6,6 +6,48 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Extended brightness now actually works.** The old EDR overlay created a
+  full-screen `CAMetalLayer` at `opacity = 0`, never presented a drawable, and
+  set a non-existent `EDRHeadroom` key via KVC — so everything above "Normal"
+  changed nothing, while the full-screen layer was still enough to alter how the
+  panel rendered, which is why the screen looked brighter than normal even at
+  the neutral position. Replaced by a 1×1 EDR trigger layer that is genuinely
+  rendered and presented (`rgba16Float` + extended-linear colour space) plus a
+  gamma-table boost, clamped to the headroom the display actually grants.
+- Colour warmth no longer replaces the display's gamma table with a freshly
+  built linear ramp. It threw away the panel's own calibration curve, so even
+  neutral warmth visibly changed the screen and it silently wiped any active
+  brightness boost. Warmth and boost are now composed onto the captured base
+  ramp by a single owner (`DisplayGammaController`).
+- "Normal" is now genuinely neutral: at the centre position no windows are left
+  on screen and the gamma table is handed back to ColorSync. The dim overlay no
+  longer creates fully transparent screen-sized windows for "no dim", and
+  restore-on-exit no longer re-applies the previously *observed* EDR headroom as
+  a boost.
+- Display overrides are re-asserted after wake, where macOS resets the gamma
+  table and silently drops an active boost or warmth shift.
+
+### Added
+- **Top Processes**: which processes are using the most CPU or memory, one click
+  away in the popover (expand, switch CPU/Memory, click a row for PID, threads
+  and the other resource). Samples only while visible.
+- CLI `symtune processes [--sort cpu|memory] [--limit N] [--json]` and MCP tool
+  `get_top_processes`. CPU is a measured rate between two sweeps, not `ps`'s
+  average-since-boot; processes owned by other users are counted and reported as
+  unreadable rather than silently dropped.
+- The popover reports extended-brightness state honestly: waiting for HDR, or
+  limited to the headroom the display grants.
+
+### Changed
+- Popover layout: a live CPU / memory / thermal strip under the title and two
+  labelled groups (controls, system) instead of one long card stack.
+- Popover performance: each polled value is read inside the smallest view that
+  needs it, so a metrics tick no longer invalidates the whole panel body.
+- A popover card added by a later release now joins an existing non-empty
+  `[popover] cards` list instead of staying hidden for every existing config.
+  An explicitly empty list is still honoured.
+
 ## [0.9.1] — 2026-08-10
 
 ### Fixed

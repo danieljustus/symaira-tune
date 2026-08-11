@@ -63,6 +63,23 @@ public enum MetricFormatting {
         }
     }
 
+    /// Human-readable byte size (`"1.8 GB"`, `"482 MB"`, `"96 KB"`).
+    /// Shared by the CLI process listing and the popover's process card so both
+    /// round the same way.
+    public static func bytes(_ value: UInt64) -> String {
+        let bytes = Double(value)
+        if bytes >= 1_073_741_824 {
+            return String(format: "%.1f GB", bytes / 1_073_741_824)
+        }
+        if bytes >= 1_048_576 {
+            return String(format: "%.0f MB", bytes / 1_048_576)
+        }
+        if bytes >= 1_024 {
+            return String(format: "%.0f KB", bytes / 1_024)
+        }
+        return "\(value) B"
+    }
+
     private static func netRate(_ bytesPerSecond: Double) -> String {
         if bytesPerSecond >= 1_048_576 {
             return String(format: "%.1f MB/s", bytesPerSecond / 1_048_576.0)

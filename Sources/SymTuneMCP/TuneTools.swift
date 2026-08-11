@@ -59,6 +59,7 @@ extension TuneToolRegistry {
             BatteryTool(),
             ListDisplaysTool(),
             MetricsTool(),
+            TopProcessesTool(),
             GetAIUsageTool(),
             KeepAwakeTool(),
             KeepAwakeStatusTool(),
@@ -132,6 +133,48 @@ struct MetricsTool: TuneTool {
 
     func invoke(arguments: [String: MCPJSONValue], controller: TuneController) throws -> any Encodable {
         controller.metricsReport()
+    }
+}
+
+struct TopProcessesTool: TuneTool {
+    let name = "get_top_processes"
+    let description = """
+        List the processes currently using the most CPU or memory — the answer to \
+        "what is making this Mac hot/slow?". CPU is a rate measured between two \
+        samples taken about a second apart. Processes owned by another user (root) \
+        are counted in unreadable_process_count but cannot be inspected without \
+        elevation.
+        """
+    var isReadOnly: Bool { true }
+
+    var inputSchema: MCPJSONSchema {
+        MCPJSONSchema(
+            properties: [
+                "sort_by": MCPJSONSchemaProperty(
+                    type: "string",
+                    description: "Ranking key: 'cpu' (default) or 'memory'."
+                ),
+                "limit": MCPJSONSchemaProperty(
+                    type: "integer",
+                    description: "How many processes to return (1–\(ProcessUsageService.maximumLimit)).",
+                    minimum: 1,
+                    maximum: Double(ProcessUsageService.maximumLimit)
+                ),
+            ]
+        )
+    }
+
+    func invoke(arguments: [String: MCPJSONValue], controller: TuneController) throws -> any Encodable {
+        let sortRaw = arguments["sort_by"]?.stringValue ?? ProcessSortKey.cpu.rawValue
+        guard let sort = ProcessSortKey(rawValue: sortRaw.lowercased()) else {
+            throw TuneError.usage("sort_by must be 'cpu' or 'memory'.")
+        }
+        let limit = arguments["limit"]?.intValue.map(Int.init) ?? ProcessUsageService.defaultLimit
+
+        // Two sweeps: CPU usage only exists as a difference between samples.
+        _ = controller.topProcesses(sortedBy: sort, limit: limit)
+        Thread.sleep(forTimeInterval: 1.0)
+        return controller.topProcesses(sortedBy: sort, limit: limit)
     }
 }
 

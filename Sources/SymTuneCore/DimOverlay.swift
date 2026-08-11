@@ -36,6 +36,15 @@ public final class DimOverlay: @unchecked Sendable {
 
     private nonisolated func applyDimOnMain(_ opacity: Float) {
         MainActor.assumeIsolated {
+            // No dimming means no overlay. Keeping a fully transparent
+            // screen-sized window per display around left the compositor
+            // blending an invisible layer forever, and made "no dim" a
+            // different state from "never dimmed".
+            guard opacity < 1.0 else {
+                removeAllOnMain()
+                return
+            }
+
             currentOpacity = opacity
             let overlayAlpha = CGFloat(1.0 - opacity)
 

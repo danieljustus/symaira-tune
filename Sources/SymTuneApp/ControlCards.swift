@@ -17,7 +17,7 @@ struct DisplayControlsCard: View {
     }
 
     var body: some View {
-        VStack(spacing: SymairaSpacing.small) {
+        VStack(alignment: .leading, spacing: SymairaSpacing.small) {
             TuneSliderRow(
                 title: "Screen Brightness",
                 systemImage: "sun.max.fill",
@@ -43,6 +43,16 @@ struct DisplayControlsCard: View {
                 onCommit: applyBeyondNormal
             )
 
+            // Extended brightness depends on the display granting EDR headroom,
+            // which it does not always do. Say what is actually happening
+            // instead of leaving the slider looking effective.
+            if let note = extendedBrightnessNote {
+                Text(note)
+                    .symairaText(.caption)
+                    .foregroundStyle(SymairaTheme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             TuneSliderRow(
                 title: "Color Warmth",
                 systemImage: "thermometer.sun.fill",
@@ -64,6 +74,27 @@ struct DisplayControlsCard: View {
             extendedBrightness: model.overrides.edrBrightness,
             config: controller.config
         )
+    }
+
+    /// What "Brighter" is really doing, whenever that differs from the request.
+    private var extendedBrightnessNote: String? {
+        let status = model.extendedBrightness
+        guard let requested = status.requested, let effective = status.effective else { return nil }
+        let applied = Int(((effective - 1.0) * 100).rounded())
+
+        switch status.mode {
+        case .softwareLift:
+            // No EDR headroom: the lift is real but clips the highlights, and
+            // it is capped for that reason. Say both.
+            return "No HDR headroom right now — lifting +\(applied)% in software, "
+                + "so bright areas may flatten. Enable High Dynamic Range for this display "
+                + "in System Settings › Displays for the full range."
+        case .extendedRange:
+            guard effective < requested - 0.01 else { return nil }
+            return "Limited to +\(applied)% — that is all the headroom this display grants."
+        case nil:
+            return nil
+        }
     }
 
     private func applyBeyondNormal(_ position: Double) {
