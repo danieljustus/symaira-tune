@@ -149,18 +149,30 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
             targets[targetID] = existing
             lock.unlock()
         } else {
+            // Building the trigger creates a window, so it happens outside the
+            // lock. That makes this a check-then-act: a second caller can arrive
+            // in between and install its own trigger. Whoever loses drops its
+            // trigger off screen instead of leaking a 1×1 window that would keep
+            // requesting EDR for the rest of the session.
             lock.unlock()
             guard let trigger = triggerFactory(targetID) else {
                 throw TuneError.failed("Could not create the EDR trigger for display \(targetID).")
             }
             lock.lock()
-            targets[targetID] = Target(
-                requested: multiplier,
-                applied: nil,
-                mode: nil,
-                trigger: trigger
-            )
-            lock.unlock()
+            if var winner = targets[targetID] {
+                winner.requested = multiplier
+                targets[targetID] = winner
+                lock.unlock()
+                trigger.remove()
+            } else {
+                targets[targetID] = Target(
+                    requested: multiplier,
+                    applied: nil,
+                    mode: nil,
+                    trigger: trigger
+                )
+                lock.unlock()
+            }
         }
 
         try applyBoostIfEngaged(targetID)

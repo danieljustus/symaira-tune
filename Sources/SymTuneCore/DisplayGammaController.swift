@@ -161,10 +161,22 @@ public final class DisplayGammaController: @unchecked Sendable {
             lock.unlock()
             throw TuneError.failed("Could not compose a gamma table for display \(displayID).")
         }
+        let previous = states[displayID]
         states[displayID] = state
         lock.unlock()
 
         guard io.writeRamp(ramp, displayID: displayID) else {
+            // Roll the recorded state back to what the hardware still has.
+            // Keeping the optimistic value would make `warmth(for:)`/`boost(for:)`
+            // — and the readout built on them — report an override that was
+            // never applied.
+            lock.lock()
+            if let previous {
+                states[displayID] = previous
+            } else {
+                states.removeValue(forKey: displayID)
+            }
+            lock.unlock()
             throw TuneError.failed("CGSetDisplayTransferByTable failed for display \(displayID).")
         }
     }

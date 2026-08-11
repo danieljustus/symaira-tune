@@ -210,7 +210,7 @@ final class DisplayGammaControllerTests: XCTestCase {
         XCTAssertFalse(controller.hasOverrides)
     }
 
-    func testRejectedWriteSurfacesAsAnError() {
+    func testRejectedWriteSurfacesAsAnErrorAndKeepsNoPhantomOverride() {
         let io = RecordingGammaIO()
         io.writeFailure = true
         let controller = DisplayGammaController(io: io)
@@ -220,6 +220,22 @@ final class DisplayGammaControllerTests: XCTestCase {
                 return XCTFail("expected TuneError.failed, got \(error)")
             }
         }
+        // A rejected write must not leave a recorded override behind, or the
+        // readout would claim a shift the display never got.
+        XCTAssertEqual(controller.warmth(for: display), 0, accuracy: 0.0001)
+        XCTAssertFalse(controller.hasOverrides)
+    }
+
+    func testRejectedWriteKeepsTheValueThatIsStillOnTheDisplay() throws {
+        let io = RecordingGammaIO()
+        let controller = DisplayGammaController(io: io)
+        try controller.setBoost(1.3, displayID: display)
+
+        io.writeFailure = true
+        XCTAssertThrowsError(try controller.setBoost(1.5, displayID: display))
+
+        XCTAssertEqual(controller.boost(for: display), 1.3, accuracy: 0.0001,
+                       "the failed change must not overwrite the applied one")
     }
 
     func testBoostBelowOneIsTreatedAsNeutral() throws {
