@@ -237,6 +237,54 @@ public struct ActiveOverrides: Codable, Sendable, Equatable {
     }
 }
 
+/// How an extended-brightness boost is being produced.
+public enum ExtendedBrightnessMode: String, Codable, Sendable, Equatable {
+    /// EDR is engaged: output above SDR white renders brighter, up to the
+    /// headroom the display granted. This is the real thing.
+    case extendedRange
+    /// No EDR headroom available, so the gamma lift is applied on its own: the
+    /// picture brightens but the brightest areas clip. Capped well below the
+    /// EDR maximum for that reason.
+    case softwareLift
+}
+
+/// What extended ("beyond 100%") brightness is doing on the built-in display.
+///
+/// Four separate facts, because they routinely differ: what was asked for, what
+/// is in effect, how it is being produced, and what the panel currently allows.
+public struct ExtendedBrightnessStatus: Codable, Sendable, Equatable {
+    /// Multiplier the user or an agent asked for (`nil` when neutral).
+    public let requested: Double?
+    /// Multiplier currently written to the display (`nil` when nothing is).
+    public let effective: Double?
+    /// How ``effective`` is produced (`nil` when nothing is applied).
+    public let mode: ExtendedBrightnessMode?
+    /// Headroom the system grants right now (`1.0` = SDR only).
+    public let availableHeadroom: Double?
+    /// Whether any attached display can do extended brightness at all.
+    public let isSupported: Bool
+
+    /// A boost is requested, but EDR has not engaged — the display is being
+    /// lifted in software (or not at all) rather than driven above SDR white.
+    public var isWaitingForEDR: Bool {
+        requested != nil && mode != .extendedRange
+    }
+
+    public init(
+        requested: Double?,
+        effective: Double?,
+        mode: ExtendedBrightnessMode? = nil,
+        availableHeadroom: Double?,
+        isSupported: Bool
+    ) {
+        self.requested = requested
+        self.effective = effective
+        self.mode = mode
+        self.availableHeadroom = availableHeadroom
+        self.isSupported = isSupported
+    }
+}
+
 // MARK: - Status Report
 
 public struct StatusReport: Codable, Sendable {

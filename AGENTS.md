@@ -41,6 +41,15 @@ symtune (executable)  →  SymTuneMCP  →  SymTuneCore
   clamp through `SafetyPolicy` before applying, and MUST never disable firmware
   thermal protection. The controller is responsible for *restore-on-exit*: any
   overridden value resets to the system default when the process ends.
+- **One owner for the gamma table**: colour warmth and extended brightness both
+  write the display's gamma LUT. All writes go through `DisplayGammaController`,
+  which composes both inputs onto the ramp captured *before* any override — never
+  call `CGSetDisplayTransferByTable` from anywhere else, and never rebuild a ramp
+  from scratch (that discards the display's calibration).
+- **Extended brightness needs both halves**: an on-screen EDR layer that is
+  actually rendered and presented (so macOS grants headroom) *and* a gamma boost
+  clamped to the granted headroom. Report `requested` vs `effective` rather than
+  assuming a request took effect.
 - **Honest capabilities**: never pretend a feature works. Unbuilt features throw
   `.notImplemented`; hardware/tier-gated ones throw `.unsupported`. `doctor`
   reports the truth per capability (`available` + `tier`).

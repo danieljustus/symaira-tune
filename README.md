@@ -65,11 +65,35 @@ same `TuneController` and `SafetyPolicy` as the CLI and MCP surfaces. See
 [`docs/manual-app-verification.md`](docs/manual-app-verification.md) for the
 real-host control and restore-on-exit checklist.
 
-The menu-bar popover shows a configurable set of cards: system status, metric
-history (sparklines), displays, display controls (brightness/dim/warmth),
-keep-awake, and fan control. Choose which cards are visible in the preferences
+The menu-bar popover opens with a live CPU / memory / thermal strip under the
+title, then two labelled groups: **controls** (display brightness/dim/warmth,
+keep-awake, fan) and **system** (top processes, system status, metric history
+with sparklines, displays). Choose which cards are visible in the preferences
 view; the selection is persisted in `~/.config/symtune/config.toml` under
-`[popover] cards = [...]` (an explicit empty list shows an empty panel).
+`[popover] cards = [...]` (an explicit empty list shows an empty panel; a card
+added by a later release joins a non-empty list rather than staying hidden).
+
+**Top Processes** answers "what is making this Mac hot/slow?" with one click:
+expand the card and it ranks processes by CPU or memory, click a row for its
+PID, thread count and the other resource. It only samples while expanded and
+visible, so a collapsed card costs nothing. Processes owned by another user
+(root) are counted but not readable without elevation — the card says so rather
+than quietly omitting them.
+
+### Extended ("beyond 100%") brightness
+
+The single **Beyond Normal** slider is centred on "the display as macOS drives
+it": left of centre is the software dim overlay, right of centre is extended
+brightness. Extended brightness needs two things macOS only gives together — a
+1×1 on-screen EDR layer to make the system grant headroom above SDR white, and a
+gamma-table boost that lifts what is already on screen into that headroom. The
+boost is always clamped to the headroom the display actually grants, and the card
+reports when it is waiting for HDR or was limited, instead of leaving a slider
+that looks effective and is not.
+
+If "Brighter" keeps reporting that it is waiting, check that **High Dynamic
+Range** is enabled for the display in System Settings › Displays: with HDR off,
+macOS grants no headroom to any application and nothing can exceed 100% SDR.
 
 ## CLI
 
@@ -82,11 +106,13 @@ symtune battery                       # charge %, cycles, capacity, health, cond
 symtune displays                      # displays + EDR headroom / extended-brightness capability
 symtune permissions                   # permission & SMC write status
 symtune metrics                      # system metrics: CPU, memory, disk, network (JSON)
+symtune processes [--sort cpu|memory] [--limit N] [--json]
+                                     # processes using the most CPU / memory
 symtune ai-usage [--json]            # AI subscription/token usage per provider (read-only)
 symtune awake [--display] [--seconds N]   # prevent idle sleep (like caffeinate)
 symtune brightness get                # read built-in display brightness (0.0–1.0)
 symtune brightness set <0.0-1.0>      # built-in display brightness
-symtune extbright set <1.0-1.6>       # extended/EDR brightness via on-screen EDR layer
+symtune extbright set <1.0-1.6>       # extended brightness (EDR trigger + gamma boost)
 symtune dim set <0.15-1.0>            # software dim overlay
 symtune dim reset                     # remove all dim overlays
 symtune warmth set <0.0-1.0>          # color temperature warmth (gamma)
@@ -150,7 +176,8 @@ OpenCode, …). Example fragment:
 ```
 
 Tools exposed: `get_capabilities`, `get_sensors`, `get_battery`, `list_displays`,
-`get_system_metrics`, `get_ai_usage`, `keep_awake`, `get_brightness`, `set_brightness`, `set_extended_brightness`,
+`get_system_metrics`, `get_top_processes`, `get_ai_usage`, `keep_awake`,
+`get_brightness`, `set_brightness`, `set_extended_brightness`,
 `set_warmth`, `reset_warmth`, `set_dim`, `reset_dim`, `set_fan`,
 `set_charge_limit`, `clear_charge_limit`, `restore`, `save_profile`,
 `load_profile`, `list_profiles`, `delete_profile`, `get_status`, `get_history`.

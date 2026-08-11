@@ -132,7 +132,14 @@ final class PreferencesManager: ObservableObject {
             .filter { visibleCards.contains($0) }
             .map { "\"\($0.rawValue)\"" }
             .joined(separator: ", ")
-        let popoverTOML = "[popover]\ncards = [\(cards)]"
+        // The version marks which card vocabulary this list was written with, so
+        // a card turned off here stays off while a card added by a later release
+        // still appears (see `TuneConfig.parseCardSet`).
+        let popoverTOML = """
+        [popover]
+        cards_version = \(TuneConfig.popoverCardsSchemaVersion)
+        cards = [\(cards)]
+        """
 
         if let range = existingSectionRange(section: "popover", in: content) {
             var updated = content

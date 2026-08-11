@@ -9,9 +9,14 @@
 /// v0.2 will add menu-bar persistence and deeper app-target integration.
 public struct DisplayService: Sendable {
     private let enumeration: any DisplayEnumerationSource
+    private let gamma: DisplayGammaController
 
-    public init(enumeration: any DisplayEnumerationSource = HardwareDisplayEnumerationSource()) {
+    public init(
+        enumeration: any DisplayEnumerationSource = HardwareDisplayEnumerationSource(),
+        gamma: DisplayGammaController = .shared
+    ) {
         self.enumeration = enumeration
+        self.gamma = gamma
     }
 
     // MARK: - Display enumeration
@@ -70,38 +75,22 @@ public struct DisplayService: Sendable {
 
     // MARK: - Warmth / color temperature
 
-    /// Applies a warmth shift (0.0 = neutral, 1.0 = max warm) via gamma LUT
-    /// manipulation using CGSetDisplayTransferByTable.
+    /// Applies a warmth shift (0.0 = neutral, 1.0 = max warm).
+    ///
+    /// Routed through ``DisplayGammaController`` rather than writing the gamma
+    /// table directly: extended brightness uses the same table, and warmth used
+    /// to *replace* it with a freshly built linear ramp — which threw away the
+    /// display's own calibration curve, so even neutral warmth visibly changed
+    /// the screen and any active brightness boost was silently wiped.
     public func applyWarmth(_ warmth: Float) throws {
-        let steps = 256
-        var redTable = [CGGammaValue](repeating: 0, count: steps)
-        var greenTable = [CGGammaValue](repeating: 0, count: steps)
-        var blueTable = [CGGammaValue](repeating: 0, count: steps)
-
-        let redBoost: Float = 1.0
-        let greenBoost: Float = 1.0 - warmth * 0.05
-        let blueScale: Float = 1.0 - warmth * 0.30
-
-        for i in 0..<steps {
-            let normalized = Float(i) / Float(steps - 1)
-            redTable[i] = min(normalized * redBoost, 1.0)
-            greenTable[i] = min(normalized * greenBoost, 1.0)
-            blueTable[i] = min(normalized * blueScale, 1.0)
-        }
-
         let displayID = try builtinDisplayID()
-        let result = CGSetDisplayTransferByTable(
-            displayID, UInt32(steps), redTable, greenTable, blueTable
-        )
-        guard result == .success else {
-            throw TuneError.failed("CGSetDisplayTransferByTable failed with code \(result.rawValue)")
-        }
+        try gamma.setWarmth(warmth, displayID: displayID)
     }
 
-    /// Resets the built-in display gamma to identity (no warmth shift).
+    /// Resets the built-in display's warmth (keeping any brightness boost).
     public func resetWarmth() throws {
-        _ = try builtinDisplayID()
-        CGDisplayRestoreColorSyncSettings()
+        let displayID = try builtinDisplayID()
+        try gamma.setWarmth(0, displayID: displayID)
     }
 
     // MARK: - Private helpers

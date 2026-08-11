@@ -77,6 +77,23 @@ core. They require the process to run as root because they write to the Apple SM
 - [x] Menu-bar app migrated onto the shared `SymairaTheme` design system from `symaira-appkit`: type scale (`symairaText` roles), color tokens, spacing/radius tokens, shared text field style (`#226`).
 - [x] AI-usage fundamentals: `AIUsageSnapshot`/`AIUsageProvider`/`AIUsageService` in the core, OpenRouter provider (Keychain API key, credits API), CLI `symtune ai-usage [--json]` and MCP `get_ai_usage` (`#242`, `#243`, `#254`).
 
+## v0.9.2 (in progress) — brightness correctness, process insight, popover clarity
+
+- [x] `display.brightness.extended.set` **rewritten to actually work**: a 1×1
+      EDR trigger layer that is genuinely rendered and presented, plus a
+      gamma-table boost clamped to the headroom the display grants. The previous
+      implementation presented no drawable and set a non-existent `EDRHeadroom`
+      KVC key, so above-normal positions did nothing while the full-screen layer
+      still changed how the panel rendered at neutral.
+- [x] One owner for the display gamma table (`DisplayGammaController`): warmth
+      and extended brightness compose onto the display's *captured* calibration
+      ramp instead of overwriting each other, and neutral restores ColorSync.
+- [x] `processes.read` — per-process CPU/memory via libproc, as CLI
+      `symtune processes`, MCP `get_top_processes`, and an expandable
+      Top Processes popover card that samples only while visible.
+- [x] Popover: live CPU/memory/thermal strip, two labelled groups, and
+      per-value invalidation so a metrics tick no longer re-renders the panel.
+
 ## v0.7.0 — Configurable popover
 
 - [x] Configurable popover cards: choose which cards are visible (system status, metric history, displays, display controls, keep-awake, fan control) in the preferences view; persisted in `config.toml` under `[popover] cards` (`#218`).

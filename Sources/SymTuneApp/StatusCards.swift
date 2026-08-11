@@ -48,6 +48,73 @@ struct StatusHeaderView: View {
     }
 }
 
+/// The three numbers people open this panel for, on one line under the title.
+///
+/// Reads `model.metrics` in its own body so a metrics tick invalidates this
+/// strip and nothing else (see ``MainStatusView``).
+@MainActor
+struct LiveSummaryStrip: View {
+    let model: TuneViewModel
+
+    var body: some View {
+        HStack(spacing: SymairaSpacing.small) {
+            chip("cpu", "cpu.fill", cpuText)
+            chip("ram", "memorychip.fill", memoryText)
+            chip("thermal", "thermometer.medium", thermalText, tint: thermalColor)
+        }
+        .padding(.horizontal, SymairaSpacing.xSmall)
+    }
+
+    private func chip(
+        _ id: String,
+        _ symbol: String,
+        _ text: String,
+        tint: Color = SymairaTheme.goldPrimary
+    ) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+                .font(.system(size: 9))
+                .foregroundStyle(tint)
+            Text(text)
+                .symairaText(.monoSmall)
+                .foregroundStyle(SymairaTheme.textPrimary)
+        }
+        .padding(.horizontal, SymairaSpacing.small)
+        .padding(.vertical, 3)
+        .background(SymairaTheme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: SymairaRadius.control))
+        .overlay(
+            RoundedRectangle(cornerRadius: SymairaRadius.control)
+                .stroke(SymairaTheme.borderGlass, lineWidth: 1)
+        )
+        .accessibilityIdentifier(id)
+    }
+
+    private var cpuText: String {
+        guard let utilization = model.metrics?.cpu.totalUtilization else { return "—" }
+        return String(format: "%.0f%%", utilization)
+    }
+
+    private var memoryText: String {
+        guard let used = model.metrics?.memory.usedBytes else { return "—" }
+        return MetricFormatting.bytes(used)
+    }
+
+    /// Sensors are only polled while the panel is open, so the very first frame
+    /// after opening has none yet — say so instead of claiming "nominal".
+    private var thermalText: String {
+        model.sensors?.thermalPressure ?? "…"
+    }
+
+    private var thermalColor: Color {
+        switch thermalText.lowercased() {
+        case "nominal": return SymairaTheme.positive
+        case "fair": return SymairaTheme.warning
+        default: return SymairaTheme.critical
+        }
+    }
+}
+
 struct StatusFooterView: View {
     let openPreferences: () -> Void
 

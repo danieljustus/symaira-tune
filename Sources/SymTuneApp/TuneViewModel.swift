@@ -51,6 +51,16 @@ final class TuneViewModel {
     private(set) var dimAmount: Double = 0.0
     private(set) var warmth: Double = 0.0
 
+    /// Requested vs. actually-applied extended brightness, so the UI can be
+    /// honest about a boost that the display has not granted headroom for.
+    private(set) var extendedBrightness = ExtendedBrightnessStatus(
+        requested: nil,
+        effective: nil,
+        mode: nil,
+        availableHeadroom: nil,
+        isSupported: true
+    )
+
     /// Called whenever ``statusItemText`` changes, so the status item is only
     /// re-laid-out when its content actually differs.
     var onStatusItemTextChanged: (([StatusItemSegment]) -> Void)?
@@ -207,6 +217,9 @@ final class TuneViewModel {
 
         let currentWarmth = controller.getWarmthLevel()
         if warmth != currentWarmth { warmth = currentWarmth }
+
+        let extended = controller.extendedBrightnessStatus()
+        if extendedBrightness != extended { extendedBrightness = extended }
 
         let session = controller.keepAwakeSessionStatus()
         if keepAwake != session { keepAwake = session }

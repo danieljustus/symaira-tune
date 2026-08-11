@@ -1,50 +1,113 @@
 @preconcurrency import AppKit
+import Metal
 import QuartzCore
 
-/// Protocol abstracting EDR (Extended Dynamic Range) overlay operations for testability.
+/// Protocol abstracting extended-brightness ("beyond 100%") operations.
 public protocol EDROverlayServiceProtocol: Sendable {
     func applyExtendedBrightness(_ multiplier: Double, displayID: CGDirectDisplayID?) throws
     func removeOverlay(for displayID: CGDirectDisplayID)
     func removeAllOverlays()
+    /// The multiplier the user asked for, or `nil` when this display is neutral.
     func currentHeadroom(for displayID: CGDirectDisplayID) -> Double?
+    /// The headroom the system currently grants the display (`1.0` = SDR only).
     func systemEDRHeadroom(for displayID: CGDirectDisplayID) -> Double?
+    /// The boost actually in effect, or `nil` if nothing is applied.
+    func engagedBrightness(for displayID: CGDirectDisplayID) -> Double?
+    /// How that boost is being produced.
+    func brightnessMode(for displayID: CGDirectDisplayID) -> ExtendedBrightnessMode?
+    /// Re-apply the active boost after the system dropped it (sleep/wake,
+    /// display reconfiguration).
+    func reassert()
 }
 
-/// Per-display EDR (Extended Dynamic Range) overlay. Creates a nearly invisible
-/// on-screen layer with `wantsExtendedDynamicRangeContent = true` so that
-/// Core Animation drives the display's peak brightness to the requested
-/// headroom multiplier (1.0 = SDR, up to panel maximum, capped at 1.6).
+public extension EDROverlayServiceProtocol {
+    func engagedBrightness(for displayID: CGDirectDisplayID) -> Double? { nil }
+    func brightnessMode(for displayID: CGDirectDisplayID) -> ExtendedBrightnessMode? { nil }
+    func reassert() {}
+}
+
+/// Extended brightness: pushes the display above its 100% SDR reference.
 ///
-/// This is the BrightIntosh approach: the overlay claims EDR headroom,
-/// forcing the display to render brighter than its 100% SDR reference.
-/// The layer is sized to cover the target display and accepts mouse events.
+/// ## How this works — and why the previous version could not
 ///
-/// **Thread safety**: all window operations dispatch to `DispatchQueue.main`.
+/// macOS has no API to set brightness above 100%. What it does have is EDR:
+/// while *actual* extended-range content is on screen, the display is granted
+/// headroom above SDR white, and output values greater than `1.0` render into
+/// that headroom instead of clipping. Two pieces are therefore required:
+///
+/// 1. **A trigger** — a 1×1 `CAMetalLayer` with
+///    `wantsExtendedDynamicRangeContent`, an `rgba16Float` drawable and an
+///    extended-linear colour space, which is *actually rendered and presented*.
+///    That is what makes the system engage EDR and raise
+///    `NSScreen.maximumExtendedDynamicRangeColorComponentValue`.
+/// 2. **The boost** — the display's gamma table scaled by the requested
+///    multiplier (``DisplayGammaController``), which lifts everything already
+///    on screen into the granted headroom.
+///
+/// The previous implementation created a full-screen `CAMetalLayer` at
+/// `opacity = 0`, never presented a drawable, and set a made-up `EDRHeadroom`
+/// key via KVC. A layer with no presented content asks for nothing, and
+/// `EDRHeadroom` is not a property of anything — so the slider above "Normal"
+/// changed nothing at all, while the full-screen layer was still enough to flip
+/// the panel into HDR mode, which is why the screen looked different even at
+/// neutral. Both halves of that bug are fixed here: the trigger is one pixel
+/// and only exists while a boost is active, and the boost is real.
+///
+/// **Thread safety**: window and Metal work is funnelled to the main thread.
 public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Sendable {
-    /// Current EDR headroom per display (nil = no overlay active).
-    nonisolated(unsafe) private var overlays: [CGDirectDisplayID: EDROverlay] = [:]
-    private let lock = NSLock()
 
-    /// Resolves the screen frame for a display ID. Production instances use
-    /// `DisplayHelpers`; tests inject a fake provider (CGRect is trivially
-    /// fabricable, NSScreen is not).
-    private let screenFrameProvider: (CGDirectDisplayID) -> CGRect?
-    /// Creates the overlay for a display. Tests inject a fake overlay factory
-    /// so routing can be exercised without creating real NSWindows.
-    private let overlayFactory: (CGDirectDisplayID, CGRect) -> EDROverlay
+    /// Granted headroom above this counts as "EDR is engaged".
+    static let engagedHeadroomThreshold = 1.05
+    /// How long to keep asking the display to engage EDR. Engagement is not
+    /// instant on real hardware — it takes the system a second or two, and
+    /// sometimes it never happens (HDR off, or the system declining).
+    static let engageTimeout: TimeInterval = 20.0
+    /// Poll cadence while waiting for EDR to engage.
+    static let engagePollInterval: TimeInterval = 0.25
+    /// How far the gamma lift may go **without** EDR headroom.
+    ///
+    /// Without headroom, output above SDR white clips instead of getting
+    /// brighter: the picture as a whole lifts, and the brightest areas flatten.
+    /// A small lift is a real, useful brightening; a large one would just crush
+    /// the highlights, so the fallback is capped well below
+    /// ``SafetyPolicy/extendedBrightnessMax``.
+    static let softwareBoostCap = 1.15
 
-    public init() {
-        self.screenFrameProvider = { DisplayHelpers.screenForDisplayID($0)?.frame }
-        self.overlayFactory = { EDROverlay(displayID: $0, screenFrame: $1) }
+    private struct Target {
+        /// What the user asked for.
+        var requested: Double
+        /// What is currently written to the gamma table (`nil` = nothing).
+        var applied: Double?
+        /// How ``applied`` is being produced.
+        var mode: ExtendedBrightnessMode?
+        var trigger: any EDRTriggering
     }
 
-    /// Test seam: inject a screen-frame provider and/or overlay factory.
+    private let lock = NSLock()
+    private var targets: [CGDirectDisplayID: Target] = [:]
+    private var engageTasks: [CGDirectDisplayID: Task<Void, Never>] = [:]
+
+    private let gamma: DisplayGammaController
+    /// Reads the headroom the system grants a display. Injected for tests.
+    private let headroomProvider: @Sendable (CGDirectDisplayID) -> Double?
+    /// Builds the on-screen EDR trigger. Injected for tests.
+    private let triggerFactory: @Sendable (CGDirectDisplayID) -> (any EDRTriggering)?
+
+    public init() {
+        self.gamma = .shared
+        self.headroomProvider = { Self.systemHeadroom(for: $0) }
+        self.triggerFactory = { EDRTriggerWindow(displayID: $0) }
+    }
+
+    /// Test seam: inject headroom reporting, trigger creation and gamma target.
     internal init(
-        screenFrameProvider: @escaping (CGDirectDisplayID) -> CGRect? = { DisplayHelpers.screenForDisplayID($0)?.frame },
-        overlayFactory: @escaping (CGDirectDisplayID, CGRect) -> EDROverlay = { EDROverlay(displayID: $0, screenFrame: $1) }
+        gamma: DisplayGammaController,
+        headroomProvider: @escaping @Sendable (CGDirectDisplayID) -> Double?,
+        triggerFactory: @escaping @Sendable (CGDirectDisplayID) -> (any EDRTriggering)?
     ) {
-        self.screenFrameProvider = screenFrameProvider
-        self.overlayFactory = overlayFactory
+        self.gamma = gamma
+        self.headroomProvider = headroomProvider
+        self.triggerFactory = triggerFactory
     }
 
     deinit {
@@ -53,14 +116,16 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
 
     // MARK: - Public API
 
-    /// Apply extended brightness to the built-in display.
-    /// - Parameter multiplier: 1.0 = SDR reference, up to `SafetyPolicy.extendedBrightnessMax`.
-    /// - Parameter displayID: target display; defaults to the built-in display.
+    /// Apply extended brightness to a display (the built-in one by default).
+    ///
+    /// Returns as soon as the trigger is on screen. Engaging EDR takes the
+    /// system a moment; the boost is written as soon as the display reports the
+    /// headroom, and clamped to it — never beyond what the panel granted.
     public func applyExtendedBrightness(
         _ multiplier: Double,
         displayID: CGDirectDisplayID? = nil
     ) throws {
-        let targetID = try displayID ?? builtinDisplayID()
+        let targetID = try displayID ?? DisplayHelpers.builtinDisplayID()
 
         guard multiplier >= SafetyPolicy.extendedBrightnessMin,
               multiplier <= SafetyPolicy.extendedBrightnessMax
@@ -71,205 +136,323 @@ public final class EDROverlayService: EDROverlayServiceProtocol, @unchecked Send
             )
         }
 
-        // The SDR reference does not need an overlay. Removing it here also
-        // ensures the neutral point restores the display after an EDR apply.
-        if multiplier == SafetyPolicy.extendedBrightnessMin {
+        // The SDR reference needs no trigger and no boost: neutral means the
+        // display is left exactly as the system drives it.
+        if multiplier <= SafetyPolicy.extendedBrightnessMin {
             removeOverlay(for: targetID)
             return
         }
 
-        let headroom = Float(multiplier)
         lock.lock()
-        let existing = overlays[targetID]
-        lock.unlock()
-
-        if let overlay = existing {
-            overlay.setHeadroom(headroom)
+        if var existing = targets[targetID] {
+            existing.requested = multiplier
+            targets[targetID] = existing
+            lock.unlock()
         } else {
-            guard let frame = screenFrameProvider(targetID) else {
-                throw TuneError.failed("Could not find screen for display \(targetID).")
+            lock.unlock()
+            guard let trigger = triggerFactory(targetID) else {
+                throw TuneError.failed("Could not create the EDR trigger for display \(targetID).")
             }
-            let overlay = overlayFactory(targetID, frame)
-            overlay.setHeadroom(headroom)
             lock.lock()
-            overlays[targetID] = overlay
+            targets[targetID] = Target(
+                requested: multiplier,
+                applied: nil,
+                mode: nil,
+                trigger: trigger
+            )
             lock.unlock()
         }
+
+        try applyBoostIfEngaged(targetID)
     }
 
-    /// Remove the EDR overlay for a specific display (restores SDR).
+    /// Remove the boost and the trigger for one display (restores SDR).
     public func removeOverlay(for displayID: CGDirectDisplayID) {
         lock.lock()
-        let overlay = overlays.removeValue(forKey: displayID)
+        let task = engageTasks.removeValue(forKey: displayID)
+        let target = targets.removeValue(forKey: displayID)
         lock.unlock()
-        overlay?.removeFromScreen()
+
+        task?.cancel()
+        guard let target else { return }
+        gamma.reset(displayID: displayID)
+        target.trigger.remove()
     }
 
-    /// Remove all EDR overlays (full restore to SDR).
+    /// Remove every boost and trigger (full restore to SDR).
     public func removeAllOverlays() {
         lock.lock()
-        let all = overlays
-        overlays.removeAll()
+        let all = targets
+        let tasks = engageTasks
+        targets.removeAll()
+        engageTasks.removeAll()
         lock.unlock()
-        for (_, overlay) in all {
-            overlay.removeFromScreen()
+
+        for (_, task) in tasks { task.cancel() }
+        for (displayID, target) in all {
+            gamma.reset(displayID: displayID)
+            target.trigger.remove()
         }
     }
 
-    /// Current applied headroom for a display, or nil if no overlay.
     public func currentHeadroom(for displayID: CGDirectDisplayID) -> Double? {
         lock.lock()
         defer { lock.unlock() }
-        return overlays[displayID].map { Double($0.headroom) }
+        return targets[displayID]?.requested
     }
 
-    /// The built-in display's current EDR headroom (from the system, not overlay).
+    public func engagedBrightness(for displayID: CGDirectDisplayID) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        return targets[displayID]?.applied
+    }
+
+    public func brightnessMode(for displayID: CGDirectDisplayID) -> ExtendedBrightnessMode? {
+        lock.lock()
+        defer { lock.unlock() }
+        return targets[displayID]?.mode
+    }
+
     public func systemEDRHeadroom(for displayID: CGDirectDisplayID) -> Double? {
-        guard let screen = DisplayHelpers.screenForDisplayID(displayID) else { return nil }
-        return Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue)
+        headroomProvider(displayID)
     }
 
-    // MARK: - Private Helpers
-
-    private func builtinDisplayID() throws -> CGDirectDisplayID {
-        try DisplayHelpers.builtinDisplayID()
-    }
-}
-
-// MARK: - EDROverlay (internal)
-
-/// A single on-screen EDR-capable overlay window for one display.
-/// Uses a CAMetalLayer with `wantsExtendedDynamicRangeContent = true`
-/// at the requested headroom level. The layer is nearly invisible
-/// (very low alpha) so it doesn't affect visual content.
-internal class EDROverlay: @unchecked Sendable {
-    let displayID: CGDirectDisplayID
-    private var window: NSWindow?
-    private var metalLayer: CAMetalLayer?
-    // Setter is internal (not private(set)) so test subclasses overriding
-    // `setHeadroom` can record the applied value; `currentHeadroom` reads it.
-    var headroom: Float = 1.0
-
-    init(displayID: CGDirectDisplayID, screenFrame: NSRect) {
-        self.displayID = displayID
-        configure(screenFrame: screenFrame)
-    }
-
-    /// Hook for subclasses (tests) to skip real window creation.
-    func configure(screenFrame: NSRect) {
-        setupWindow(screenFrame: screenFrame)
-    }
-
-    func setHeadroom(_ value: Float) {
-        headroom = value
-        if Thread.isMainThread {
-            updateHeadroom()
-        } else {
-            DispatchQueue.main.sync { [self] in updateHeadroom() }
+    public func reassert() {
+        lock.lock()
+        let ids = Array(targets.keys)
+        lock.unlock()
+        for id in ids {
+            try? applyBoostIfEngaged(id)
         }
     }
 
-    func removeFromScreen() {
-        if Thread.isMainThread {
-            doRemove()
-        } else {
-            DispatchQueue.main.sync { [self] in doRemove() }
+    // MARK: - Engagement
+
+    /// Write the boost for the headroom the display currently grants.
+    ///
+    /// With EDR engaged the full requested range is available. Without it, a
+    /// capped software lift is applied instead — a real brightening that clips
+    /// highlights, reported as such — while the poll keeps asking the system to
+    /// engage EDR so the boost can be upgraded to the full value.
+    private func applyBoostIfEngaged(_ displayID: CGDirectDisplayID) throws {
+        lock.lock()
+        guard let target = targets[displayID] else {
+            lock.unlock()
+            return
+        }
+        let requested = target.requested
+        lock.unlock()
+
+        target.trigger.render()
+
+        let granted = headroomProvider(displayID) ?? 1.0
+        let isEngaged = granted > Self.engagedHeadroomThreshold
+        // Never ask for more than the panel granted: beyond the headroom the
+        // extra output clips to white instead of getting brighter.
+        let effective = isEngaged
+            ? min(requested, granted)
+            : min(requested, Self.softwareBoostCap)
+        let mode: ExtendedBrightnessMode = isEngaged ? .extendedRange : .softwareLift
+
+        if !isEngaged { startEngagePoll(displayID) }
+
+        try gamma.setBoost(Float(effective), displayID: displayID)
+
+        lock.lock()
+        if var updated = targets[displayID] {
+            updated.applied = effective
+            updated.mode = mode
+            targets[displayID] = updated
+        }
+        lock.unlock()
+    }
+
+    /// Poll until the display reports EDR headroom, then write the boost.
+    private func startEngagePoll(_ displayID: CGDirectDisplayID) {
+        lock.lock()
+        guard engageTasks[displayID] == nil else {
+            lock.unlock()
+            return
+        }
+        // The lock is only ever taken inside the synchronous helpers below:
+        // `NSLock` is unavailable from an async context.
+        let task = Task<Void, Never> { [weak self] in
+            let deadline = Date().addingTimeInterval(Self.engageTimeout)
+            while !Task.isCancelled, Date() < deadline {
+                try? await Task.sleep(for: .seconds(Self.engagePollInterval))
+                guard let self, !Task.isCancelled else { return }
+                guard let trigger = self.trigger(for: displayID) else { return }
+
+                if let granted = self.headroomProvider(displayID),
+                   granted > Self.engagedHeadroomThreshold {
+                    self.forgetEngageTask(displayID)
+                    try? self.applyBoostIfEngaged(displayID)
+                    return
+                }
+                // Keep presenting frames: a trigger that stops rendering can
+                // stop counting as on-screen EDR content.
+                trigger.render()
+            }
+            self?.forgetEngageTask(displayID)
+        }
+        engageTasks[displayID] = task
+        lock.unlock()
+    }
+
+    private func trigger(for displayID: CGDirectDisplayID) -> (any EDRTriggering)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return targets[displayID]?.trigger
+    }
+
+    private func forgetEngageTask(_ displayID: CGDirectDisplayID) {
+        lock.lock()
+        engageTasks.removeValue(forKey: displayID)
+        lock.unlock()
+    }
+
+    private static func systemHeadroom(for displayID: CGDirectDisplayID) -> Double? {
+        guard let screen = DisplayHelpers.screenForDisplayID(displayID) else { return nil }
+        return Double(screen.maximumExtendedDynamicRangeColorComponentValue)
+    }
+}
+
+// MARK: - Trigger
+
+/// The on-screen EDR content that makes the system grant headroom.
+public protocol EDRTriggering: Sendable {
+    /// Present a frame. Cheap, and needed both on creation and whenever the
+    /// display reconfigures.
+    func render()
+    /// Take the trigger off screen.
+    func remove()
+}
+
+/// A 1×1 borderless window whose `CAMetalLayer` renders extended-range white.
+///
+/// One pixel is enough: the system grants headroom for the display as soon as
+/// *any* EDR content is composited on it. A full-screen layer would cost a
+/// screen-sized surface per frame for exactly the same effect.
+internal final class EDRTriggerWindow: EDRTriggering, @unchecked Sendable {
+    private let displayID: CGDirectDisplayID
+    private var window: NSWindow?
+    private var metalLayer: CAMetalLayer?
+    private var commandQueue: MTLCommandQueue?
+
+    /// Value rendered into the trigger. It only has to be extended-range; the
+    /// visible brightening comes from the gamma boost, not from this pixel.
+    private static let triggerValue = Double(SafetyPolicy.extendedBrightnessMax)
+
+    init?(displayID: CGDirectDisplayID) {
+        self.displayID = displayID
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let queue = device.makeCommandQueue() else { return nil }
+        self.commandQueue = queue
+        guard onMain({ self.build(device: device) }) else { return nil }
+    }
+
+    func render() {
+        onMain { self.presentFrame() }
+    }
+
+    func remove() {
+        onMain {
+            self.window?.orderOut(nil)
+            self.window = nil
+            self.metalLayer = nil
+            self.commandQueue = nil
         }
     }
 
     // MARK: - Private
 
-    private func setupWindow(screenFrame: NSRect) {
-        // bgra10Unorm is required for EDR on modern macOS; guard the conversion
-        // so an unknown raw value cannot crash the process on a future OS/SDK.
-        guard let pixelFormat = MTLPixelFormat(rawValue: 80) else {
-            fatalError("Unsupported Metal pixel format raw value 80 for EDR overlay.")
-        }
-        // Must match `setHeadroom`/`removeFromScreen`: dispatching *synchronously*
-        // to the main queue from the main thread deadlocks and libdispatch traps
-        // the process. The UI applies extended brightness from the main thread,
-        // so the unguarded version crashed the app the first time the slider was
-        // used on a display that had no overlay yet.
-        if Thread.isMainThread {
-            buildWindow(screenFrame: screenFrame, pixelFormat: pixelFormat)
-        } else {
-            DispatchQueue.main.sync { [self] in
-                buildWindow(screenFrame: screenFrame, pixelFormat: pixelFormat)
-            }
-        }
+    /// Dispatching *synchronously* to the main queue from the main thread traps
+    /// libdispatch, and the UI applies brightness from the main thread.
+    private func onMain<T>(_ work: () -> T) -> T {
+        if Thread.isMainThread { return work() }
+        return DispatchQueue.main.sync(execute: work)
     }
 
-    private func buildWindow(screenFrame: NSRect, pixelFormat: MTLPixelFormat) {
+    private func build(device: MTLDevice) -> Bool {
         MainActor.assumeIsolated {
+            guard let screen = DisplayHelpers.screenForDisplayID(displayID) else { return false }
+
+            let layer = CAMetalLayer()
+            Self.configureMetalLayer(layer, device: device)
+
+            // Top-left corner: on a built-in display the rounded corner mask
+            // covers it, and on an external one it is a single pixel at the
+            // very edge. The trigger has to be *composited* to count, so it
+            // cannot be moved off screen or made fully transparent.
+            let frame = CGRect(x: screen.frame.minX, y: screen.frame.maxY - 1, width: 1, height: 1)
             let window = NSWindow(
-                contentRect: screenFrame,
+                contentRect: frame,
                 styleMask: .borderless,
                 backing: .buffered,
                 defer: false
             )
-
-            // Create a CAMetalLayer as the backing layer.
-            let metalLayer = CAMetalLayer()
-            Self.configureMetalLayer(
-                metalLayer,
-                pixelFormat: pixelFormat,
-                frameSize: screenFrame.size,
-                contentsScale: window.backingScaleFactor
-            )
-
-            let contentView = NSView(frame: screenFrame)
+            // Layer-*hosting* view: the layer must be assigned before
+            // `wantsLayer`, otherwise AppKit owns the layer tree and swaps in
+            // its own backing layer — which is not EDR-capable, so the trigger
+            // renders nothing and the display never grants headroom.
+            let contentView = NSView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+            contentView.layer = layer
             contentView.wantsLayer = true
-            contentView.layer?.addSublayer(metalLayer)
             window.contentView = contentView
 
-            // Window properties: invisible to user, passes through input.
             window.isOpaque = false
             window.backgroundColor = .clear
             window.hasShadow = false
-            window.level = .statusBar - 1  // Below menu bar, above most windows
+            window.level = .screenSaver
             window.ignoresMouseEvents = true
-            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+            window.collectionBehavior = [
+                .canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary,
+            ]
             window.isReleasedWhenClosed = false
-            window.orderFront(nil)
+            window.animationBehavior = .none
+            window.orderFrontRegardless()
 
             self.window = window
-            self.metalLayer = metalLayer
+            self.metalLayer = layer
+            presentFrame()
+            return true
         }
     }
 
-    /// Configures an EDR-capable layer without contributing visible pixels.
-    /// Keeping this separate makes the transparency contract testable without
-    /// creating an on-screen window or requiring a physical display.
-    internal static func configureMetalLayer(
-        _ metalLayer: CAMetalLayer,
-        pixelFormat: MTLPixelFormat,
-        frameSize: CGSize,
-        contentsScale: CGFloat
-    ) {
-        metalLayer.frame = CGRect(origin: .zero, size: frameSize)
-        metalLayer.pixelFormat = pixelFormat
-        metalLayer.wantsExtendedDynamicRangeContent = true
-        metalLayer.contentsFormat = .RGBA16Float
-        metalLayer.contentsScale = contentsScale
-
-        // The overlay exists only to claim EDR headroom. Its content must not
-        // cover or dim the desktop beneath it.
-        metalLayer.backgroundColor = NSColor.clear.cgColor
-        metalLayer.isOpaque = false
-        metalLayer.opacity = 0.0
+    /// EDR needs all three together: the flag, a float pixel format, and an
+    /// extended-range colour space. Miss one and the content is downgraded to
+    /// SDR — which asks the system for no headroom at all.
+    internal static func configureMetalLayer(_ layer: CAMetalLayer, device: MTLDevice) {
+        layer.device = device
+        layer.pixelFormat = .rgba16Float
+        layer.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)
+        layer.wantsExtendedDynamicRangeContent = true
+        layer.isOpaque = false
+        layer.framebufferOnly = true
+        layer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+        layer.drawableSize = CGSize(width: 1, height: 1)
+        layer.contentsScale = 1.0
     }
 
-    private func updateHeadroom() {
+    private func presentFrame() {
         MainActor.assumeIsolated {
-            metalLayer?.setValue(headroom, forKey: "EDRHeadroom")
-        }
-    }
+            guard let layer = metalLayer,
+                  let queue = commandQueue,
+                  let drawable = layer.nextDrawable() else { return }
 
-    private func doRemove() {
-        MainActor.assumeIsolated {
-            window?.orderOut(nil)
-            window = nil
-            metalLayer = nil
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = drawable.texture
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].storeAction = .store
+            pass.colorAttachments[0].clearColor = MTLClearColorMake(
+                Self.triggerValue, Self.triggerValue, Self.triggerValue, 1.0
+            )
+
+            guard let buffer = queue.makeCommandBuffer(),
+                  let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+            encoder.endEncoding()
+            buffer.present(drawable)
+            buffer.commit()
         }
     }
 }
