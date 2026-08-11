@@ -48,6 +48,11 @@ private final class FakeGammaIO: GammaIO, @unchecked Sendable {
     func restoreSystemRamps() {
         lock.lock(); restoreCount += 1; written.removeAll(); lock.unlock()
     }
+
+    /// Clear the write log so a test can assert that *no further* writes happen.
+    func forgetWrites() {
+        lock.lock(); written.removeAll(); lock.unlock()
+    }
 }
 
 final class EDROverlayServiceTests: XCTestCase {
@@ -204,6 +209,120 @@ final class EDROverlayServiceTests: XCTestCase {
                        "the watch must re-apply as the granted headroom grows")
         XCTAssertEqual(try XCTUnwrap(io.written[displayA].flatMap(\.red.last)), 1.45, accuracy: 0.001)
         service.removeAllOverlays()
+    }
+
+    // MARK: - Concurrent apply
+
+    /// Building a trigger creates a window, so it happens outside the state
+    /// lock — which makes the install a check-then-act. Two applies for one
+    /// display can therefore both build a trigger, and the loser's 1×1 EDR
+    /// window would otherwise stay on screen for the rest of the session,
+    /// holding the display in HDR mode with nothing tracking it.
+    ///
+    /// The factory seam reproduces that interleaving deterministically: the
+    /// first factory call re-enters `applyExtendedBrightness`, so the inner call
+    /// installs its target first and the outer call arrives as the loser.
+    func testALosingConcurrentApplyTakesItsTriggerBackOffScreen() throws {
+        let io = FakeGammaIO()
+        nonisolated(unsafe) var created: [FakeTrigger] = []
+        nonisolated(unsafe) var service: EDROverlayService?
+        nonisolated(unsafe) var reentered = false
+
+        // Local copy: the factory closure is @Sendable and must not capture the
+        // (non-Sendable) test case itself.
+        let target = displayA
+        service = EDROverlayService(
+            gamma: DisplayGammaController(io: io),
+            headroomProvider: { _ in 1.6 },
+            triggerFactory: { displayID in
+                let trigger = FakeTrigger()
+                created.append(trigger)
+                if !reentered, displayID == target {
+                    reentered = true
+                    // The competing apply lands while the outer one is still
+                    // building its trigger.
+                    try? service?.applyExtendedBrightness(1.3, displayID: target)
+                }
+                return trigger
+            }
+        )
+        let subject = try XCTUnwrap(service)
+
+        try subject.applyExtendedBrightness(1.5, displayID: displayA)
+
+        XCTAssertEqual(created.count, 2, "both applies built a trigger — that is the race")
+        XCTAssertEqual(created.filter(\.removed).count, 1, "exactly the loser is taken off screen")
+        XCTAssertFalse(created.first?.removed == false && created.last?.removed == false,
+                       "a surviving orphan trigger would keep requesting EDR forever")
+        // The last writer's request wins and is what gets applied.
+        XCTAssertEqual(try XCTUnwrap(subject.currentHeadroom(for: displayA)), 1.5, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(subject.engagedBrightness(for: displayA)), 1.5, accuracy: 0.0001)
+
+        subject.removeAllOverlays()
+        XCTAssertTrue(created.allSatisfy(\.removed), "teardown leaves nothing on screen")
+    }
+
+    // MARK: - Headroom watch lifecycle
+
+    /// A second apply while the watch is already running must not start a
+    /// competing watch — two tasks would fight over the same gamma table.
+    ///
+    /// Also covers the steady state on a display that never grants headroom:
+    /// the watch keeps polling for its window, and the capped software lift must
+    /// stay exactly where it is instead of oscillating or climbing.
+    func testASecondApplyReusesTheRunningHeadroomWatchAndTheLiftHoldsSteady() throws {
+        let fixture = makeService(headroom: 1.0)
+
+        try fixture.service.applyExtendedBrightness(1.5, displayID: displayA)
+        try fixture.service.applyExtendedBrightness(1.4, displayID: displayA)
+
+        XCTAssertEqual(fixture.triggers().count, 1, "the display keeps its single trigger")
+        XCTAssertEqual(fixture.service.brightnessMode(for: displayA), .softwareLift)
+
+        // Let the watch run through a few poll intervals while the display keeps
+        // refusing EDR (poll interval is 0.25s — three ticks is enough).
+        let deadline = Date().addingTimeInterval(0.7)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        XCTAssertEqual(fixture.service.brightnessMode(for: displayA), .softwareLift,
+                       "no headroom means no upgrade to the real thing")
+        XCTAssertEqual(
+            try XCTUnwrap(fixture.service.engagedBrightness(for: displayA)),
+            EDROverlayService.softwareBoostCap,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            Double(try XCTUnwrap(fixture.io.written[displayA].flatMap(\.red.last))),
+            EDROverlayService.softwareBoostCap,
+            accuracy: 0.001,
+            "repeated polls must not drift the applied value"
+        )
+        XCTAssertGreaterThan(fixture.triggers().first?.renderCount ?? 0, 1,
+                             "the trigger keeps presenting frames while the watch runs")
+
+        fixture.service.removeAllOverlays()
+    }
+
+    /// Going back to neutral while the watch is polling must stop it, and it
+    /// must not write gamma afterwards — the user asked for nothing.
+    func testTheWatchStopsWhenTheUserReturnsToNeutral() throws {
+        let fixture = makeService(headroom: 1.0)
+        try fixture.service.applyExtendedBrightness(1.5, displayID: displayA)
+
+        fixture.service.removeOverlay(for: displayA)
+        fixture.io.forgetWrites()
+
+        // Two poll intervals is enough for a still-running watch to have written.
+        let deadline = Date().addingTimeInterval(0.6)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        XCTAssertNil(fixture.service.currentHeadroom(for: displayA))
+        XCTAssertNil(fixture.service.brightnessMode(for: displayA))
+        XCTAssertTrue(fixture.io.written.isEmpty, "a stopped watch must not keep writing the gamma table")
     }
 
     // MARK: - Error paths
