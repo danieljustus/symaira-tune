@@ -330,6 +330,36 @@ final class MCPServerToolCallTests: XCTestCase {
         XCTAssertTrue(text.contains("network"))
     }
 
+    /// The process listing is the agent-facing answer to "what is making this
+    /// Mac slow?", so its ranking key and its snake_case shape are contract.
+    func testCallGetTopProcessesRanksByMemoryWhenAsked() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, result) = try await mcpCallTool(
+            harness, name: "get_top_processes", arguments: ["sort_by": "memory", "limit": 3]
+        )
+
+        XCTAssertNil(envelope.error)
+        let text = result?.content.first?.text ?? ""
+        XCTAssertTrue(text.contains("\"sorted_by\":\"memory\""), text.prefix(200).description)
+        XCTAssertTrue(text.contains("memory_bytes"), text.prefix(200).description)
+        XCTAssertTrue(text.contains("unreadable_process_count"), text.prefix(200).description)
+    }
+
+    /// An unknown ranking key must fail loudly rather than silently falling back
+    /// to CPU — an agent asking for the wrong thing should be told.
+    func testCallGetTopProcessesRejectsAnUnknownSortKey() async throws {
+        let harness = try MCPTestHarness.make()
+        defer { try? harness.clientWrite.close() }
+
+        let (envelope, _) = try await mcpCallTool(
+            harness, name: "get_top_processes", arguments: ["sort_by": "disk"]
+        )
+
+        XCTAssertNotNil(envelope.error, "an invalid sort_by must surface as an error")
+    }
+
     func testCallGetAIUsageListsProviders() async throws {
         let harness = try MCPTestHarness.make()
         defer { try? harness.clientWrite.close() }

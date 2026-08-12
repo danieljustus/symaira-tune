@@ -105,6 +105,38 @@ final class MetricFormattingTests: XCTestCase {
         XCTAssertEqual(MetricFormatting.value(MetricIdentifier(rawValue: "battery"), 42), "42.0")
     }
 
+    // MARK: - bytes
+    //
+    // Shared by the CLI process listing and the popover's process card, so the
+    // unit boundaries are a contract between two surfaces, not cosmetics.
+
+    func testBytesUsesTheLargestUnitThatFits() {
+        XCTAssertEqual(MetricFormatting.bytes(0), "0 B")
+        XCTAssertEqual(MetricFormatting.bytes(512), "512 B")
+        XCTAssertEqual(MetricFormatting.bytes(4_096), "4 KB")
+        XCTAssertEqual(MetricFormatting.bytes(5_242_880), "5 MB")
+        XCTAssertEqual(MetricFormatting.bytes(2_147_483_648), "2.0 GB")
+    }
+
+    /// One byte either side of each unit switch: an off-by-one here would print
+    /// "1024 KB" or "0.0 GB" in the process list.
+    func testBytesSwitchesUnitExactlyAtTheBoundary() {
+        XCTAssertEqual(MetricFormatting.bytes(1_023), "1023 B")
+        XCTAssertEqual(MetricFormatting.bytes(1_024), "1 KB")
+        XCTAssertEqual(MetricFormatting.bytes(1_048_575), "1024 KB")
+        XCTAssertEqual(MetricFormatting.bytes(1_048_576), "1 MB")
+        XCTAssertEqual(MetricFormatting.bytes(1_073_741_823), "1024 MB")
+        XCTAssertEqual(MetricFormatting.bytes(1_073_741_824), "1.0 GB")
+    }
+
+    /// Gigabytes keep one decimal (a 1.6 GB process must not read as "2 GB"),
+    /// while smaller units stay whole so the column does not jitter.
+    func testBytesKeepsOneDecimalOnlyForGigabytes() {
+        XCTAssertEqual(MetricFormatting.bytes(1_717_986_918), "1.6 GB")
+        XCTAssertEqual(MetricFormatting.bytes(16_106_127_360), "15.0 GB")
+        XCTAssertEqual(MetricFormatting.bytes(1_572_864), "2 MB")
+    }
+
     // MARK: - fallbackValue
 
     func testFallbackValueShowsCpuUtilizationAsPercent() {
