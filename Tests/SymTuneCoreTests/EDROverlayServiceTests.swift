@@ -279,11 +279,13 @@ final class EDROverlayServiceTests: XCTestCase {
         XCTAssertEqual(fixture.triggers().count, 1, "the display keeps its single trigger")
         XCTAssertEqual(fixture.service.brightnessMode(for: displayA), .softwareLift)
 
-        // Let the watch run through a few poll intervals while the display keeps
-        // refusing EDR (poll interval is 0.25s — three ticks is enough).
-        let deadline = Date().addingTimeInterval(0.7)
-        while Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        // Wait for the watch to have polled at least twice while the display
+        // keeps refusing EDR. Condition-based rather than a fixed sleep: a
+        // loaded machine may tick slower, and "slept long enough" would then be
+        // a flaky assertion about the scheduler instead of about behaviour.
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, (fixture.triggers().first?.renderCount ?? 0) < 3 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
 
         XCTAssertEqual(fixture.service.brightnessMode(for: displayA), .softwareLift,
@@ -299,8 +301,8 @@ final class EDROverlayServiceTests: XCTestCase {
             accuracy: 0.001,
             "repeated polls must not drift the applied value"
         )
-        XCTAssertGreaterThan(fixture.triggers().first?.renderCount ?? 0, 1,
-                             "the trigger keeps presenting frames while the watch runs")
+        XCTAssertGreaterThanOrEqual(fixture.triggers().first?.renderCount ?? 0, 3,
+                                    "the trigger keeps presenting frames while the watch runs")
 
         fixture.service.removeAllOverlays()
     }
