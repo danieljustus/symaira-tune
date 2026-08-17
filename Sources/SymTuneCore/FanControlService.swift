@@ -125,10 +125,16 @@ public enum FanControlError: Error, Sendable, CustomStringConvertible {
 public struct FanControlService: Sendable {
     private let smc: SMCService
     private let sensors: SensorService
+    private let sleep: @Sendable (TimeInterval) -> Void
 
-    public init(smc: SMCService, sensors: SensorService) {
+    public init(
+        smc: SMCService,
+        sensors: SensorService,
+        sleep: @escaping @Sendable (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    ) {
         self.smc = smc
         self.sensors = sensors
+        self.sleep = sleep
     }
 
     /// Apply a uniform fraction to all fans. The fraction is clamped to the
@@ -197,7 +203,7 @@ public struct FanControlService: Sendable {
             _ = smc.writeKeyValue("F\(fanIndex)Md", value: 1, dataType: "ui8 ")
             if smc.readFanMode(fanIndex: fanIndex) == 1 { return }
             if attempt < 9 {
-                Thread.sleep(forTimeInterval: Double(delay) / 1_000_000_000)
+                sleep(Double(delay) / 1_000_000_000)
                 delay = min(delay * 2, 200_000_000)
             }
         }
