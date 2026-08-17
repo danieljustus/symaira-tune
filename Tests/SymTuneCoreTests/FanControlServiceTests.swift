@@ -1,6 +1,25 @@
 import XCTest
 @testable import SymTuneCore
 
+/// Collects the delays the fan retry loop asks for, so tests can assert the
+/// backoff policy without actually waiting.
+private final class RecordedDelays: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [TimeInterval] = []
+
+    func record(_ delay: TimeInterval) {
+        lock.lock()
+        storage.append(delay)
+        lock.unlock()
+    }
+
+    var values: [TimeInterval] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}
+
 final class FanControlServiceTests: XCTestCase {
     #if arch(arm64)
     private func makeAppleSiliconFanKeys(targetRPM: Double = 10, maxRPM: Double = 100, mode: UInt8 = 3) -> [String: FakeSMCKeyResult] {
@@ -151,14 +170,14 @@ final class FanControlServiceTests: XCTestCase {
     func testAppleSiliconFanControlRetriesAndFailsOnManualMode() {
         let keys = makeAppleSiliconFanKeys(mode: 3)
         let conn = FakeSMCConnection(isOpen: true, keys: keys)
-        conn.writeHandler = { key, _, _ in
-            if key == "F0Md" {
-                return true
-            }
-            return true
-        }
+        conn.writeHandler = { _, _, _ in true }
+        let delays = RecordedDelays()
         let smc = SMCService(connection: conn)
-        let service = FanControlService(smc: smc, sensors: SensorService(smc: smc))
+        let service = FanControlService(
+            smc: smc,
+            sensors: SensorService(smc: smc),
+            sleep: { delays.record($0) }
+        )
 
         XCTAssertThrowsError(try service.applyFan(fraction: 0.5, config: TuneConfig())) { error in
             guard let fanError = error as? FanControlError else {
@@ -168,6 +187,11 @@ final class FanControlServiceTests: XCTestCase {
             switch fanError {
             case .fanModeWriteRejected(let idx):
                 XCTAssertEqual(idx, 0)
+                XCTAssertEqual(
+                    delays.values,
+                    [0.05, 0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+                    "Expected 10 attempts with the 50 ms → 200 ms backoff between them"
+                )
             default:
                 XCTFail("Expected fanModeWriteRejected error")
             }
