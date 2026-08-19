@@ -96,10 +96,13 @@ final class MoonshotUsageProviderTests: XCTestCase {
         do {
             _ = try await strategy.fetch()
             XCTFail("expected an error")
-        } catch let error as MoonshotError {
-            let message = error.errorDescription ?? ""
-            XCTAssertTrue(message.lowercased().contains("api key"), message)
-            XCTAssertFalse(message.contains("sk-moonshot"), "key material must never leak")
+        } catch let error as AIUsageError {
+            guard case .notConfigured(let id) = error else {
+                XCTFail("expected .notConfigured, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "moonshot")
+            XCTAssertFalse(error.localizedDescription.contains("sk-moonshot"), "key material must never leak")
         } catch {
             XCTFail("unexpected error type: \(error)")
         }
