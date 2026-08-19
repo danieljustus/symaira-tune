@@ -109,35 +109,18 @@ public struct OpenRouterAPIStrategy: AIUsageStrategy, Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("symtune", forHTTPHeaderField: "X-Title")
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await network.fetchData(from: request)
-        } catch {
-            throw OpenRouterError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw OpenRouterError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 429 {
-                throw AIUsageError.rateLimited("openrouter", retryAfter: retryAfterSeconds(from: http))
-            }
-            // Deliberately no response body in the error: a gateway error
-            // page can echo the request headers back (including the key).
-            throw OpenRouterError.httpStatus(http.statusCode)
-        }
-
         let payload: OpenRouterKeyResponse
         do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            decoder.dateDecodingStrategy = .iso8601
-            payload = try decoder.decode(OpenRouterKeyResponse.self, from: data)
-        } catch {
-            throw OpenRouterError.unparseable
+            payload = try await AIUsageHTTP.json(
+                request,
+                as: OpenRouterKeyResponse.self,
+                providerID: "openrouter",
+                network: network
+            )
         }
+        // The shared layer maps 401/403 → .notConfigured and 429 →
+        // .rateLimited, and never embeds the response body in an error (a
+        // gateway page can echo the request headers back, including the key).
 
         let key = payload.data
         var meters: [AIUsageMeter] = []
@@ -216,40 +199,4 @@ struct OpenRouterRateLimit: Decodable {
 struct OpenRouterUsagePeriod: Decodable {
     let startTime: Date?
     let endTime: Date?
-}
-
-// MARK: - Rate limit parsing
-
-/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
-/// `nil` when the header is absent or not a plain integer/decimal — the
-/// HTTP-date form is not handled since 429 responses conventionally use
-/// delta-seconds.
-private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
-    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
-    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
-}
-
-// MARK: - Errors
-
-enum OpenRouterError: Error, LocalizedError {
-    case network(String)
-    case invalidResponse
-    case httpStatus(Int)
-    case unparseable
-
-    var errorDescription: String? {
-        switch self {
-        case .network(let detail):
-            return "OpenRouter request failed: \(detail)"
-        case .invalidResponse:
-            return "OpenRouter returned an invalid response."
-        case .httpStatus(let code):
-            if code == 401 || code == 403 {
-                return "OpenRouter rejected the API key (HTTP \(code)). Check the key in the Keychain."
-            }
-            return "OpenRouter request failed with HTTP \(code)."
-        case .unparseable:
-            return "OpenRouter returned an unreadable response."
-        }
-    }
 }

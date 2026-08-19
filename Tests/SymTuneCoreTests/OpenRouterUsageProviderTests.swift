@@ -175,10 +175,13 @@ final class OpenRouterUsageProviderTests: XCTestCase {
         do {
             _ = try await strategy.fetch()
             XCTFail("expected an error")
-        } catch let error as OpenRouterError {
-            let message = error.errorDescription ?? ""
-            XCTAssertTrue(message.lowercased().contains("api key"), message)
-            XCTAssertFalse(message.contains("sk-or-v1"), "key material must never leak")
+        } catch let error as AIUsageError {
+            guard case .notConfigured(let id) = error else {
+                XCTFail("expected .notConfigured, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "openrouter")
+            XCTAssertFalse(error.localizedDescription.contains("sk-or-v1"), "key material must never leak")
         } catch {
             XCTFail("unexpected error type: \(error)")
         }
@@ -196,7 +199,11 @@ final class OpenRouterUsageProviderTests: XCTestCase {
         do {
             _ = try await strategy.fetch()
             XCTFail("expected an error")
-        } catch let error as OpenRouterError {
+        } catch let error as AIUsageHTTPError {
+            guard case .network = error else {
+                XCTFail("expected .network, got \(error)")
+                return
+            }
             XCTAssertTrue(error.errorDescription?.contains("request failed") == true)
         } catch {
             XCTFail("unexpected error type: \(error)")
