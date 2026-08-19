@@ -101,6 +101,13 @@ public enum MetricFormatting {
         }
     }
 
+    /// Formatted current/minimum/maximum figures for a metrics-history row.
+    public struct HistoryRowValues: Equatable {
+        public let current: String
+        public let minimum: String
+        public let maximum: String
+    }
+
     /// Current/minimum/maximum for a metrics-history row, honouring
     /// `style.basis`.
     ///
@@ -116,18 +123,18 @@ public enum MetricFormatting {
         stats: MetricStats,
         style: MetricStyle,
         totalBytes: UInt64? = nil
-    ) -> (current: String, minimum: String, maximum: String) {
+    ) -> HistoryRowValues {
         guard style.basis == .free else {
-            return (
-                value(id, stats.current, style: style),
-                value(id, stats.min, style: style),
-                value(id, stats.max, style: style)
+            return HistoryRowValues(
+                current: value(id, stats.current, style: style),
+                minimum: value(id, stats.min, style: style),
+                maximum: value(id, stats.max, style: style)
             )
         }
-        return (
-            value(id, stats.current, style: style, totalBytes: totalBytes),
-            value(id, stats.max, style: style, totalBytes: totalBytes),
-            value(id, stats.min, style: style, totalBytes: totalBytes)
+        return HistoryRowValues(
+            current: value(id, stats.current, style: style, totalBytes: totalBytes),
+            minimum: value(id, stats.max, style: style, totalBytes: totalBytes),
+            maximum: value(id, stats.min, style: style, totalBytes: totalBytes)
         )
     }
 
