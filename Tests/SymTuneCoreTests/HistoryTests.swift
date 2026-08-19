@@ -125,6 +125,30 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(history[1].result, "failed")
         XCTAssertNotNil(history[1].errorReason)
     }
+
+    /// Issue #312: `logHistory` must route the error text through
+    /// `SecretRedactor` before it's persisted, so a credential-shaped
+    /// substring embedded in an underlying error never reaches
+    /// history.ndjson verbatim.
+    func testLogHistoryRedactsCredentialShapedError() throws {
+        // Built via concatenation (not a real-format literal) so this
+        // string can't be mistaken for a live credential, while still
+        // matching SecretRedactor's `sk-...` pattern.
+        let fakeToken = "sk-" + "abcdEFGH12345678ijkl"
+        let mock = MockDisplayWriteService()
+        mock.setBuiltinBrightnessError = TuneError.failed("upstream rejected token \(fakeToken)")
+        let controller = TuneController(config: TuneConfig(), displayWrite: mock)
+
+        XCTAssertThrowsError(try controller.applyBuiltinBrightness(0.8))
+
+        let history = controller.getHistory()
+        let entry = try XCTUnwrap(history.last)
+        XCTAssertEqual(entry.action, "brightness.set")
+        XCTAssertEqual(entry.result, "failed")
+        let reason = try XCTUnwrap(entry.errorReason)
+        XCTAssertFalse(reason.contains(fakeToken), "credential must not appear verbatim in history: \(reason)")
+        XCTAssertTrue(reason.contains(SecretRedactor.placeholder), "redaction must be visible, not silent truncation")
+    }
 }
 
 // A simple fake display write service to avoid calling actual display hardware inside unit tests

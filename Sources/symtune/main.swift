@@ -584,26 +584,38 @@ func runMain() -> Int32 {
     return result
 }
 
-/// Handle a non-TuneError by building a structured error report.
+/// Handle a non-TuneError by building a structured error report and
+/// writing it to stderr.
 private func handleNonTuneError(_ error: Error) -> Int32 {
-    let message: String
-    if ProcessInfo.processInfo.environment["SYMTUNE_DEBUG"] != nil {
-        message = String(reflecting: error)
-    } else {
-        message = error.localizedDescription
-    }
+    let debug = ProcessInfo.processInfo.environment["SYMTUNE_DEBUG"] != nil
+    emitErr("symtune: \(redactedErrorLine(for: error, debug: debug))")
+    return ExitCode.error.rawValue
+}
+
+/// Builds the stderr line for a non-TuneError, as JSON-encoded ``ErrorReport``
+/// when possible.
+///
+/// `SecretRedactor` is the last line of defense at this output boundary:
+/// both the debug-mode `String(reflecting:)` dump and the plain
+/// `localizedDescription` can echo credential material from an underlying
+/// error (e.g. a network error that embeds request headers), so both are
+/// redacted before they're encoded into the report or returned as a
+/// fallback string. Pulled out of ``handleNonTuneError(_:)`` as a pure,
+/// side-effect-free function so it can be unit tested directly.
+func redactedErrorLine(for error: Error, debug: Bool) -> String {
+    let rawMessage = debug ? String(reflecting: error) : error.localizedDescription
+    let message = SecretRedactor.redact(rawMessage)
+    let localized = SecretRedactor.redact(error.localizedDescription)
     let report = ErrorReport(
         error: "\(type(of: error))",
         message: message,
-        localized: error.localizedDescription
+        localized: localized
     )
     if let json = try? JSONEncoder().encode(report),
        let string = String(data: json, encoding: .utf8) {
-        emitErr("symtune: \(string)")
-    } else {
-        emitErr("symtune: \(String(reflecting: error))")
+        return string
     }
-    return ExitCode.error.rawValue
+    return SecretRedactor.redact(String(reflecting: error))
 }
 
 struct ErrorReport: Codable {
