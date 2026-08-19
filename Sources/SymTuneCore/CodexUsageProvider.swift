@@ -139,32 +139,12 @@ public struct CodexOAuthStrategy: AIUsageStrategy, Sendable {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await network.fetchData(from: request)
-        } catch {
-            throw CodexError.network(error.localizedDescription)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw CodexError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 429 {
-                throw AIUsageError.rateLimited("codex", retryAfter: retryAfterSeconds(from: http))
-            }
-            throw CodexError.httpStatus(http.statusCode)
-        }
-
-        let payload: CodexWhamUsage
-        do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            decoder.dateDecodingStrategy = .iso8601
-            payload = try decoder.decode(CodexWhamUsage.self, from: data)
-        } catch {
-            throw CodexError.unparseable
-        }
+        let payload: CodexWhamUsage = try await AIUsageHTTP.json(
+            request,
+            as: CodexWhamUsage.self,
+            providerID: "codex",
+            network: network
+        )
 
         var meters: [AIUsageMeter] = []
         // Session (primary) and weekly (secondary) windows as separate meters.
@@ -246,38 +226,8 @@ struct CodexAdditionalRateLimit: Decodable {
     }
 }
 
-// MARK: - Rate limit parsing
+// MARK: - Codex: shared HTTP layer
 
-/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
-/// `nil` when the header is absent or not a plain integer/decimal — the
-/// HTTP-date form is not handled since 429 responses conventionally use
-/// delta-seconds.
-private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
-    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
-    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
-}
-
-// MARK: - Errors
-
-enum CodexError: Error, LocalizedError {
-    case network(String)
-    case invalidResponse
-    case httpStatus(Int)
-    case unparseable
-
-    var errorDescription: String? {
-        switch self {
-        case .network(let detail):
-            return "Codex request failed: \(detail)"
-        case .invalidResponse:
-            return "Codex returned an invalid response."
-        case .httpStatus(let code):
-            if code == 401 || code == 403 {
-                return "Codex rejected the OAuth token (HTTP \(code)). Re-auth with `codex login`."
-            }
-            return "Codex request failed with HTTP \(code)."
-        case .unparseable:
-            return "Codex returned an unreadable response."
-        }
-    }
-}
+// Codex uses AIUsageHTTP.json (Sources/SymTuneCore/AIUsageHTTP.swift) for
+// request execution, status mapping and snake_case decoding; there is no
+// provider-private error enum. 401/403 → .notConfigured, 429 → .rateLimited.

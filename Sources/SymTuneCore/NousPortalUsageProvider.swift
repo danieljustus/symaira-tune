@@ -161,35 +161,14 @@ public struct NousPortalAPIStrategy: AIUsageStrategy, Sendable {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await network.fetchData(from: request)
-        } catch {
-            throw NousPortalError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw NousPortalError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 429 {
-                throw AIUsageError.rateLimited("nous", retryAfter: retryAfterSeconds(from: http))
-            }
-            // A 401/403 means the invoke JWT is no longer valid: re-auth
-            // needed, and we never attempt a silent refresh.
-            throw NousPortalError.httpStatus(http.statusCode)
-        }
-
-        let payload: NousAccountResponse
-        do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            decoder.dateDecodingStrategy = .iso8601
-            payload = try decoder.decode(NousAccountResponse.self, from: data)
-        } catch {
-            throw NousPortalError.unparseable
-        }
+        let payload: NousAccountResponse = try await AIUsageHTTP.json(
+            request,
+            as: NousAccountResponse.self,
+            providerID: "nous",
+            network: network
+        )
+        // A 401/403 from the shared layer maps to .notConfigured: the invoke
+        // JWT is no longer valid (re-auth needed) and we never refresh it.
 
         var meters: [AIUsageMeter] = []
         if let access = payload.paidServiceAccess {
@@ -265,40 +244,4 @@ struct NousPaidServiceAccess: Decodable {
     let subscriptionCreditsRemaining: Double?
     let purchasedCreditsRemaining: Double?
     let totalUsableCredits: Double?
-}
-
-// MARK: - Rate limit parsing
-
-/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
-/// `nil` when the header is absent or not a plain integer/decimal — the
-/// HTTP-date form is not handled since 429 responses conventionally use
-/// delta-seconds.
-private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
-    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
-    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
-}
-
-// MARK: - Errors
-
-enum NousPortalError: Error, LocalizedError {
-    case network(String)
-    case invalidResponse
-    case httpStatus(Int)
-    case unparseable
-
-    var errorDescription: String? {
-        switch self {
-        case .network(let detail):
-            return "Nous Portal request failed: \(detail)"
-        case .invalidResponse:
-            return "Nous Portal returned an invalid response."
-        case .httpStatus(let code):
-            if code == 401 || code == 403 {
-                return "Nous Portal session expired — re-authenticate with the Hermes CLI (nous re-auth needed)."
-            }
-            return "Nous Portal request failed with HTTP \(code)."
-        case .unparseable:
-            return "Nous Portal returned an unreadable response."
-        }
-    }
 }
