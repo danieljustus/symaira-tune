@@ -316,7 +316,14 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             manager: preferencesManager,
             autoPrefs: autoPrefs,
             aiUsage: aiUsagePreferences,
-            aiUsageCatalog: aiUsageModel.providerCatalog
+            aiUsageCatalog: aiUsageModel.providerCatalog,
+            onCredentialChange: { [weak self] in
+                // A key was saved/cleared: the provider now resolves lazily,
+                // but its cached snapshot must be dropped and the usage card
+                // refreshed so the live state shows immediately (issue #324).
+                self?.controller.resetAIUsageCache()
+                self?.aiUsageModel.refreshNow()
+            }
         )
         let hosting = NSHostingController(rootView: prefsView)
 

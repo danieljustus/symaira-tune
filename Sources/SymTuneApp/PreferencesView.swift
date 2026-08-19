@@ -10,6 +10,9 @@ struct PreferencesView: View {
     let autoPrefs: UserDefaultsAutoUpdatePreferenceStore
     @ObservedObject var aiUsage: AIUsagePreferences
     let aiUsageCatalog: [(id: String, displayName: String)]
+    /// Called after an AI-usage credential is saved or cleared, so the
+    /// caller can drop the cache and refresh immediately (issue #324).
+    let onCredentialChange: () -> Void
 
     @State private var refreshText: String = ""
     @State private var applyMessage: String?
@@ -53,7 +56,8 @@ struct PreferencesView: View {
                     // AI usage providers (toggles, API keys, menu-bar readout)
                     AIUsagePreferencesSection(
                         preferences: aiUsage,
-                        providerCatalog: aiUsageCatalog
+                        providerCatalog: aiUsageCatalog,
+                        onCredentialChange: onCredentialChange
                     )
 
                     Divider()

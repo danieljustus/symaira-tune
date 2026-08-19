@@ -12,14 +12,18 @@ struct APIKeyField: View {
     let providerID: String
     let label: String
     let placeholder: String
+    /// Called after the credential is saved or cleared, so the caller can
+    /// drop the AI-usage cache and trigger an immediate refresh (issue #324).
+    var onCredentialChange: (() -> Void)?
 
     @State private var value: String
     @State private var saved = false
 
-    init(providerID: String, label: String, placeholder: String) {
+    init(providerID: String, label: String, placeholder: String, onCredentialChange: (() -> Void)? = nil) {
         self.providerID = providerID
         self.label = label
         self.placeholder = placeholder
+        self.onCredentialChange = onCredentialChange
         self._value = State(initialValue: KeychainCredentials.read(
             service: "com.symaira.symtune",
             account: "\(providerID)-api-key"
@@ -64,6 +68,9 @@ struct APIKeyField: View {
         withAnimation(.easeInOut(duration: 0.15)) {
             saved = true
         }
+        // The credential changed (added or removed): drop the provider's
+        // stale cache and refresh now so the usage card updates immediately.
+        onCredentialChange?()
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             await MainActor.run {
