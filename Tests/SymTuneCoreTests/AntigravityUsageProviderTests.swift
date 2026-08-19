@@ -36,12 +36,12 @@ final class AntigravityUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://127.0.0.1:34567/exa.language_server_pb.LanguageServerService/GetUnleashData")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -222,6 +222,37 @@ final class AntigravityUsageProviderTests: XCTestCase {
 
         XCTAssertTrue(snapshot.meters.contains { $0.label == "GPT-OSS" })
         XCTAssertEqual(transport.requests.count, 4)
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testQuotaEndpointHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let probe = StubProcessProbe()
+        probe.processes = "7890 /opt/homebrew/bin/agy\n"
+        probe.portsByPID[7890] = "agy      7890 daniel   14u  IPv4 0x123 0t0  TCP 127.0.0.1:34987 (LISTEN)\n"
+
+        let transport = ScriptedTransport()
+        transport.script = [
+            "GetUnleashData": .success((Data(), httpResponse(200))),
+            "RetrieveUserQuotaSummary": .success((Data(), httpResponse(429, headers: ["Retry-After": "9"]))),
+            "GetUserStatus": .success((Data(), httpResponse(429, headers: ["Retry-After": "9"]))),
+            "GetCommandModelConfigs": .success((Data(), httpResponse(429, headers: ["Retry-After": "9"]))),
+        ]
+        let strategy = AntigravityLocalProbeStrategy(processProbe: probe, transport: transport)
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "antigravity")
+            XCTAssertEqual(retryAfter, 9)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 
     func testProviderIsAlwaysConfigured() {

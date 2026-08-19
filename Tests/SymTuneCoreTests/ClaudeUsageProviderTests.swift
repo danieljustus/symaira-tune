@@ -12,12 +12,12 @@ final class ClaudeUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -169,6 +169,49 @@ final class ClaudeUsageProviderTests: XCTestCase {
             let message = error.errorDescription ?? ""
             XCTAssertTrue(message.lowercased().contains("re-auth"), message)
             XCTAssertFalse(message.contains("sk-ant"), "token material must never leak")
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testOAuthStrategyHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "8"])
+        )))
+        let strategy = ClaudeOAuthStrategy(accessToken: "sk-ant-oat-test", network: network)
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "claude")
+            XCTAssertEqual(retryAfter, 8)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testAdminAPIStrategyHTTP429MapsToRateLimitedWithoutRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = ClaudeAdminAPIStrategy(apiKey: "sk-ant-admin-test", network: network)
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "claude")
+            XCTAssertNil(retryAfter)
         } catch {
             XCTFail("unexpected error type: \(error)")
         }

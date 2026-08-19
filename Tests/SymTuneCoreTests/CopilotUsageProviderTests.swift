@@ -12,12 +12,12 @@ final class CopilotUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://api.github.com/copilot_internal/user")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -140,5 +140,56 @@ final class CopilotUsageProviderTests: XCTestCase {
         _ = try await strategy.fetch()
 
         XCTAssertEqual(network.lastRequest?.url?.absoluteString, "https://github.example.com/api/v3/copilot_internal/user")
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "60"])
+        )))
+        let strategy = CopilotAPIStrategy(
+            accessToken: "ghu_test",
+            host: "github.com",
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "copilot")
+            XCTAssertEqual(retryAfter, 60)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testHTTP429WithoutRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = CopilotAPIStrategy(
+            accessToken: "ghu_test",
+            host: "github.com",
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "copilot")
+            XCTAssertNil(retryAfter)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 }

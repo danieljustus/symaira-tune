@@ -12,12 +12,12 @@ final class NousPortalUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://portal.nousresearch.com/api/oauth/account")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -171,6 +171,57 @@ final class NousPortalUsageProviderTests: XCTestCase {
         let auth = network.lastRequest?.value(forHTTPHeaderField: "Authorization")
         XCTAssertEqual(auth, "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.sig")
         XCTAssertEqual(network.lastRequest?.url?.path, "/api/oauth/account")
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "20"])
+        )))
+        let strategy = NousPortalAPIStrategy(
+            accessToken: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.sig",
+            portalBaseURL: URL(string: "https://portal.nousresearch.com")!,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "nous")
+            XCTAssertEqual(retryAfter, 20)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testHTTP429WithoutRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = NousPortalAPIStrategy(
+            accessToken: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.sig",
+            portalBaseURL: URL(string: "https://portal.nousresearch.com")!,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "nous")
+            XCTAssertNil(retryAfter)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 }
 

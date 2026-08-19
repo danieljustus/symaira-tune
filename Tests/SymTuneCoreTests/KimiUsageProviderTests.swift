@@ -12,12 +12,12 @@ final class KimiUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://api.kimi.com/coding/v1/usages")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -237,6 +237,53 @@ final class KimiUsageProviderTests: XCTestCase {
             let message = error.errorDescription ?? ""
             XCTAssertTrue(message.lowercased().contains("credential"), message)
             XCTAssertFalse(message.contains("kimi-super-secret-key"), "token material must never leak")
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testAPIStrategyHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "12"])
+        )))
+        let strategy = KimiAPIStrategy(
+            apiKey: "kimi-test-key",
+            baseURL: KimiUsageProvider.defaultAPIBaseURL,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "kimi")
+            XCTAssertEqual(retryAfter, 12)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testWebStrategyHTTP429WithoutRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = KimiWebStrategy(authToken: "kimi-test-web-token", network: network)
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "kimi")
+            XCTAssertNil(retryAfter)
         } catch {
             XCTFail("unexpected error type: \(error)")
         }

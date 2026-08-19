@@ -85,6 +85,9 @@ public struct OpenRouterAPIStrategy: AIUsageStrategy, Sendable {
             throw OpenRouterError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 {
+                throw AIUsageError.rateLimited("openrouter", retryAfter: retryAfterSeconds(from: http))
+            }
             // Deliberately no response body in the error: a gateway error
             // page can echo the request headers back (including the key).
             throw OpenRouterError.httpStatus(http.statusCode)
@@ -177,6 +180,17 @@ struct OpenRouterRateLimit: Decodable {
 struct OpenRouterUsagePeriod: Decodable {
     let startTime: Date?
     let endTime: Date?
+}
+
+// MARK: - Rate limit parsing
+
+/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
+/// `nil` when the header is absent or not a plain integer/decimal — the
+/// HTTP-date form is not handled since 429 responses conventionally use
+/// delta-seconds.
+private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
+    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
 }
 
 // MARK: - Errors
