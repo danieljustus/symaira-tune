@@ -166,6 +166,53 @@ final class SymTuneCLITests: XCTestCase {
         XCTAssert(output.contains("{"))
     }
 
+    // MARK: - Unified --json contract (issue #315)
+    //
+    // Every read command accepts --json. The six always-JSON commands
+    // (doctor, sensors, battery, displays, permissions, metrics) already
+    // only have a machine form; --json must be a recognized no-op there,
+    // not rejected by the #314 unexpected-argument check.
+
+    private static let sixAlwaysJSONCommands = alwaysJSONCommands + ["metrics"]
+
+    func testAlwaysJSONCommandsAcceptJSONFlagWithoutRejection() throws {
+        for command in Self.sixAlwaysJSONCommands {
+            let output = try runCommand(args: [command, "--json"])
+            XCTAssert(output.contains("{"), "\(command) --json: expected JSON output, got: \(output)")
+            XCTAssertFalse(output.contains("unexpected argument"),
+                            "\(command) --json: flag should be a no-op, not rejected. Output: \(output)")
+        }
+    }
+
+    func testAlwaysJSONCommandsJSONFlagIsNoOp() throws {
+        // --json must not change the shape of the output: same top-level
+        // keys with and without the flag.
+        for command in Self.sixAlwaysJSONCommands {
+            let plain = try runCommand(args: [command])
+            let withFlag = try runCommand(args: [command, "--json"])
+
+            guard let plainData = plain.data(using: .utf8),
+                  let flagData = withFlag.data(using: .utf8),
+                  let plainJSON = try? JSONSerialization.jsonObject(with: plainData) as? [String: Any],
+                  let flagJSON = try? JSONSerialization.jsonObject(with: flagData) as? [String: Any] else {
+                XCTFail("\(command): could not parse plain/--json output as a JSON object. plain: \(plain), --json: \(withFlag)")
+                continue
+            }
+            XCTAssertEqual(Set(plainJSON.keys), Set(flagJSON.keys),
+                            "\(command) --json: top-level keys should match the plain output")
+        }
+    }
+
+    func testAlwaysJSONCommandsStillRejectOtherUnknownFlags() throws {
+        // --json is a recognized no-op, but genuinely unknown flags must
+        // still be rejected even when --json is also present.
+        for command in Self.sixAlwaysJSONCommands {
+            let output = try runCommand(args: [command, "--json", "--bogus"], expectFailure: true)
+            XCTAssert(output.contains("unexpected argument"), "\(command) --json --bogus: \(output)")
+            XCTAssert(output.contains("--bogus"), "\(command) --json --bogus: \(output)")
+        }
+    }
+
     // MARK: - Helpers
 
     /// Run `symtune` with the given arguments and return stderr (merged with stdout).
