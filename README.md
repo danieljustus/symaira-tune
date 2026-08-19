@@ -182,6 +182,32 @@ Tools exposed: `get_capabilities`, `get_sensors`, `get_battery`, `list_displays`
 `set_charge_limit`, `clear_charge_limit`, `restore`, `save_profile`,
 `load_profile`, `list_profiles`, `delete_profile`, `get_status`, `get_history`.
 
+### MCP safety
+
+By default, the MCP server exposes the full tool set above, including the
+write tools (`set_brightness`, `set_fan`, `set_charge_limit`, `restore`, …) —
+an agent host that connects with no further configuration gets read/write
+access. To restrict a host to observation only, opt in to read-only mode with
+either the environment variable or the config-file equivalent:
+
+```bash
+SYMTUNE_MCP_MODE=read-only symtune serve
+```
+
+```toml
+# ~/.config/symtune/config.toml
+[mcp]
+mode = "read-only"
+```
+
+Read-only mode filters every write tool out of the `tools/list` registry
+before the host ever sees them — an agent literally cannot discover or call
+`set_brightness`, `set_fan`, `set_charge_limit`, etc. Read tools (`get_battery`,
+`get_sensors`, `list_displays`, …) stay available. `"full"` is the default; you
+must opt in to `"read-only"` explicitly. Run `symtune permissions` to confirm
+which mode is active — it reports `mcp_mode` and a human-readable note
+(`"MCP server mode is read-only (write tools hidden from tools/list)."`).
+
 ## Safety
 
 Every active write path is bounded by `SafetyPolicy`. Fan and charge-limit
