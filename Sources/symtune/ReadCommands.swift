@@ -1,20 +1,66 @@
 import Foundation
 import SymTuneCore
 
+/// One-line description shown after `Usage: symtune <command>` for each of
+/// the always-JSON read commands. Kept in sync with the `READ COMMANDS`
+/// section of the top-level `usage` string in `main.swift`.
+private let alwaysJSONCommandHelp: [String: String] = [
+    "doctor": "Capabilities, host info, and recommendations (JSON).",
+    "sensors": "Thermal pressure + (when available) temps/fan RPM (JSON).",
+    "battery": "Battery health: charge %, cycles, capacity, condition (JSON).",
+    "displays": "Displays with EDR headroom / extended-brightness capability (JSON).",
+    "permissions": "Permission & SMC write status (JSON).",
+]
+
+/// Reject any argument left over for a command that takes none. These five
+/// always-JSON read commands (`doctor`, `sensors`, `battery`, `displays`,
+/// `permissions`) accept no options beyond `--help`/`-h`, which is handled
+/// separately before this is called.
+private func rejectUnexpectedArguments(_ args: [String], command: String) throws {
+    for arg in args {
+        throw TuneError.usage("\(command): unexpected argument '\(arg)'")
+    }
+}
+
+/// Print `--help`/`-h` output for one of the always-JSON read commands.
+private func emitAlwaysJSONCommandHelp(_ command: String) {
+    emit("Usage: symtune \(command)")
+    if let description = alwaysJSONCommandHelp[command] {
+        emit("")
+        emit(description)
+    }
+}
+
+/// Run one of the five always-JSON read commands: honour `--help`/`-h`,
+/// reject any other argument, then emit the JSON report.
+private func runAlwaysJSONCommand(
+    _ command: String,
+    rest: [String],
+    controller: TuneController,
+    report: (TuneController) -> some Encodable
+) throws {
+    if rest.contains(where: { $0 == "--help" || $0 == "-h" }) {
+        emitAlwaysJSONCommandHelp(command)
+        return
+    }
+    try rejectUnexpectedArguments(rest, command: command)
+    try emitJSON(report(controller))
+}
+
 /// Read-only JSON commands with no subcommand parsing. Returns `false` when
 /// the command is not one of them, so the main dispatcher keeps handling it.
 func runReadCommand(_ command: String, rest: [String], controller: TuneController) throws -> Bool {
     switch command {
     case "doctor":
-        try emitJSON(controller.capabilities())
+        try runAlwaysJSONCommand(command, rest: rest, controller: controller) { $0.capabilities() }
     case "sensors":
-        try emitJSON(controller.sensorsReport())
+        try runAlwaysJSONCommand(command, rest: rest, controller: controller) { $0.sensorsReport() }
     case "battery":
-        try emitJSON(controller.batteryReport())
+        try runAlwaysJSONCommand(command, rest: rest, controller: controller) { $0.batteryReport() }
     case "displays":
-        try emitJSON(controller.displaysReport())
+        try runAlwaysJSONCommand(command, rest: rest, controller: controller) { $0.displaysReport() }
     case "permissions":
-        try emitJSON(controller.permissions())
+        try runAlwaysJSONCommand(command, rest: rest, controller: controller) { $0.permissions() }
     case "metrics":
         try runMetrics(rest, controller: controller)
     case "ai-usage":
