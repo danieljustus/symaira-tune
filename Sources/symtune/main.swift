@@ -17,7 +17,7 @@ READ COMMANDS
   battery                Battery health: charge %, cycles, capacity, condition (JSON).
   displays               Displays with EDR headroom / extended-brightness capability (JSON).
   permissions            Permission & SMC write status (JSON).
-  metrics                System metrics: CPU, memory, disk, network (JSON).
+  metrics [--json]       System metrics: CPU, memory, disk, network (JSON).
   processes [--sort cpu|memory] [--limit N] [--json]
                          Processes using the most CPU / memory (samples twice).
   ai-usage [--json]      AI subscription/token usage per provider (read-only).
@@ -413,13 +413,16 @@ func runHistory(_ args: [String], controller: TuneController) throws {
 
 func runMetrics(_ args: [String], controller: TuneController) throws {
     if args.contains(where: { $0 == "--help" || $0 == "-h" }) {
-        emit("Usage: symtune metrics")
+        emit("Usage: symtune metrics [--json]")
         emit("")
         emit("Print system metrics: CPU utilization, memory pressure, disk usage,")
         emit("and network throughput. All values are read-only snapshots.")
+        emit("--json is accepted for consistency with other read commands; it is a no-op here.")
         return
     }
-    for arg in args {
+    // metrics only has a machine (JSON) form; --json is accepted as a no-op
+    // so it isn't rejected as an unexpected argument (issue #315).
+    for arg in args where arg != "--json" {
         throw TuneError.usage("metrics: unexpected argument '\(arg)'")
     }
     try emitJSON(controller.metricsReport())

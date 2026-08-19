@@ -97,18 +97,24 @@ macOS grants no headroom to any application and nothing can exceed 100% SDR.
 
 ## CLI
 
+Every read command accepts `--json`. `doctor`, `sensors`, `battery`,
+`displays`, `permissions`, and `metrics` only ever have a machine-readable
+form — they always print JSON, and `--json` there is a no-op accepted for
+consistency. The rest (`status`, `history`, `processes`, `ai-usage`) print a
+human-readable table by default and switch to JSON when `--json` is given.
+
 ```text
 symtune doctor                        # capabilities, host info, recommendations (JSON)
-symtune status                        # current override/session status (JSON)
-symtune history                       # recent applied changes (JSON)
+symtune status                        # current override/session status
+symtune history                       # recent applied changes
 symtune sensors                       # thermal pressure + temps/fan RPM via AppleSMC (JSON)
 symtune battery                       # charge %, cycles, capacity, health, condition (JSON)
-symtune displays                      # displays + EDR headroom / extended-brightness capability
-symtune permissions                   # permission & SMC write status
+symtune displays                      # displays + EDR headroom / extended-brightness capability (JSON)
+symtune permissions                   # permission & SMC write status (JSON)
 symtune metrics                      # system metrics: CPU, memory, disk, network (JSON)
-symtune processes [--sort cpu|memory] [--limit N] [--json]
+symtune processes [--sort cpu|memory] [--limit N]
                                      # processes using the most CPU / memory
-symtune ai-usage [--json]            # AI subscription/token usage per provider (read-only)
+symtune ai-usage                     # AI subscription/token usage per provider (read-only)
 symtune awake [--display] [--seconds N]   # prevent idle sleep (like caffeinate)
 symtune brightness get                # read built-in display brightness (0.0–1.0)
 symtune brightness set <0.0-1.0>      # built-in display brightness

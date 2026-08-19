@@ -24,15 +24,19 @@ private func rejectUnexpectedArguments(_ args: [String], command: String) throws
 
 /// Print `--help`/`-h` output for one of the always-JSON read commands.
 private func emitAlwaysJSONCommandHelp(_ command: String) {
-    emit("Usage: symtune \(command)")
+    emit("Usage: symtune \(command) [--json]")
     if let description = alwaysJSONCommandHelp[command] {
         emit("")
         emit(description)
+        emit("--json is accepted for consistency with other read commands; it is a no-op here.")
     }
 }
 
 /// Run one of the five always-JSON read commands: honour `--help`/`-h`,
-/// reject any other argument, then emit the JSON report.
+/// accept `--json` as a no-op (these commands already only have a machine
+/// form, but the CLI-wide contract — issue #315 — says every read command
+/// accepts `--json`, so it must not trip the unexpected-argument rejection
+/// below), reject any other argument, then emit the JSON report.
 private func runAlwaysJSONCommand(
     _ command: String,
     rest: [String],
@@ -43,7 +47,8 @@ private func runAlwaysJSONCommand(
         emitAlwaysJSONCommandHelp(command)
         return
     }
-    try rejectUnexpectedArguments(rest, command: command)
+    let remaining = rest.filter { $0 != "--json" }
+    try rejectUnexpectedArguments(remaining, command: command)
     try emitJSON(report(controller))
 }
 
