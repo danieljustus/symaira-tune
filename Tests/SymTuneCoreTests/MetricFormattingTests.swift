@@ -105,6 +105,82 @@ final class MetricFormattingTests: XCTestCase {
         XCTAssertEqual(MetricFormatting.value(MetricIdentifier(rawValue: "battery"), 42), "42.0")
     }
 
+    // MARK: - value basis
+
+    /// The disk history buffer stores a used percentage; `.free` reports the
+    /// complement without needing any extra context.
+    func testValueHonoursFreeBasisForDiskAsComplement() {
+        let freeStyle = MetricStyle(basis: .free)
+        XCTAssertEqual(MetricFormatting.value(.disk, 30, style: freeStyle), "70%")
+        XCTAssertEqual(MetricFormatting.value(.disk, 0, style: freeStyle), "100%")
+        // `.used` (default) is unaffected.
+        XCTAssertEqual(MetricFormatting.value(.disk, 30, style: .default), "30%")
+    }
+
+    /// The memory history buffer stores used bytes; `.free` needs `totalBytes`
+    /// (used + free) to derive the free amount.
+    func testValueHonoursFreeBasisForMemoryGivenTotalBytes() {
+        let freeStyle = MetricStyle(basis: .free)
+        let total: UInt64 = 16_106_127_360 // 15 GB
+        // 8 GB used of 15 GB total -> 7 GB free.
+        XCTAssertEqual(
+            MetricFormatting.value(.memory, 8_589_934_592, style: freeStyle, totalBytes: total),
+            "7.0 GB"
+        )
+        // `.used` (default) ignores totalBytes entirely.
+        XCTAssertEqual(
+            MetricFormatting.value(.memory, 8_589_934_592, style: .default, totalBytes: total),
+            "8.0 GB"
+        )
+    }
+
+    /// Without `totalBytes` there is nothing to convert against, so a `.free`
+    /// memory value renders as-is rather than crashing or guessing.
+    func testValueFreeBasisForMemoryWithoutTotalBytesRendersAsIs() {
+        let freeStyle = MetricStyle(basis: .free)
+        XCTAssertEqual(MetricFormatting.value(.memory, 8_589_934_592, style: freeStyle), "8.0 GB")
+    }
+
+    // MARK: - historyRowValues
+
+    /// `.used` (the default/control case) matches the pre-basis behavior:
+    /// current/min/max map straight through to the formatted used figures.
+    func testHistoryRowValuesMatchesPriorBehaviorForUsedBasis() {
+        let stats = MetricStats(current: 20, min: 10, max: 40)
+        let row = MetricFormatting.historyRowValues(.disk, stats: stats, style: .default)
+        XCTAssertEqual(row.current, "20%")
+        XCTAssertEqual(row.minimum, "10%")
+        XCTAssertEqual(row.maximum, "40%")
+    }
+
+    /// `.free` both converts to the complement and swaps min/max: the sample
+    /// with the least usage (min) is the one with the most free space, so it
+    /// becomes the "maximum" free reading, and vice versa.
+    func testHistoryRowValuesConvertsAndSwapsMinMaxForFreeDiskBasis() {
+        let stats = MetricStats(current: 20, min: 10, max: 40)
+        let freeStyle = MetricStyle(basis: .free)
+        let row = MetricFormatting.historyRowValues(.disk, stats: stats, style: freeStyle)
+        XCTAssertEqual(row.current, "80%")   // 100 - 20
+        XCTAssertEqual(row.minimum, "60%")   // 100 - max(40): least free observed
+        XCTAssertEqual(row.maximum, "90%")   // 100 - min(10): most free observed
+    }
+
+    /// Same swap-and-convert behavior for memory, using `totalBytes` to turn
+    /// used-byte samples into free-byte ones.
+    func testHistoryRowValuesConvertsAndSwapsMinMaxForFreeMemoryBasis() {
+        let total: UInt64 = 16_106_127_360 // 15 GB
+        let stats = MetricStats(
+            current: 8_589_934_592,   // 8 GB used
+            min: 4_294_967_296,       // 4 GB used (min usage -> max free)
+            max: 12_884_901_888       // 12 GB used (max usage -> min free)
+        )
+        let freeStyle = MetricStyle(basis: .free)
+        let row = MetricFormatting.historyRowValues(.memory, stats: stats, style: freeStyle, totalBytes: total)
+        XCTAssertEqual(row.current, "7.0 GB")   // 15 - 8
+        XCTAssertEqual(row.minimum, "3.0 GB")   // 15 - max(12): least free observed
+        XCTAssertEqual(row.maximum, "11.0 GB")  // 15 - min(4): most free observed
+    }
+
     // MARK: - bytes
     //
     // Shared by the CLI process listing and the popover's process card, so the
@@ -169,6 +245,50 @@ final class MetricFormattingTests: XCTestCase {
 
     func testFallbackValueIsNilForUnknownMetrics() {
         XCTAssertNil(MetricFormatting.fallbackValue(MetricIdentifier(rawValue: "battery"), report: report()))
+    }
+
+    // MARK: - fallbackValue basis
+
+    /// 8 GB used of 16 GB total: `.used` reports the used half, `.free`
+    /// reports the other half — the same figure the menu bar would show for
+    /// the same style, so the popover chip never contradicts it.
+    func testFallbackValueHonoursFreeBasisForMemory() {
+        let usedStyle = MetricStyle(basis: .used)
+        let freeStyle = MetricStyle(basis: .free)
+        XCTAssertEqual(MetricFormatting.fallbackValue(.memory, report: report(), style: usedStyle), "8.0 GB")
+        XCTAssertEqual(MetricFormatting.fallbackValue(.memory, report: report(), style: freeStyle), "8.0 GB")
+
+        let lopsided = report(memoryUsed: 12_884_901_888, memoryFree: 4_294_967_296) // 12 GB used, 4 GB free
+        XCTAssertEqual(MetricFormatting.fallbackValue(.memory, report: lopsided, style: usedStyle), "12.0 GB")
+        XCTAssertEqual(MetricFormatting.fallbackValue(.memory, report: lopsided, style: freeStyle), "4.0 GB")
+    }
+
+    /// Default style (no explicit basis) matches prior `.used` behavior.
+    func testFallbackValueDefaultStyleMatchesPriorMemoryBehavior() {
+        XCTAssertEqual(MetricFormatting.fallbackValue(.memory, report: report()), "8.0 GB")
+        XCTAssertEqual(MetricFormatting.fallbackValue(.memory, report: report(), style: .default), "8.0 GB")
+    }
+
+    /// `.free` with no free-byte data still returns `nil`, same as `.used`
+    /// with no used-byte data.
+    func testFallbackValueFreeBasisIsNilWithoutFreeData() {
+        let freeStyle = MetricStyle(basis: .free)
+        XCTAssertNil(MetricFormatting.fallbackValue(.memory, report: report(memoryFree: nil), style: freeStyle))
+    }
+
+    /// 256 GB used of 512 GB: `.free` reports the other 50%, same shape as
+    /// `.used` because this fixture is an even split, so a lopsided fixture
+    /// below is what actually proves the basis is honoured.
+    func testFallbackValueHonoursFreeBasisForDisk() {
+        let usedStyle = MetricStyle(basis: .used)
+        let freeStyle = MetricStyle(basis: .free)
+        let lopsided = DiskReport(
+            capacityBytes: 400_000_000_000,
+            usedBytes: 300_000_000_000,
+            freeBytes: 100_000_000_000
+        )
+        XCTAssertEqual(MetricFormatting.fallbackValue(.disk, report: report(disk: lopsided), style: usedStyle), "75%")
+        XCTAssertEqual(MetricFormatting.fallbackValue(.disk, report: report(disk: lopsided), style: freeStyle), "25%")
     }
 
     // MARK: - statusItemText
