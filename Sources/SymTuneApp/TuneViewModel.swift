@@ -242,8 +242,19 @@ final class TuneViewModel {
         var rows: [MetricRowData] = []
         rows.reserveCapacity(ordered.count)
         for id in ordered {
+            let style = preferences.metricStyles[id] ?? .default
+            // Only memory needs the total to convert a used-bytes history
+            // sample to free bytes; disk's history is already a percentage,
+            // whose free share is just the complement.
+            let totalBytes: UInt64? = {
+                guard id == .memory,
+                      let used = report.memory.usedBytes,
+                      let free = report.memory.freeBytes else { return nil }
+                return used + free
+            }()
+
             guard let stats = controller.metricsHistoryStats(for: id) else {
-                guard let fallback = MetricFormatting.fallbackValue(id, report: report) else { continue }
+                guard let fallback = MetricFormatting.fallbackValue(id, report: report, style: style) else { continue }
                 rows.append(MetricRowData(
                     id: id,
                     title: id.displayName,
@@ -254,12 +265,13 @@ final class TuneViewModel {
                 ))
                 continue
             }
+            let formatted = MetricFormatting.historyRowValues(id, stats: stats, style: style, totalBytes: totalBytes)
             rows.append(MetricRowData(
                 id: id,
                 title: id.displayName,
-                current: MetricFormatting.value(id, stats.current),
-                minimum: MetricFormatting.value(id, stats.min),
-                maximum: MetricFormatting.value(id, stats.max),
+                current: formatted.current,
+                minimum: formatted.minimum,
+                maximum: formatted.maximum,
                 samples: controller.metricsHistorySamples(for: id)
             ))
         }
@@ -282,6 +294,14 @@ final class TuneViewModel {
         statusItemSegments = segments
         statusItemText = MetricStyleFormatting.plainText(segments)
         onStatusItemTextChanged?(segments)
+    }
+
+    /// The configured display style for one metric, so surfaces outside the
+    /// history rows (e.g. the System Status chips) can honour the same
+    /// `basis` the menu bar and history card already do, without reaching
+    /// into ``PreferencesManager`` directly.
+    func metricStyle(for id: MetricIdentifier) -> MetricStyle {
+        preferences.metricStyles[id] ?? .default
     }
 
     private func orderedMetrics(
