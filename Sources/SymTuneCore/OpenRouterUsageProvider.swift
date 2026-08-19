@@ -123,7 +123,10 @@ public struct OpenRouterAPIStrategy: AIUsageStrategy, Sendable {
         }
 
         // Secondary meter: free-tier daily request rate limit.
-        if let rateLimit = key.rateLimit, let requests = rateLimit.requests {
+        // OpenRouter reports `-1` (or other non-negative-free sentinels) when
+        // no real request cap is configured; that carries no information, so
+        // omit the meter entirely rather than rendering a bogus negative limit.
+        if let rateLimit = key.rateLimit, let requests = rateLimit.requests, requests >= 0 {
             meters.append(AIUsageMeter(
                 label: "Requests",
                 used: nil,

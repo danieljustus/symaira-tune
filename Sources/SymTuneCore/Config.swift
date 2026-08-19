@@ -376,13 +376,16 @@ public struct TuneConfig: Equatable, Sendable {
                 .flatMap(MetricStyle.ValueScale.init(rawValue:))
             let unit = table[section, "\(id)_unit"]?.stringValue
                 .flatMap(MetricStyle.UnitStyle.init(rawValue:))
+            let basis = table[section, "\(id)_basis"]?.stringValue
+                .flatMap(MetricStyle.MetricBasis.init(rawValue:))
 
-            guard label != nil || scale != nil || unit != nil else { continue }
+            guard label != nil || scale != nil || unit != nil || basis != nil else { continue }
 
             styles[metric] = MetricStyle(
                 label: label ?? MetricStyle.default.label,
                 scale: scale ?? MetricStyle.default.scale,
-                unit: unit ?? MetricStyle.default.unit
+                unit: unit ?? MetricStyle.default.unit,
+                basis: basis ?? MetricStyle.default.basis
             )
         }
 
