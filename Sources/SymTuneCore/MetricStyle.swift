@@ -38,18 +38,33 @@ public struct MetricStyle: Equatable, Sendable {
         case hidden
     }
 
+    /// Which side of a used/free split the value reports.
+    ///
+    /// Not every metric has a free side to report: CPU and network have no
+    /// meaningful "free" quantity, so those ignore `basis` the same way they
+    /// ignore `scale`.
+    public enum MetricBasis: String, CaseIterable, Sendable {
+        /// What is occupied — the format the status item has always used.
+        case used
+        /// What is still available.
+        case free
+    }
+
     public var label: LabelStyle
     public var scale: ValueScale
     public var unit: UnitStyle
+    public var basis: MetricBasis
 
     public init(
         label: LabelStyle = .text,
         scale: ValueScale = .absolute,
-        unit: UnitStyle = .abbreviated
+        unit: UnitStyle = .abbreviated,
+        basis: MetricBasis = .used
     ) {
         self.label = label
         self.scale = scale
         self.unit = unit
+        self.basis = basis
     }
 
     /// What every metric renders as until the user changes it — the format the
@@ -85,6 +100,14 @@ extension MetricIdentifier {
     /// CPU is already a percentage; network throughput has no total to divide
     /// by. For those the scale control is inert and the UI disables it.
     public var supportsRelativeScale: Bool {
+        self == .memory || self == .disk
+    }
+
+    /// Whether ``MetricStyle/MetricBasis/free`` means anything here.
+    /// CPU and network have no free side to report, so `basis` is inert for
+    /// them the same way `scale` is — a UI control for it should disable
+    /// on the same basis.
+    public var supportsBasis: Bool {
         self == .memory || self == .disk
     }
 }
@@ -198,7 +221,12 @@ public enum MetricStyleFormatting {
             guard let used = report.memory.usedBytes else { return nil }
             if style.scale == .relative {
                 guard let free = report.memory.freeBytes, used + free > 0 else { return nil }
-                return percent(Double(used) / Double(used + free) * 100, style: style)
+                let share = style.basis == .free ? Double(free) : Double(used)
+                return percent(share / Double(used + free) * 100, style: style)
+            }
+            if style.basis == .free {
+                guard let free = report.memory.freeBytes else { return nil }
+                return bytes(Double(free), style: style)
             }
             return bytes(Double(used), style: style)
 
@@ -206,7 +234,11 @@ public enum MetricStyleFormatting {
             guard let disk = report.disk else { return nil }
             if style.scale == .relative {
                 guard disk.capacityBytes > 0 else { return nil }
-                return percent(Double(disk.usedBytes) / Double(disk.capacityBytes) * 100, style: style)
+                let share = style.basis == .free ? Double(disk.freeBytes) : Double(disk.usedBytes)
+                return percent(share / Double(disk.capacityBytes) * 100, style: style)
+            }
+            if style.basis == .free {
+                return bytes(Double(disk.freeBytes), style: style)
             }
             return bytes(Double(disk.usedBytes), style: style)
 

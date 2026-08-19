@@ -109,6 +109,75 @@ final class MetricStyleTests: XCTestCase {
         XCTAssertTrue(MetricIdentifier.disk.supportsRelativeScale)
     }
 
+    // MARK: - Basis
+
+    func testFreeBasisMemoryAbsoluteReportsWhatIsStillAvailable() {
+        // 8 GB free of 16 GB total.
+        XCTAssertEqual(
+            text([.memory], [.memory: MetricStyle(basis: .free)]),
+            "RAM 8.0G"
+        )
+    }
+
+    func testFreeBasisMemoryRelativeReportsTheFreeShare() {
+        let partial = report(memoryUsed: 4_294_967_296, memoryFree: 12_884_901_888) // 4 GB used, 12 GB free
+        XCTAssertEqual(
+            text([.memory], [.memory: MetricStyle(scale: .relative, basis: .free)], report: partial),
+            "RAM 75%"
+        )
+    }
+
+    func testFreeBasisDiskAbsoluteReportsWhatIsStillAvailable() {
+        let partial = report(disk: DiskReport(
+            capacityBytes: 549_755_813_888,
+            usedBytes: 137_438_953_472, // 128 GB used
+            freeBytes: 412_316_860_416 // 384 GB free
+        ))
+        XCTAssertEqual(
+            text([.disk], [.disk: MetricStyle(basis: .free)], report: partial),
+            "Disk 384.0G"
+        )
+    }
+
+    func testFreeBasisDiskRelativeReportsTheFreeShareOfCapacity() {
+        let partial = report(disk: DiskReport(
+            capacityBytes: 549_755_813_888,
+            usedBytes: 137_438_953_472, // 128 GB used
+            freeBytes: 412_316_860_416 // 384 GB free
+        ))
+        XCTAssertEqual(
+            text([.disk], [.disk: MetricStyle(scale: .relative, basis: .free)], report: partial),
+            "Disk 75%"
+        )
+    }
+
+    func testUsedBasisIsTheDefaultAndMatchesPriorBehavior() {
+        XCTAssertEqual(MetricStyle.default.basis, .used)
+        XCTAssertEqual(
+            text([.memory], [.memory: MetricStyle()]),
+            text([.memory], [.memory: MetricStyle(basis: .used)])
+        )
+    }
+
+    func testBasisIsInertForMetricsWithoutAUsedFreeSplit() {
+        XCTAssertEqual(
+            text([.cpu], [.cpu: MetricStyle(basis: .free)]),
+            text([.cpu], [.cpu: MetricStyle(basis: .used)])
+        )
+        XCTAssertFalse(MetricIdentifier.cpu.supportsBasis)
+        XCTAssertFalse(MetricIdentifier.network.supportsBasis)
+        XCTAssertTrue(MetricIdentifier.memory.supportsBasis)
+        XCTAssertTrue(MetricIdentifier.disk.supportsBasis)
+    }
+
+    func testFreeBasisMemoryFallsBackToNothingWhenFreeIsUnknown() {
+        let partial = report(memoryFree: nil)
+        XCTAssertEqual(
+            text([.memory], [.memory: MetricStyle(basis: .free)], report: partial),
+            ""
+        )
+    }
+
     // MARK: - Units
 
     func testFullUnitsSpellOutTheSuffix() {
