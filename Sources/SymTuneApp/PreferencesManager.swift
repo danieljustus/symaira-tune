@@ -229,6 +229,7 @@ final class PreferencesManager: ObservableObject {
             lines.append("\(metric.rawValue)_label = \"\(style.label.rawValue)\"")
             lines.append("\(metric.rawValue)_scale = \"\(style.scale.rawValue)\"")
             lines.append("\(metric.rawValue)_unit = \"\(style.unit.rawValue)\"")
+            lines.append("\(metric.rawValue)_basis = \"\(style.basis.rawValue)\"")
         }
 
         return lines.joined(separator: "\n")
