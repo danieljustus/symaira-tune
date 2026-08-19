@@ -114,6 +114,58 @@ final class SymTuneCLITests: XCTestCase {
         XCTAssert(output.contains("provider_id"))
     }
 
+    // MARK: - Always-JSON read commands (doctor, sensors, battery, displays, permissions)
+    //
+    // These five commands take no options: they should honour --help/-h
+    // instead of running, and reject any other argument with a usage error
+    // (exit code 2) instead of silently ignoring it.
+
+    private static let alwaysJSONCommands = ["doctor", "sensors", "battery", "displays", "permissions"]
+
+    func testAlwaysJSONCommandsHelp() throws {
+        for command in Self.alwaysJSONCommands {
+            let output = try runCommand(args: [command, "--help"])
+            XCTAssert(output.contains("Usage: symtune \(command)"), "\(command) --help: \(output)")
+            // Help output must not be the JSON report.
+            XCTAssertFalse(output.contains("{"), "\(command) --help printed JSON instead of help: \(output)")
+        }
+    }
+
+    func testAlwaysJSONCommandsHelpShort() throws {
+        for command in Self.alwaysJSONCommands {
+            let output = try runCommand(args: [command, "-h"])
+            XCTAssert(output.contains("Usage: symtune \(command)"), "\(command) -h: \(output)")
+            XCTAssertFalse(output.contains("{"), "\(command) -h printed JSON instead of help: \(output)")
+        }
+    }
+
+    func testAlwaysJSONCommandsUnknownFlag() throws {
+        for command in Self.alwaysJSONCommands {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: symtuneBinary)
+            process.arguments = [command, "--bogus"]
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+
+            try process.run()
+            process.waitUntilExit()
+
+            let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+
+            XCTAssertEqual(process.terminationStatus, 2,
+                            "\(command) --bogus: expected ExitCode.usage (2), got \(process.terminationStatus). stderr: \(errorOutput)")
+            XCTAssert(errorOutput.contains("unexpected argument"), "\(command) --bogus: \(errorOutput)")
+            XCTAssert(errorOutput.contains("--bogus"), "\(command) --bogus: \(errorOutput)")
+        }
+    }
+
+    func testDoctorJSON() throws {
+        let output = try runCommand(args: ["doctor"])
+        XCTAssert(output.contains("{"))
+    }
+
     // MARK: - Helpers
 
     /// Run `symtune` with the given arguments and return stderr (merged with stdout).
