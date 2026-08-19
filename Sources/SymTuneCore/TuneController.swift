@@ -117,7 +117,7 @@ public final class TuneController: Sendable {
         result: String,
         error: Error? = nil
     ) {
-        let reason = error != nil ? "\(error!)" : nil
+        let reason = error != nil ? SecretRedactor.redact("\(error!)") : nil
         let event = HistoryEvent(
             timestamp: Date(),
             action: action,
