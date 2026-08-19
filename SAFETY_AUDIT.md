@@ -29,7 +29,7 @@ Relevant implementation:
 - [`SMCRestoreTracker.swift`](Sources/SymTuneCore/SMCRestoreTracker.swift) — SMC override capture and restoration;
 - [`FanControlService.swift`](Sources/SymTuneCore/FanControlService.swift) — fan mode, target RPM, and auto-restore;
 - [`ChargeLimitService.swift`](Sources/SymTuneCore/ChargeLimitService.swift) — platform-specific charge-limit SMC writes;
-- [`MCPTools.swift`](Sources/SymTuneMCP/MCPTools.swift) — MCP schemas and write-tool routing;
+- [`TuneTools.swift`](Sources/SymTuneMCP/TuneTools.swift) — MCP schemas and write-tool routing;
 - [`SMCHelperProtocol.swift`](Sources/SymTuneCore/SMCHelperProtocol.swift) — optional future privileged-helper contract.
 
 ## Threat model
@@ -38,7 +38,7 @@ The safety model addresses:
 
 1. **Malformed or extreme input** from a user, script, profile, or AI agent.
 2. **An over-permissioned local MCP client** invoking a write tool without a
-   human in the loop (mitigated by explicit `SYMTUNE_MCP_MODE=read-only` / `[mcp] mode = "read-only"` gating in [`Config.swift`](Sources/SymTuneCore/Config.swift) and [`MCPServer.swift`](Sources/SymTuneMCP/MCPServer.swift)).
+   human in the loop (mitigated by explicit `SYMTUNE_MCP_MODE=read-only` / `[mcp] mode = "read-only"` gating in [`Config.swift`](Sources/SymTuneCore/Config.swift) and [`TuneMCPServer.swift`](Sources/SymTuneMCP/TuneMCPServer.swift)).
 3. **Stale process state**, where a temporary override would otherwise remain
    after `symtune` exits.
 4. **Unsupported hardware or missing privileges**, where pretending that a
@@ -77,8 +77,8 @@ When write tools are enabled (`SYMTUNE_MCP_MODE=full`, default):
 
 The schema is only a client-facing contract. The controller is the enforcement
 boundary. MCP transport and JSON-RPC wiring are implemented in
-[`MCPServer.swift`](Sources/SymTuneMCP/MCPServer.swift); tool schemas and calls
-are in [`MCPTools.swift`](Sources/SymTuneMCP/MCPTools.swift).
+[`TuneMCPServer.swift`](Sources/SymTuneMCP/TuneMCPServer.swift); tool schemas and calls
+are in [`TuneTools.swift`](Sources/SymTuneMCP/TuneTools.swift).
 
 ### Configuration boundary
 
