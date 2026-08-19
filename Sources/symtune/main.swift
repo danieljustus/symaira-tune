@@ -18,7 +18,7 @@ READ COMMANDS
   displays               Displays with EDR headroom / extended-brightness capability (JSON).
   permissions            Permission & SMC write status (JSON).
   metrics [--json]       System metrics: CPU, memory, disk, network (JSON).
-  processes [--sort cpu|memory] [--limit N] [--json]
+  processes [--sort cpu|memory] [--limit N] [--interval <seconds>] [--json]
                          Processes using the most CPU / memory (samples twice).
   ai-usage [--json]      AI subscription/token usage per provider (read-only).
 
