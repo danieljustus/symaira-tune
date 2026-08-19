@@ -125,9 +125,11 @@ func parseInt(_ args: [String], command: String) throws -> Int {
 }
 
 func runAwake(_ args: [String], controller: TuneController) throws {
+    let options = try AwakeOptions.parseOptions(args)
+
     // Handle subcommands first.
-    if let subcommand = args.first, subcommand == "status" || subcommand == "off" {
-        if subcommand == "status" {
+    if let subcommand = options.subcommand {
+        if subcommand == .status {
             try emitJSON(controller.keepAwakeSessionStatus())
         } else {
             controller.endKeepAwakeSession()
@@ -136,51 +138,10 @@ func runAwake(_ args: [String], controller: TuneController) throws {
         return
     }
 
-    var seconds: Double?
-    var preventDisplaySleep = false
-    var forDuration: String?
-    var untilTime: String?
-    var index = 0
-    while index < args.count {
-        switch args[index] {
-        case "--display":
-            preventDisplaySleep = true
-        case "--seconds", "-s":
-            index += 1
-            guard index < args.count, let value = Double(args[index]) else {
-                throw TuneError.usage("awake --seconds requires a number.")
-            }
-            seconds = value
-        case "--for":
-            index += 1
-            guard index < args.count else {
-                throw TuneError.usage("awake --for requires a duration, e.g. 30m, 2h.")
-            }
-            forDuration = args[index]
-        case "--until":
-            index += 1
-            guard index < args.count else {
-                throw TuneError.usage("awake --until requires a time in HH:MM format.")
-            }
-            untilTime = args[index]
-        default:
-            throw TuneError.usage("awake: unknown option '\(args[index])'.")
-        }
-        index += 1
-    }
-
-    // Resolve duration from --for or --until.
-    if let forDuration {
-        seconds = try DurationParser.parse(forDuration)
-    }
-    if let untilTime {
-        seconds = try parseUntilTime(untilTime)
-    }
-
-    let token = try controller.beginKeepAwake(reason: "symtune awake", preventDisplaySleep: preventDisplaySleep)
+    let token = try controller.beginKeepAwake(reason: "symtune awake", preventDisplaySleep: options.preventDisplaySleep)
     defer { controller.endKeepAwake(token) }
 
-    if let seconds {
+    if let seconds = options.seconds {
         emitErr("symtune: holding wake assertion for \(seconds)s…")
         // Double-check: don't block beyond a reasonable maximum.
         let capped = min(seconds, 86_400) // 24 hours max
@@ -192,39 +153,6 @@ func runAwake(_ args: [String], controller: TuneController) throws {
         emitErr("symtune: holding wake assertion (Ctrl-C to release)…")
         RunLoop.current.run()
     }
-}
-
-/// Parse HH:MM into seconds from now. Returns nil if the time has already passed
-/// (the computed seconds would be negative).
-private func parseUntilTime(_ raw: String) throws -> TimeInterval {
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    let parts = trimmed.split(separator: ":", maxSplits: 1)
-    guard parts.count == 2,
-          let hour = Int(parts[0]),
-          let minute = Int(parts[1]),
-          hour >= 0, hour <= 23,
-          minute >= 0, minute <= 59
-    else {
-        throw TuneError.usage("awake --until: expected HH:MM (24-hour), got '\(trimmed)'.")
-    }
-
-    let now = Date()
-    let cal = Calendar.current
-    var components = cal.dateComponents([.year, .month, .day], from: now)
-    components.hour = hour
-    components.minute = minute
-    components.second = 0
-
-    guard var target = cal.date(from: components) else {
-        throw TuneError.usage("awake --until: could not compute target date from \(hour):\(minute).")
-    }
-
-    // If the time has already passed today, schedule for tomorrow.
-    if target <= now {
-        target = target.addingTimeInterval(86_400)
-    }
-
-    return target.timeIntervalSince(now)
 }
 
 func runProfile(_ args: [String], controller: TuneController) throws {
@@ -276,38 +204,17 @@ func emitNDJSON<T: Encodable>(_ value: T) throws {
 }
 
 func runStatus(_ args: [String], controller: TuneController) throws {
-    var isWatch = false
-    var interval: TimeInterval = 1.0
-    var isJson = false
+    let options = try StatusOptions.parseOptions(args)
 
-    var index = 0
-    while index < args.count {
-        switch args[index] {
-        case "--watch":
-            isWatch = true
-        case "--interval":
-            index += 1
-            guard index < args.count else {
-                throw TuneError.usage("status: --interval requires a value.")
-            }
-            interval = try DurationParser.parse(args[index])
-        case "--json":
-            isJson = true
-        default:
-            throw TuneError.usage("status: unknown option '\(args[index])'")
-        }
-        index += 1
-    }
-
-    if isWatch {
+    if options.isWatch {
         while true {
             let report = controller.statusReport()
             try emitNDJSON(report)
-            Thread.sleep(forTimeInterval: interval)
+            Thread.sleep(forTimeInterval: options.interval)
         }
     } else {
         let report = controller.statusReport()
-        if isJson {
+        if options.isJson {
             try emitJSON(report)
         } else {
             emit("symtune health: \(report.healthScoreMsg) (Score: \(report.healthScore)/100)")
@@ -354,28 +261,10 @@ func runStatus(_ args: [String], controller: TuneController) throws {
 }
 
 func runHistory(_ args: [String], controller: TuneController) throws {
-    var isJson = false
-    var limit: Int? = 100
+    let options = try HistoryOptions.parseOptions(args)
 
-    var index = 0
-    while index < args.count {
-        switch args[index] {
-        case "--json":
-            isJson = true
-        case "--limit", "-n":
-            index += 1
-            guard index < args.count, let val = Int(args[index]) else {
-                throw TuneError.usage("history: --limit requires an integer value")
-            }
-            limit = val
-        default:
-            throw TuneError.usage("history: unknown option '\(args[index])'")
-        }
-        index += 1
-    }
-
-    let events = controller.getHistory(limit: limit)
-    if isJson {
+    let events = controller.getHistory(limit: options.limit)
+    if options.isJson {
         try emitJSON(events)
     } else {
         if events.isEmpty {
