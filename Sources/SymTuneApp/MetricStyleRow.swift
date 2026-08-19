@@ -41,6 +41,14 @@ struct MetricStyleRow: View {
                 }
             }
 
+            stylePicker("Basis", selection: style.basis) { basis in
+                basis == .used ? "Used" : "Free"
+            }
+            // CPU and network have no free side to report, so this control is
+            // inert for them the same way the Value picker is.
+            .disabled(!metric.supportsBasis)
+            .opacity(metric.supportsBasis ? 1 : 0.4)
+
             Spacer()
 
             Text(preview)
