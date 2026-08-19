@@ -101,7 +101,7 @@ struct LiveSummaryStrip: View {
 
     private var memoryText: String {
         guard let report = model.metrics else { return "—" }
-        return MetricFormatting.fallbackValue(.memory, report: report) ?? "—"
+        return MetricFormatting.fallbackValue(.memory, report: report, style: model.metricStyle(for: .memory)) ?? "—"
     }
 
     /// Sensors are only polled while the panel is open, so the very first frame
