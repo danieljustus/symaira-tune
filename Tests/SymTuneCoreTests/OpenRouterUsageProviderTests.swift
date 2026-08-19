@@ -75,6 +75,34 @@ final class OpenRouterUsageProviderTests: XCTestCase {
         XCTAssertFalse(snapshot.meters.contains { $0.label == "Key limit" })
     }
 
+    func testOmitsRequestsMeterWhenRateLimitIsNotReal() async throws {
+        let network = FakeNetwork(result: .success((try fixture("openrouter-no-request-limit"), httpResponse(200))))
+        let strategy = OpenRouterAPIStrategy(
+            apiKey: "sk-or-v1-test",
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!,
+            network: network
+        )
+
+        let snapshot = try await strategy.fetch()
+
+        XCTAssertFalse(snapshot.meters.contains { $0.label == "Requests" })
+    }
+
+    func testKeepsRequestsMeterWhenRateLimitIsReal() async throws {
+        let network = FakeNetwork(result: .success((try fixture("openrouter-credits"), httpResponse(200))))
+        let strategy = OpenRouterAPIStrategy(
+            apiKey: "sk-or-v1-test",
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!,
+            network: network
+        )
+
+        let snapshot = try await strategy.fetch()
+
+        let meter = snapshot.meters.first { $0.label == "Requests" }
+        XCTAssertNotNil(meter)
+        XCTAssertEqual(meter?.limit, 500)
+    }
+
     func testProviderUnconfiguredWithoutKey() {
         let provider = OpenRouterUsageProvider(
             apiKey: "",
