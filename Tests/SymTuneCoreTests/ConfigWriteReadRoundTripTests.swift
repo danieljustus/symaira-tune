@@ -19,6 +19,8 @@ final class ConfigWriteReadRoundTripTests: XCTestCase {
         cpu_label = "icon"
         cpu_scale = "absolute"
         cpu_unit = "full"
+        cpu_basis = "free"
+        memory_basis = "free"
 
         [popover]
         cards_version = 2
@@ -27,8 +29,11 @@ final class ConfigWriteReadRoundTripTests: XCTestCase {
         let table = TOMLParser().parse(written)
 
         let styles = TuneConfig.parseMetricStyles(table: table, section: "metrics")
-        XCTAssertEqual(styles[.cpu], MetricStyle(label: .icon, scale: .absolute, unit: .full))
-        XCTAssertNil(styles[.memory])
+        XCTAssertEqual(styles[.cpu], MetricStyle(label: .icon, scale: .absolute, unit: .full, basis: .free))
+        // A basis-only override (no label/scale/unit keys) must still round-trip
+        // rather than being silently dropped by the "all axes absent" guard.
+        XCTAssertEqual(styles[.memory], MetricStyle(basis: .free))
+        XCTAssertNil(styles[.disk])
 
         // A list written at the current vocabulary version is authoritative:
         // the two cards left out stay out.

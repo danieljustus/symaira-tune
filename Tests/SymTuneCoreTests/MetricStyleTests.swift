@@ -242,6 +242,19 @@ final class MetricStyleTests: XCTestCase {
         XCTAssertNil(styles[.disk], "a metric with no style keys stays absent")
     }
 
+    func testBasisOnlyOverrideIsNotDroppedByTheAllAxesAbsentGuard() {
+        let toml = """
+        [metrics]
+        disk_basis = "free"
+        """
+        let table = TOMLParser().parse(toml)
+        let styles = TuneConfig.parseMetricStyles(table: table, section: "metrics")
+
+        XCTAssertEqual(styles[.disk]?.basis, .free)
+        XCTAssertEqual(styles[.disk]?.label, MetricStyle.default.label, "unspecified axes keep the default")
+        XCTAssertNil(styles[.cpu], "a metric with no style keys stays absent")
+    }
+
     func testUnknownStyleValuesFallBackToTheDefaultAxis() {
         let table = TOMLParser().parse("""
         [metrics]
