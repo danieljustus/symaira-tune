@@ -249,6 +249,9 @@ public struct KimiAPIStrategy: AIUsageStrategy, Sendable {
             throw KimiError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 {
+                throw AIUsageError.rateLimited("kimi", retryAfter: retryAfterSeconds(from: http))
+            }
             throw KimiError.httpStatus(http.statusCode)
         }
         return data
@@ -326,6 +329,9 @@ public struct KimiWebStrategy: AIUsageStrategy, Sendable {
             throw KimiError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 {
+                throw AIUsageError.rateLimited("kimi", retryAfter: retryAfterSeconds(from: http))
+            }
             throw KimiError.httpStatus(http.statusCode)
         }
         return try KimiUsageParsing.webSnapshot(providerID: "kimi", data: data, source: source)
@@ -486,6 +492,17 @@ extension KimiUsageParsing {
         plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: value)
     }
+}
+
+// MARK: - Rate limit parsing
+
+/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
+/// `nil` when the header is absent or not a plain integer/decimal — the
+/// HTTP-date form is not handled since 429 responses conventionally use
+/// delta-seconds.
+private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
+    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
 }
 
 // MARK: - Errors

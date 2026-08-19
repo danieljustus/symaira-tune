@@ -330,8 +330,22 @@ public struct AntigravityLocalProbeStrategy: AIUsageStrategy, Sendable {
             throw AntigravityError.probeFailed("invalid response")
         }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 {
+                throw AIUsageError.rateLimited("antigravity", retryAfter: retryAfterSeconds(from: http))
+            }
             throw AntigravityError.httpStatus(http.statusCode)
         }
         return data
     }
+}
+
+// MARK: - Rate limit parsing
+
+/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
+/// `nil` when the header is absent or not a plain integer/decimal — the
+/// HTTP-date form is not handled since 429 responses conventionally use
+/// delta-seconds.
+private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
+    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
 }

@@ -12,12 +12,12 @@ final class CodexUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://chatgpt.com/backend-api/wham/usage")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -140,5 +140,56 @@ final class CodexUsageProviderTests: XCTestCase {
 
         XCTAssertEqual(network.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer sk-ant-oat-test")
         XCTAssertEqual(network.lastRequest?.url?.path, "/backend-api/wham/usage")
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "17"])
+        )))
+        let strategy = CodexOAuthStrategy(
+            accessToken: "sk-ant-oat-test",
+            accountLabel: "test",
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "codex")
+            XCTAssertEqual(retryAfter, 17)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testHTTP429WithoutRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = CodexOAuthStrategy(
+            accessToken: "sk-ant-oat-test",
+            accountLabel: "test",
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "codex")
+            XCTAssertNil(retryAfter)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 }

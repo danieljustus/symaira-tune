@@ -12,12 +12,12 @@ final class MoonshotUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://api.moonshot.ai/v1/users/me/balance")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -131,5 +131,56 @@ final class MoonshotUsageProviderTests: XCTestCase {
         _ = try await strategy.fetch()
 
         XCTAssertEqual(network.lastRequest?.url?.host, "api.moonshot.cn")
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    func testHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "5"])
+        )))
+        let strategy = MoonshotAPIStrategy(
+            apiKey: "sk-moonshot-test",
+            region: .international,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "moonshot")
+            XCTAssertEqual(retryAfter, 5)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    func testHTTP429WithoutRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = MoonshotAPIStrategy(
+            apiKey: "sk-moonshot-test",
+            region: .international,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "moonshot")
+            XCTAssertNil(retryAfter)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 }

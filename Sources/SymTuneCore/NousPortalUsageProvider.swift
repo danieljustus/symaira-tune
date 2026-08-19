@@ -173,6 +173,9 @@ public struct NousPortalAPIStrategy: AIUsageStrategy, Sendable {
             throw NousPortalError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 {
+                throw AIUsageError.rateLimited("nous", retryAfter: retryAfterSeconds(from: http))
+            }
             // A 401/403 means the invoke JWT is no longer valid: re-auth
             // needed, and we never attempt a silent refresh.
             throw NousPortalError.httpStatus(http.statusCode)
@@ -262,6 +265,17 @@ struct NousPaidServiceAccess: Decodable {
     let subscriptionCreditsRemaining: Double?
     let purchasedCreditsRemaining: Double?
     let totalUsableCredits: Double?
+}
+
+// MARK: - Rate limit parsing
+
+/// Parses the `Retry-After` header's delta-seconds form (e.g. `"30"`);
+/// `nil` when the header is absent or not a plain integer/decimal — the
+/// HTTP-date form is not handled since 429 responses conventionally use
+/// delta-seconds.
+private func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+    guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
+    return TimeInterval(value.trimmingCharacters(in: .whitespacesAndNewlines))
 }
 
 // MARK: - Errors

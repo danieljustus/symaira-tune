@@ -31,12 +31,12 @@ final class OpenRouterUsageProviderTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private func httpResponse(_ status: Int) -> HTTPURLResponse {
+    private func httpResponse(_ status: Int, headers: [String: String]? = nil) -> HTTPURLResponse {
         HTTPURLResponse(
             url: URL(string: "https://openrouter.ai/api/v1/auth/key")!,
             statusCode: status,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headers
         )!
     }
 
@@ -174,5 +174,92 @@ final class OpenRouterUsageProviderTests: XCTestCase {
         XCTAssertEqual(auth, "Bearer sk-or-v1-test-key")
         let title = network.lastRequest?.value(forHTTPHeaderField: "X-Title")
         XCTAssertEqual(title, "symtune")
+    }
+
+    // MARK: 429 → AIUsageError.rateLimited (issue #318)
+
+    /// Drives the real `OpenRouterAPIStrategy` through a stubbed network
+    /// service returning HTTP 429 with a `Retry-After` header, and asserts
+    /// the thrown error is `AIUsageError.rateLimited` carrying the parsed
+    /// delay — not the provider's generic `httpStatus` error. This is what
+    /// lets `AIUsageService` actually engage the backoff it already
+    /// implements (`if case .rateLimited(_, let retryAfter) = error { ... }`).
+    func testHTTP429MapsToRateLimitedWithRetryAfterHeader() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "42"])
+        )))
+        let strategy = OpenRouterAPIStrategy(
+            apiKey: "sk-or-v1-test",
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "openrouter")
+            XCTAssertEqual(retryAfter, 42)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    /// Same 429 mapping, but without a `Retry-After` header: `retryAfter`
+    /// must come through as `nil` (the caller — `AIUsageService` — supplies
+    /// its own default backoff in that case) rather than a bogus value.
+    func testHTTP429WithoutRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((Data(), httpResponse(429))))
+        let strategy = OpenRouterAPIStrategy(
+            apiKey: "sk-or-v1-test",
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(let id, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "openrouter")
+            XCTAssertNil(retryAfter)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
+    }
+
+    /// An unparseable `Retry-After` value (not delta-seconds) must degrade
+    /// to `nil` rather than crash or propagate garbage.
+    func testHTTP429WithUnparseableRetryAfterHeaderYieldsNilRetryAfter() async throws {
+        let network = FakeNetwork(result: .success((
+            Data(),
+            httpResponse(429, headers: ["Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"])
+        )))
+        let strategy = OpenRouterAPIStrategy(
+            apiKey: "sk-or-v1-test",
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!,
+            network: network
+        )
+
+        do {
+            _ = try await strategy.fetch()
+            XCTFail("expected an error")
+        } catch let error as AIUsageError {
+            guard case .rateLimited(_, let retryAfter) = error else {
+                XCTFail("expected .rateLimited, got \(error)")
+                return
+            }
+            XCTAssertNil(retryAfter)
+        } catch {
+            XCTFail("unexpected error type: \(error)")
+        }
     }
 }
