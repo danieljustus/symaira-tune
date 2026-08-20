@@ -64,7 +64,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SymTuneCLITests",
-            dependencies: ["SymTuneCore", "SymTuneMCP", "symtune"]
+            dependencies: ["SymTuneCore", "SymTuneMCP"]
         ),
     ],
     swiftLanguageModes: [.v6]

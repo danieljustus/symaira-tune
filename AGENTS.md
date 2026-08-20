@@ -17,11 +17,12 @@ swift run -q symtune doctor
 
 **Coverage scope:** `make coverage` reports `SymTuneCore` and `SymTuneMCP` only.
 The `symtune` executable is *not* instrumented — its tests spawn the built
-binary, so `Sources/symtune/*` is absent from the report rather than counted as
-uncovered. Logic that should be measured therefore belongs in a library target
-(see `ProcessListingPresentation` for the pattern: the CLI keeps argument
-plumbing and I/O, the core owns the decisions); the same applies to
-`SymTuneApp`, which has no test target at all.
+binary, so `Sources/symtune/*` is absent from the report rather than counted
+as uncovered. Logic that should be measured therefore belongs in a library
+target (see `Sources/SymTuneCore/ProcessListingPresentation.swift` for the
+pattern: the CLI keeps argument plumbing and I/O, the core owns the
+decisions); the same applies to `SymTuneApp`, which has no test target at
+all.
 
 Local toolchain note: if the Command Line Tools `swift` is broken (dyld errors),
 build with the Xcode(-beta) toolchain:
