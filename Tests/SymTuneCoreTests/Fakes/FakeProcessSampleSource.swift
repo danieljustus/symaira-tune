@@ -16,11 +16,17 @@ final class FakeProcessSampleSource: ProcessSampleSource, @unchecked Sendable {
         self.pending = sets
     }
 
-    func sample() -> ProcessSampleSet {
+    func sample(knownNames: [Int32: String]) -> (set: ProcessSampleSet, resolvedNames: [Int32: String]) {
         lock.lock()
         defer { lock.unlock() }
         sampleCount += 1
-        return pending.count == 1 ? pending[0] : pending.removeFirst()
+        let set = pending.count == 1 ? pending[0] : pending.removeFirst()
+        // Treat every name as freshly resolved so the caller's cache mirrors
+        // this scripted sweep.
+        var resolved: [Int32: String] = [:]
+        resolved.reserveCapacity(set.samples.count)
+        for sample in set.samples { resolved[sample.pid] = sample.name }
+        return (set, resolved)
     }
 }
 

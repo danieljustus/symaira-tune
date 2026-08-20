@@ -33,6 +33,25 @@ final class ProcessListingPresentationTests: XCTestCase {
         XCTAssertEqual(options.sortedBy, .memory)
     }
 
+    func testIntervalDefaultsToOneSecondAndParsesADuration() throws {
+        XCTAssertEqual(try ProcessListingPresentation.parseOptions([]).interval, 1.0)
+
+        let options = try ProcessListingPresentation.parseOptions(["--interval", "2.5"])
+        XCTAssertEqual(options.interval, 2.5, accuracy: 0.0001)
+    }
+
+    func testIntervalRequiresAPositiveDuration() {
+        assertUsageError(["--interval"], contains: "--interval")
+        assertUsageError(["--interval", "0"], contains: "--interval")
+        assertUsageError(["--interval", "-1"], contains: "--interval")
+        assertUsageError(["--interval", "abc"], contains: "--interval")
+    }
+
+    func testHelpDocumentsTheIntervalFlag() {
+        let usage = ProcessListingPresentation.usageLines.joined(separator: "\n")
+        XCTAssertTrue(usage.contains("--interval"), usage)
+    }
+
     func testHelpShortCircuitsBeforeAnyOtherParsing() throws {
         // `--help` must win even next to nonsense, so `processes --help` always
         // explains itself instead of erroring.
