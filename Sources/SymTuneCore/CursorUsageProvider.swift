@@ -65,6 +65,44 @@ public struct CursorUsageProvider: AIUsageProvider, Sendable {
         self.appAuthStore = CursorAppAuthStore(dbPath: vscdbPath)
         self.network = network
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            sourceLabel: "Cursor cookie (CURSOR_COOKIE) or Cursor.app auth"
+        )
+    }
+
+    /// Reads the Cursor auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let store = CursorAppAuthStore()
+        if let session = store.loadSession(), !session.accessToken.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Signed in via Cursor.app",
+                source: "local"
+            )
+        }
+        let envCookie = ProcessInfo.processInfo.environment["CURSOR_COOKIE"]
+        let keychainCookie = KeychainCredentials.read(
+            service: "com.symaira.symtune",
+            account: "cursor-cookie"
+        )
+        if let cookie = envCookie ?? keychainCookie, !cookie.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Cookie configured (CURSOR_COOKIE or Keychain)",
+                source: "keychain"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No Cursor credentials found — set CURSOR_COOKIE or sign in to Cursor.app",
+            source: nil
+        )
+    }
 }
 
 // MARK: - Rate limit parsing

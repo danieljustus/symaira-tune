@@ -54,6 +54,43 @@ public struct CodexUsageProvider: AIUsageProvider, Sendable {
     public static func all() -> [CodexUsageProvider] {
         [CodexUsageProvider()]
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            sourceLabel: "Codex CLI OAuth token (~/.codex/auth.json)"
+        )
+    }
+
+    /// Reads the Codex OAuth auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let resolvedHome = ProcessInfo.processInfo.environment["CODEX_HOME"]
+            ?? (NSHomeDirectory() + "/.codex")
+        let store = CodexAuthStore()
+        let token = store.readAccessToken(home: resolvedHome)
+        if let token, !token.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Signed in via Codex CLI OAuth",
+                source: "file"
+            )
+        }
+        let authURL = URL(fileURLWithPath: resolvedHome).appendingPathComponent("auth.json")
+        if FileManager.default.fileExists(atPath: authURL.path) {
+            return ExternalAuthState(
+                status: .expired,
+                detail: "Codex auth file found but no valid token — re-auth with the Codex CLI",
+                source: "file"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No Codex credentials found — sign in with the Codex CLI",
+            source: nil
+        )
+    }
 }
 
 // MARK: - Auth store (read-only)

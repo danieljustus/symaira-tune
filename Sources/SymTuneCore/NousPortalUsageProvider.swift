@@ -49,6 +49,33 @@ public struct NousPortalUsageProvider: AIUsageProvider, Sendable {
         self.accessToken = accessToken ?? authStore.readAccessToken() ?? ""
         self.network = network
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            sourceLabel: "Hermes CLI auth store (~/.hermes/auth.json)"
+        )
+    }
+
+    /// Reads the Nous Portal auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let store = NousAuthStore()
+        let token = store.readAccessToken()
+        if let token, !token.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Signed in via Hermes CLI auth store",
+                source: "file"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No Nous Portal credentials found — sign in with the Hermes CLI",
+            source: nil
+        )
+    }
 }
 
 // MARK: - Auth store (read-only)

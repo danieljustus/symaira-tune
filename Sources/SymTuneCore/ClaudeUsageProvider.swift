@@ -97,6 +97,51 @@ public struct ClaudeUsageProvider: AIUsageProvider, Sendable {
         }
         self.network = network
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .multi([
+                .apiKey(account: "anthropic-admin-key"),
+                .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            ]),
+            sourceLabel: "Admin API key (ANTHROPIC_ADMIN_KEY) or Claude Code OAuth"
+        )
+    }
+
+    /// Reads the Claude auth state for the preferences UI — side-effect-free.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let token = ClaudeOAuthCredentials.read(keychainPromptPolicy: .never)
+        if let token, !token.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Signed in via Claude Code OAuth token",
+                source: "oauth"
+            )
+        }
+        // Check for the known pitfall: Keychain entry with MCP-OAuth only.
+        if ClaudeOAuthCredentials.keychainEntryExists() {
+            return ExternalAuthState(
+                status: .partial,
+                detail: "Keychain entry holds only MCP OAuth state — re-auth with the Claude CLI",
+                source: "keychain"
+            )
+        }
+        // Check file fallback.
+        if let fileToken = ClaudeOAuthCredentials.fileToken() {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Signed in via Claude Code OAuth token (file)",
+                source: "file"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No Claude credentials found — add an admin key or sign in with the Claude CLI",
+            source: nil
+        )
+    }
 }
 
 // MARK: - OAuth credentials
@@ -112,6 +157,20 @@ enum ClaudeOAuthCredentials {
             return fromKeychain
         }
         return fileToken()
+    }
+
+    /// Returns true when a Keychain entry for `Claude Code-credentials`
+    /// exists at all — used to detect the MCP-OAuth-only partial state.
+    static func keychainEntryExists() -> Bool {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecReturnData as String: false,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        return status == errSecSuccess
     }
 
     /// Reads `claudeAiOauth` from the `Claude Code-credentials` Keychain

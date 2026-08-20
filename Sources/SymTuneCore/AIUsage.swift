@@ -127,6 +127,72 @@ public protocol AIUsageProvider: Sendable {
     /// Ordered fallback strategies; the first success is the snapshot.
     var strategies: [any AIUsageStrategy] { get }
     func fetch() async throws -> AIUsageSnapshot
+    /// Describes the provider's credential model for the preferences UI
+    /// (issue #360). A `nil` value means the provider manages its own auth
+    /// state externally and the UI renders no input field.
+    var credentialDescriptor: AIUsageCredentialDescriptor? { get }
+}
+
+/// Describes how a provider's credentials are sourced, for the preferences UI.
+/// Issue #360: each provider declares its auth kind so the UI can render the
+/// correct input (or a "signed in via …" / "re-auth needed" hint).
+public struct AIUsageCredentialDescriptor: Sendable {
+    /// How the user supplies this provider's credential.
+    public enum AuthKind: Sendable {
+        /// A plain API key entered in a SecureField, stored in the Keychain.
+        case apiKey(account: String)
+        /// The credential comes from an external CLI/OAuth flow (e.g.
+        /// Claude Code, Codex, Cursor). The UI shows the auth state instead
+        /// of an input field.
+        case externalToken(resolver: ExternalTokenResolver)
+        /// Multiple sources — the provider picks whichever is available.
+        /// The UI shows the auth state and notes which source is active.
+        case multi([AuthKind])
+    }
+
+    /// A lightweight, side-effect-free read of an externally-managed credential
+    /// state. Returns the auth state for the preferences UI.
+    public struct ExternalTokenResolver: @unchecked Sendable {
+        public let read: () -> ExternalAuthState
+        public init(read: @escaping () -> ExternalAuthState) { self.read = read }
+    }
+
+    public let authKind: AuthKind
+    /// Human-readable description of the credential source shown in the UI.
+    public let sourceLabel: String
+}
+
+/// Auth state for providers whose credentials come from an external CLI/OAuth.
+/// The UI shows this instead of an input field (issue #360).
+public struct ExternalAuthState: Sendable, Equatable {
+    public enum Status: Sendable, Equatable {
+        /// A valid credential was found.
+        case available
+        /// No credential was found at all.
+        case missing
+        /// A credential file exists but the token is expired or unparseable.
+        case expired
+        /// A credential exists but is in a partial state (e.g. Claude Keychain
+        /// entry holds only MCP-OAuth state without claudeAiOauth).
+        case partial
+    }
+    public let status: Status
+    /// Human-readable detail (e.g. "via Claude Code OAuth token", "re-auth needed").
+    public let detail: String
+    /// How the credential was resolved (`oauth`, `cli`, `file`, `keyring`).
+    public let source: String?
+
+    public init(status: Status, detail: String, source: String?) {
+        self.status = status
+        self.detail = detail
+        self.source = source
+    }
+}
+
+public extension AIUsageProvider {
+    /// Default: no credential descriptor. Providers with external auth
+    /// override this to expose their auth state in the UI.
+    var credentialDescriptor: AIUsageCredentialDescriptor? { nil }
 }
 
 public extension AIUsageProvider {

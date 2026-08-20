@@ -10,6 +10,7 @@ private final class StubProcessProbe: AntigravityProcessProbe, @unchecked Sendab
 
     func processList() -> String? { processes }
     func listeningPorts(pid: Int) -> String? { portsByPID[pid] }
+    func isAntigravityRunning() -> Bool { processes?.contains("agy") ?? false || processes?.contains("Antigravity") ?? false }
 }
 
 /// Scripted localhost transport keyed by the request's last path component.

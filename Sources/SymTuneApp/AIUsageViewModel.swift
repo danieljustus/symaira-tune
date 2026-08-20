@@ -35,8 +35,9 @@ final class AIUsageViewModel {
     private(set) var rows: [AIUsageRow] = []
     /// Compact menu-bar readout for the primary enabled provider.
     private(set) var statusItemText: String = ""
-    /// Provider catalog (id, displayName) for preferences.
-    let providerCatalog: [(id: String, displayName: String)]
+    /// Provider catalog for preferences — exposes full provider instances
+    /// so the UI can render credential inputs and auth state (issue #360).
+    let providers: [any AIUsageProvider]
 
     var onStatusItemTextChanged: (() -> Void)?
 
@@ -52,7 +53,7 @@ final class AIUsageViewModel {
     init(controller: TuneController, preferences: AIUsagePreferences) {
         self.controller = controller
         self.preferences = preferences
-        self.providerCatalog = controller.aiUsageProviderCatalog
+        self.providers = controller.aiUsageService.providers
     }
 
     // MARK: - Lifecycle
@@ -96,7 +97,7 @@ final class AIUsageViewModel {
         var newRows: [AIUsageRow] = []
         for result in enabledResults {
             let id = result.providerID
-            let displayName = providerCatalog.first { $0.id == id }?.displayName ?? id
+            let displayName = providers.first { $0.id == id }?.displayName ?? id
             if let snapshot = result.snapshot {
                 lastSuccessAt[id] = now
                 recordHistory(id: id, snapshot: snapshot, at: now)
