@@ -44,6 +44,32 @@ public struct AntigravityUsageProvider: AIUsageProvider, Sendable {
         self.processProbe = processProbe ?? ShellProcessProbe()
         self.transport = transport ?? LoopbackLocalTransport()
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            sourceLabel: "Local Antigravity language server probe"
+        )
+    }
+
+    /// Reads the Antigravity auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let probe = ShellProcessProbe()
+        if probe.isAntigravityRunning() {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Antigravity is running",
+                source: "local"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "Antigravity is not running — start the Antigravity app or agy CLI",
+            source: nil
+        )
+    }
 }
 
 // MARK: - Errors
@@ -79,6 +105,9 @@ public protocol AntigravityProcessProbe: Sendable {
     func processList() -> String?
     /// `lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>` output, or `nil` on failure.
     func listeningPorts(pid: Int) -> String?
+    /// Whether the Antigravity language server process is running.
+    /// Used by the preferences UI to show auth state (issue #360).
+    func isAntigravityRunning() -> Bool
 }
 
 /// Production probe backed by `ps` and `lsof` subprocesses.
@@ -91,6 +120,11 @@ public struct ShellProcessProbe: AntigravityProcessProbe {
 
     public func listeningPorts(pid: Int) -> String? {
         Self.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(pid)])
+    }
+
+    public func isAntigravityRunning() -> Bool {
+        guard let list = processList() else { return false }
+        return list.contains("agy") || list.contains("Antigravity")
     }
 
     private static func run(_ executable: String, _ arguments: [String]) -> String? {

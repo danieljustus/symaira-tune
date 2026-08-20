@@ -37,7 +37,7 @@ public final class TuneController: Sendable {
     nonisolated(unsafe) private var wakeMonitor: PowerWakeMonitor?
 
     /// Aggregates AI-usage providers (OpenRouter, …) into one report.
-    private let aiUsageService: AIUsageService
+    public let aiUsageService: AIUsageService
 
     public init(
         config: TuneConfig = TuneConfig(),
@@ -89,7 +89,7 @@ public final class TuneController: Sendable {
         // Sync enabled metrics from config into the history buffers
         metricsHistory.ensureBuffers(for: config.enabledMetrics)
         self.aiUsageService = AIUsageService(
-            providers: aiUsageProviders ?? [OpenRouterUsageProvider()]
+            providers: aiUsageProviders ?? Self.defaultAIUsageProviders()
         )
         self.restoreTracker = OverrideTracker(
             displayService: displays,
@@ -751,5 +751,30 @@ extension TuneController {
             permissions: permissions(),
             recommendations: recommendations
         )
+    }
+
+    // MARK: - AI usage providers
+
+    /// All implemented AI-usage providers (issue #359). Used as the default
+    /// when no explicit providers are injected, so the app, CLI, and MCP
+    /// server can all report every provider — not just OpenRouter.
+    ///
+    /// Provider toggles default to off, so registering the full catalog adds
+    /// no network calls for users who enable nothing. Each provider resolves
+    /// its credentials lazily on access (see the provider doc comments), so
+    /// construction cost is bounded.
+    public static func defaultAIUsageProviders() -> [any AIUsageProvider] {
+        [
+            ClaudeUsageProvider(),
+            CodexUsageProvider(),
+            NousPortalUsageProvider(),
+            OpenCodeUsageProvider(),
+            CopilotUsageProvider(),
+            CursorUsageProvider(),
+            KimiUsageProvider(),
+            MoonshotUsageProvider(),
+            AntigravityUsageProvider(),
+            OpenRouterUsageProvider(),
+        ]
     }
 }

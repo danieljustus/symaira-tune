@@ -65,6 +65,15 @@ public struct MoonshotUsageProvider: AIUsageProvider, Sendable {
         self.region = region ?? envRegion ?? .international
         self.network = network
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .apiKey(account: "moonshot-api-key"),
+            sourceLabel: "API key (env MOONSHOT_API_KEY or Keychain)"
+        )
+    }
 }
 
 // MARK: - Strategy

@@ -48,6 +48,32 @@ public struct CopilotUsageProvider: AIUsageProvider, Sendable {
         self.network = network
     }
 
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            sourceLabel: "GitHub Copilot OAuth token (~/.config/github-copilot)"
+        )
+    }
+
+    /// Reads the Copilot OAuth auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let token = CopilotTokenStore().readToken()
+        if let token, !token.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Signed in via GitHub Copilot",
+                source: "keychain"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No Copilot token found — sign in with the Copilot CLI",
+            source: nil
+        )
+    }
+
     /// Device-flow entry point. This is the *only* place a device flow is
     /// started — callers (UI preferences) must invoke it from an explicit
     /// user action, never from a background refresh.

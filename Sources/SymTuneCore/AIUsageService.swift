@@ -30,7 +30,9 @@ public final class AIUsageService: @unchecked Sendable {
         var rateLimitedUntil: Date?
     }
 
-    private let providers: [any AIUsageProvider]
+    /// All registered providers — exposed so the preferences UI can render
+    /// per-provider credential inputs/state (issue #360).
+    public let providers: [any AIUsageProvider]
 
     /// Known providers as (id, displayName) pairs — the catalog the UI uses
     /// to render per-provider toggles and labels without hardcoding names.

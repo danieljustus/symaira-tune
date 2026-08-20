@@ -18,8 +18,8 @@ import SymairaUpdateCheck
 final class StatusBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
-    private let controller = TuneController()
-    let preferencesManager: PreferencesManager
+    private let controller: TuneController
+    private let preferencesManager: PreferencesManager
     let aiUsagePreferences = AIUsagePreferences()
     private(set) lazy var aiUsageModel = AIUsageViewModel(
         controller: controller,
@@ -62,7 +62,12 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let preferences = PreferencesManager(config: TuneConfig())
+        // Load persisted configuration from config.toml so saved preferences
+        // survive a relaunch (issue #357). The CLI uses the same loader
+        // (main.swift:457); the app must too.
+        let config = ConfigPaths().loadConfig()
+        self.controller = TuneController(config: config, aiUsageProviders: TuneController.defaultAIUsageProviders())
+        let preferences = PreferencesManager(config: config)
         self.preferencesManager = preferences
         self.model = TuneViewModel(controller: controller, preferences: preferences)
         self.processesModel = ProcessesViewModel(controller: controller)
@@ -316,7 +321,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             manager: preferencesManager,
             autoPrefs: autoPrefs,
             aiUsage: aiUsagePreferences,
-            aiUsageCatalog: aiUsageModel.providerCatalog,
+            aiUsageProviders: aiUsageModel.providers,
             onCredentialChange: { [weak self] in
                 // A key was saved/cleared: the provider now resolves lazily,
                 // but its cached snapshot must be dropped and the usage card

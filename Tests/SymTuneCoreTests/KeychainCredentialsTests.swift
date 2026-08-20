@@ -21,7 +21,9 @@ final class KeychainCredentialsTests: XCTestCase {
             throw XCTSkip("keychain authorization prompt hangs in headless CI")
         }
         let secret = "test-secret-\(UUID().uuidString)"
-        guard KeychainCredentials.write(service: service, account: account, value: secret) else {
+        let writeResult = KeychainCredentials.write(service: service, account: account, value: secret)
+        XCTAssertEqual(writeResult.success, true, "keychain write failed: \(writeResult.errorMessage ?? "unknown")")
+        if !writeResult.success {
             throw XCTSkip("keychain unavailable in this environment")
         }
 
@@ -29,7 +31,8 @@ final class KeychainCredentialsTests: XCTestCase {
 
         // Overwrite replaces the previous value.
         let second = "test-secret-2-\(UUID().uuidString)"
-        XCTAssertTrue(KeychainCredentials.write(service: service, account: account, value: second))
+        let overwriteResult = KeychainCredentials.write(service: service, account: account, value: second)
+        XCTAssertTrue(overwriteResult.success, "overwrite failed: \(overwriteResult.errorMessage ?? "unknown")")
         XCTAssertEqual(KeychainCredentials.read(service: service, account: account), second)
 
         XCTAssertTrue(KeychainCredentials.delete(service: service, account: account))

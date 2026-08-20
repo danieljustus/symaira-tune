@@ -81,6 +81,15 @@ public struct OpenRouterUsageProvider: AIUsageProvider, Sendable {
     }
 
     private func resolveKey() -> String { keyResolver() }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .apiKey(account: "openrouter-api-key"),
+            sourceLabel: "API key (env OPENROUTER_API_KEY or Keychain)"
+        )
+    }
 }
 
 // MARK: - Strategy

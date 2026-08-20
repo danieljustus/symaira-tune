@@ -107,6 +107,35 @@ public struct KimiUsageProvider: AIUsageProvider, Sendable {
         self.network = network
     }
 
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .multi([
+                .apiKey(account: "kimi-api-key"),
+                .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            ]),
+            sourceLabel: "API key (KIMI_CODE_API_KEY) or Kimi Code CLI token"
+        )
+    }
+
+    /// Reads the Kimi Code CLI auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let cliStore = KimiCLICredentialStore(home: defaultCLIHome())
+        if let token = cliStore.readAccessToken(), !token.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Kimi Code CLI is signed in",
+                source: "cli"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No Kimi Code CLI credentials found",
+            source: nil
+        )
+    }
+
     static let defaultAPIBaseURL = URL(string: "https://api.kimi.com")!
 
     /// Default Kimi Code CLI home: `~/.kimi-code` (current CLI layout), with

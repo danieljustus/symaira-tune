@@ -82,6 +82,51 @@ public struct OpenCodeUsageProvider: AIUsageProvider, Sendable {
         )
         self.network = network
     }
+
+    // MARK: - Credential descriptor (issue #360)
+
+    public var credentialDescriptor: AIUsageCredentialDescriptor? {
+        AIUsageCredentialDescriptor(
+            authKind: .externalToken(resolver: .init(read: { Self.readExternalAuthState() })),
+            sourceLabel: "OpenCode Go local history or opencode.ai cookie"
+        )
+    }
+
+    /// Reads the OpenCode Go auth state for the preferences UI.
+    static func readExternalAuthState() -> ExternalAuthState {
+        let env = ProcessInfo.processInfo.environment
+        let cookie = env["OPENCODE_COOKIE"]
+            ?? KeychainCredentials.read(service: "com.symaira.symtune", account: "opencode-cookie")
+        let store = OpenCodeGoLocalStore(
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
+        if let cookie, !cookie.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Cookie configured (OPENCODE_COOKIE or Keychain)",
+                source: "keychain"
+            )
+        }
+        if let workspace = env["OPENCODE_WORKSPACE_ID"], !workspace.isEmpty {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Workspace override set (\(workspace.prefix(8))…)",
+                source: "env"
+            )
+        }
+        if store.isDetected {
+            return ExternalAuthState(
+                status: .available,
+                detail: "Local OpenCode Go database detected",
+                source: "local"
+            )
+        }
+        return ExternalAuthState(
+            status: .missing,
+            detail: "No OpenCode Go credentials found — set OPENCODE_COOKIE or run OpenCode Go",
+            source: nil
+        )
+    }
 }
 
 // MARK: - Local store
