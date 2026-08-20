@@ -119,10 +119,13 @@ final class CodexUsageProviderTests: XCTestCase {
         do {
             _ = try await strategy.fetch()
             XCTFail("expected an error")
-        } catch let error as CodexError {
-            let message = error.errorDescription ?? ""
-            XCTAssertTrue(message.lowercased().contains("re-auth"), message)
-            XCTAssertFalse(message.contains("sk-ant"), "token material must never leak")
+        } catch let error as AIUsageError {
+            guard case .notConfigured(let id) = error else {
+                XCTFail("expected .notConfigured, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "codex")
+            XCTAssertFalse(error.localizedDescription.contains("sk-ant"), "token material must never leak")
         } catch {
             XCTFail("unexpected error type: \(error)")
         }

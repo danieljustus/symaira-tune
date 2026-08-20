@@ -149,10 +149,13 @@ final class NousPortalUsageProviderTests: XCTestCase {
         do {
             _ = try await strategy.fetch()
             XCTFail("expected an error")
-        } catch let error as NousPortalError {
-            let message = error.errorDescription ?? ""
-            XCTAssertTrue(message.lowercased().contains("re-auth"), message)
-            XCTAssertFalse(message.contains("sig-secret"), "token material must never leak")
+        } catch let error as AIUsageError {
+            guard case .notConfigured(let id) = error else {
+                XCTFail("expected .notConfigured, got \(error)")
+                return
+            }
+            XCTAssertEqual(id, "nous")
+            XCTAssertFalse(error.localizedDescription.contains("sig-secret"), "token material must never leak")
         } catch {
             XCTFail("unexpected error type: \(error)")
         }
