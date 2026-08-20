@@ -13,7 +13,7 @@ let package = Package(
         .executable(name: "SymTuneApp", targets: ["SymTuneApp"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/danieljustus/symaira-appkit.git", exact: "0.8.1"),
+        .package(url: "https://github.com/danieljustus/symaira-appkit.git", exact: "0.10.0"),
     ],
     targets: [
         .target(
