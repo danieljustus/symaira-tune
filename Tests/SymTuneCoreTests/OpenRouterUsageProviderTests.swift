@@ -22,6 +22,15 @@ final class FakeNetwork: NetworkServiceProtocol, @unchecked Sendable {
     }
 }
 
+/// Mutable box so a test can change the value a captured `@Sendable` resolver
+/// returns between accesses (single-threaded test; `@unchecked` is safe here).
+private final class KeyBox: @unchecked Sendable {
+    var value: String
+    init(_ value: String) {
+        self.value = value
+    }
+}
+
 // MARK: - Tests
 
 final class OpenRouterUsageProviderTests: XCTestCase {
@@ -117,6 +126,40 @@ final class OpenRouterUsageProviderTests: XCTestCase {
             baseURL: URL(string: "https://openrouter.ai/api/v1")!
         )
         XCTAssertTrue(provider.isConfigured)
+    }
+
+    // MARK: Lazy credential resolution (issue #324)
+
+    func testIsConfiguredFollowsLiveCredentialChanges() {
+        // A mutable box behind the internal resolver seam: flipping its value
+        // must flip isConfigured without rebuilding the provider.
+        let box = KeyBox("")
+        let provider = OpenRouterUsageProvider(
+            keyResolver: { box.value },
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!
+        )
+
+        XCTAssertFalse(provider.isConfigured)
+
+        box.value = "sk-or-v1-live"
+        XCTAssertTrue(provider.isConfigured, "key added must take effect without a rebuild")
+
+        box.value = ""
+        XCTAssertFalse(provider.isConfigured, "key removed must take effect without a rebuild")
+    }
+
+    func testStrategiesFollowLiveCredentialChanges() {
+        let box = KeyBox("")
+        let provider = OpenRouterUsageProvider(
+            keyResolver: { box.value },
+            baseURL: URL(string: "https://openrouter.ai/api/v1")!
+        )
+
+        XCTAssertTrue(provider.strategies.isEmpty)
+        box.value = "sk-or-v1-live"
+        XCTAssertEqual(provider.strategies.count, 1)
+        box.value = ""
+        XCTAssertTrue(provider.strategies.isEmpty)
     }
 
     // MARK: Errors never leak key material

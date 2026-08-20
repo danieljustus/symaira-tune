@@ -14,19 +14,30 @@ public struct OpenRouterUsageProvider: AIUsageProvider, Sendable {
 
     /// Whether a usable API key is present. Unconfigured providers must
     /// report "not set up" instead of erroring.
-    public var isConfigured: Bool { !apiKey.isEmpty }
+    ///
+    /// The key is resolved here (not at construction), so a key saved or
+    /// cleared while the process runs takes effect without a relaunch (issue
+    /// #324) in both directions.
+    public var isConfigured: Bool { !resolveKey().isEmpty }
 
     public var strategies: [any AIUsageStrategy] {
-        [OpenRouterAPIStrategy(apiKey: apiKey, baseURL: baseURL, network: network)]
+        let key = resolveKey()
+        guard !key.isEmpty else { return [] }
+        return [OpenRouterAPIStrategy(apiKey: key, baseURL: baseURL, network: network)]
     }
 
-    private let apiKey: String
+    /// Lazily resolves the current API key on every access. When an explicit
+    /// `apiKey` was passed it is a frozen test seam; otherwise the default
+    /// reads `OPENROUTER_API_KEY` (env) then the Keychain on each call, so a
+    /// credential change is honoured without rebuilding the provider.
+    private let keyResolver: @Sendable () -> String
     private let baseURL: URL
     private let network: any NetworkServiceProtocol
 
     /// - Parameters:
-    ///   - apiKey: explicit key; defaults to Keychain lookup with
-    ///     `OPENROUTER_API_KEY` fallback.
+    ///   - apiKey: explicit key (test seam; frozen); when `nil`, the key is
+    ///     resolved lazily from `OPENROUTER_API_KEY` then the Keychain on
+    ///     every access.
     ///   - baseURL: API base; defaults to the `OPENROUTER_API_URL`
     ///     environment override or `https://openrouter.ai/api/v1`.
     ///   - network: injectable network seam for tests.
@@ -35,16 +46,41 @@ public struct OpenRouterUsageProvider: AIUsageProvider, Sendable {
         baseURL: URL? = nil,
         network: any NetworkServiceProtocol = URLSessionNetworkService()
     ) {
-        let envKey = ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
-        self.apiKey = apiKey ?? envKey ?? KeychainCredentials.read(
-            service: "com.symaira.symtune",
-            account: "openrouter-api-key"
-        ) ?? ""
+        let resolver: @Sendable () -> String
+        if let apiKey {
+            // Explicit key: a frozen value (the original construction-time
+            // semantics), used as the test seam.
+            resolver = { apiKey }
+        } else {
+            resolver = {
+                if let envKey = ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"] {
+                    return envKey
+                }
+                return KeychainCredentials.read(
+                    service: "com.symaira.symtune",
+                    account: "openrouter-api-key"
+                ) ?? ""
+            }
+        }
+        self.init(keyResolver: resolver, baseURL: baseURL, network: network)
+    }
+
+    /// Internal test seam (issue #324): inject a resolver whose value can
+    /// change between accesses, letting a test flip `isConfigured` / the
+    /// strategies without rebuilding the provider.
+    init(
+        keyResolver: @escaping @Sendable () -> String,
+        baseURL: URL? = nil,
+        network: any NetworkServiceProtocol = URLSessionNetworkService()
+    ) {
+        self.keyResolver = keyResolver
         let envURL = ProcessInfo.processInfo.environment["OPENROUTER_API_URL"]
             .flatMap(URL.init(string:))
         self.baseURL = baseURL ?? envURL ?? URL(string: "https://openrouter.ai/api/v1")!
         self.network = network
     }
+
+    private func resolveKey() -> String { keyResolver() }
 }
 
 // MARK: - Strategy

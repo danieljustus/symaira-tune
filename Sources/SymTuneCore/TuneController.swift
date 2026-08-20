@@ -174,6 +174,13 @@ public final class TuneController: Sendable {
         aiUsageService.providerCatalog
     }
 
+    /// Drop cached AI-usage snapshots so the next report re-reads credentials
+    /// and refetches (issue #324). Called when a credential was saved or
+    /// cleared so a stale snapshot can't be served for the new state.
+    public func resetAIUsageCache() {
+        aiUsageService.resetCache()
+    }
+
     /// Persist the latest metric snapshot into the bounded ring buffers. Disabled
     /// metrics receive no samples. If any enabled metric is unavailable in the
     /// report, a gap marker is inserted so renderers produce a visible break

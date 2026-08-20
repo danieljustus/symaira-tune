@@ -9,6 +9,9 @@ import SymTuneCore
 struct AIUsagePreferencesSection: View {
     @ObservedObject var preferences: AIUsagePreferences
     let providerCatalog: [(id: String, displayName: String)]
+    /// Called after a credential is saved or cleared, so the caller can drop
+    /// the AI-usage cache and refresh immediately (issue #324).
+    let onCredentialChange: () -> Void
 
     /// Providers whose credentials are plain API keys stored in the Keychain
     /// (service `com.symaira.symtune`), shown as SecureFields here. Tokens
@@ -58,7 +61,8 @@ struct AIUsagePreferencesSection: View {
                         APIKeyField(
                             providerID: provider.id,
                             label: keyField.label,
-                            placeholder: keyField.placeholder
+                            placeholder: keyField.placeholder,
+                            onCredentialChange: onCredentialChange
                         )
                     }
                 }
