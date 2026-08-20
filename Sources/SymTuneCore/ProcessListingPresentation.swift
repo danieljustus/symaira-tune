@@ -13,10 +13,12 @@ public enum ProcessListingPresentation: Sendable {
 
     // MARK: - Options
 
-    /// The resolved form of `processes [--sort cpu|memory] [--limit N] [--json]`.
+    /// The resolved form of `processes [--sort cpu|memory] [--limit N] [--interval <seconds>] [--json]`.
     public struct Options: Equatable, Sendable {
         public var sortedBy: ProcessSortKey
         public var limit: Int
+        /// Seconds between the two sweeps that establish the CPU baseline.
+        public var interval: TimeInterval
         public var wantsJSON: Bool
         /// `--help`/`-h` was requested; the caller prints usage and stops.
         public var wantsHelp: Bool
@@ -24,11 +26,13 @@ public enum ProcessListingPresentation: Sendable {
         public init(
             sortedBy: ProcessSortKey = .cpu,
             limit: Int = ProcessUsageService.defaultLimit,
+            interval: TimeInterval = 1.0,
             wantsJSON: Bool = false,
             wantsHelp: Bool = false
         ) {
             self.sortedBy = sortedBy
             self.limit = limit
+            self.interval = interval
             self.wantsJSON = wantsJSON
             self.wantsHelp = wantsHelp
         }
@@ -36,11 +40,12 @@ public enum ProcessListingPresentation: Sendable {
 
     /// Usage text for `--help`, one line per entry.
     public static let usageLines = [
-        "Usage: symtune processes [--sort cpu|memory] [--limit N] [--json]",
+        "Usage: symtune processes [--sort cpu|memory] [--limit N] [--interval <seconds>] [--json]",
         "",
         "Rank running processes by CPU or memory usage. CPU is a rate, so the",
-        "command samples twice (about a second apart) before reporting. Processes",
-        "owned by another user are counted but not readable without elevation.",
+        "command samples twice --interval seconds apart (default 1.0) before",
+        "reporting. Processes owned by another user are counted but not readable",
+        "without elevation.",
     ]
 
     /// Parse the command's arguments.
@@ -73,6 +78,12 @@ public enum ProcessListingPresentation: Sendable {
                     throw TuneError.usage("processes: --limit expects a positive integer")
                 }
                 options.limit = parsed
+            case "--interval":
+                index += 1
+                guard index < args.count, let parsed = TimeInterval(args[index]), parsed > 0 else {
+                    throw TuneError.usage("processes: --interval expects a positive number of seconds")
+                }
+                options.interval = parsed
             default:
                 throw TuneError.usage("processes: unexpected argument '\(arg)'")
             }

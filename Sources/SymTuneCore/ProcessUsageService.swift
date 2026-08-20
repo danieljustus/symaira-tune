@@ -9,31 +9,43 @@ import Foundation
 public struct LibprocProcessSampleSource: ProcessSampleSource {
     public init() {}
 
-    public func sample() -> ProcessSampleSet {
+    public func sample(knownNames: [Int32: String]) -> (set: ProcessSampleSet, resolvedNames: [Int32: String]) {
         let pids = Self.allPIDs()
         var samples: [ProcessSample] = []
         samples.reserveCapacity(pids.count)
         var unreadable = 0
+        var resolved: [Int32: String] = [:]
+        resolved.reserveCapacity(pids.count)
 
         for pid in pids {
             guard let info = Self.taskInfo(pid) else {
                 unreadable += 1
                 continue
             }
+            // Only a PID seen for the first time pays for proc_pidpath; a name
+            // the caller already resolved is reused as-is.
+            let name: String
+            if let known = knownNames[pid] {
+                name = known
+            } else {
+                name = Self.name(of: pid)
+                resolved[pid] = name
+            }
             samples.append(ProcessSample(
                 pid: pid,
-                name: Self.name(of: pid),
+                name: name,
                 cpuTimeNanoseconds: info.pti_total_user &+ info.pti_total_system,
                 memoryBytes: info.pti_resident_size,
                 threadCount: Int(info.pti_threadnum)
             ))
         }
 
-        return ProcessSampleSet(
+        let set = ProcessSampleSet(
             timestamp: Date.timeIntervalSinceReferenceDate,
             samples: samples,
             unreadableCount: unreadable
         )
+        return (set, resolved)
     }
 
     // MARK: - libproc
@@ -91,6 +103,11 @@ public final class ProcessUsageService: @unchecked Sendable {
     private let source: any ProcessSampleSource
     private let lock = NSLock()
     private var previous: ProcessSampleSet?
+    /// Names cached by PID so a process seen before does not pay for
+    /// `proc_pidpath` on every sweep. Pruned to the PIDs seen in the current
+    /// sweep (in `report`) so it cannot grow without bound and a recycled PID
+    /// is re-resolved rather than reporting its predecessor's name.
+    private var names: [Int32: String] = [:]
 
     public init(source: any ProcessSampleSource = LibprocProcessSampleSource()) {
         self.source = source
@@ -101,14 +118,28 @@ public final class ProcessUsageService: @unchecked Sendable {
         sortedBy: ProcessSortKey = .cpu,
         limit: Int = ProcessUsageService.defaultLimit
     ) -> ProcessUsageReport {
-        let current = source.sample()
         lock.lock()
+        let knownNames = names
+        lock.unlock()
+
+        let sweep = source.sample(knownNames: knownNames)
+
+        lock.lock()
+        // Prune the cache to this sweep's PIDs, preferring the names resolved
+        // just now over the previously known ones: an exiting PID is forgotten,
+        // and a recycled PID that comes back is re-resolved to its new identity.
+        var nextNames: [Int32: String] = [:]
+        nextNames.reserveCapacity(sweep.set.samples.count)
+        for sample in sweep.set.samples {
+            nextNames[sample.pid] = sweep.resolvedNames[sample.pid] ?? knownNames[sample.pid]
+        }
+        names = nextNames
         let last = previous
-        previous = current
+        previous = sweep.set
         lock.unlock()
 
         return ProcessUsageRanking.report(
-            current: current,
+            current: sweep.set,
             previous: last,
             sortedBy: sortedBy,
             limit: min(max(limit, 1), Self.maximumLimit)

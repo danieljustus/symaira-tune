@@ -93,7 +93,7 @@ func runProcesses(_ args: [String], controller: TuneController) throws {
     // First sweep establishes the CPU baseline; without it every percentage
     // would be nil (or, worse, an average since boot).
     _ = controller.topProcesses(sortedBy: options.sortedBy, limit: options.limit)
-    Thread.sleep(forTimeInterval: 1.0)
+    Thread.sleep(forTimeInterval: options.interval)
     let report = controller.topProcesses(sortedBy: options.sortedBy, limit: options.limit)
 
     if options.wantsJSON {

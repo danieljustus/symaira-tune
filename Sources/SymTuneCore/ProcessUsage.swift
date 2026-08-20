@@ -118,7 +118,14 @@ public struct ProcessSampleSet: Equatable, Sendable {
 }
 
 public protocol ProcessSampleSource: Sendable {
-    func sample() -> ProcessSampleSet
+    /// Take a sweep over the process table.
+    ///
+    /// `knownNames` lets a caller reuse names it already resolved: a PID the
+    /// source has seen before does not pay for `proc_pidpath` again. The
+    /// returned tuple carries the sweep plus the names resolved *on this call*
+    /// (the PIDs that were absent from `knownNames`), so the caller can keep
+    /// its cache in sync without re-reading the table.
+    func sample(knownNames: [Int32: String]) -> (set: ProcessSampleSet, resolvedNames: [Int32: String])
 }
 
 /// Turns two sweeps into a ranked report.
