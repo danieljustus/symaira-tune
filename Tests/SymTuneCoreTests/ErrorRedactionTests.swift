@@ -1,6 +1,5 @@
 import XCTest
 import SymTuneCore
-@testable import symtune
 
 /// Issue #312: the CLI's catch-all error printer (`handleNonTuneError`)
 /// must redact credential-shaped text before it reaches stderr. These

@@ -2,13 +2,13 @@
 # Line/region coverage for the library targets, via SwiftPM + llvm-cov.
 #
 # Scope note (important when reading the numbers): the `symtune` executable is
-# NOT part of this report. `SymTuneCLITests` exercises the CLI by spawning the
-# built binary, so no coverage profile is collected for that process and
-# `Sources/symtune/*` contributes to neither the numerator nor the denominator —
-# its lines are absent, not counted as uncovered. Logic that should be measured
-# therefore belongs in SymTuneCore/SymTuneMCP (see
-# `Sources/SymTuneCore/ProcessListingPresentation.swift` for the pattern); the
-# CLI target keeps argument plumbing and I/O only.
+# NOT part of this report. `SymTuneCLITests` depends only on SymTuneCore +
+# SymTuneMCP, so `Sources/symtune/*` is never linked into a test bundle and
+# contributes to neither the numerator nor the denominator — its lines are
+# absent, not counted as uncovered. Logic that should be measured therefore
+# belongs in SymTuneCore/SymTuneMCP (see
+# `Sources/SymTuneCore/ProcessListingPresentation.swift` for the pattern);
+# the CLI target keeps argument plumbing and I/O only.
 #
 # Test sources are excluded too, so the percentage describes product code rather
 # than being inflated by test files that are covered by construction.
