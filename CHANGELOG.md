@@ -47,6 +47,10 @@ All notable changes to this project are documented here. The format is based on
 - A popover card added by a later release now joins an existing non-empty
   `[popover] cards` list instead of staying hidden for every existing config.
   An explicitly empty list is still honoured.
+- **Security: stderr error redaction moved into SymTuneCore.** The CLI's error
+  redaction logic (which scrubs credential material from provider error messages
+  before they reach stderr or history) has been moved from the untested `symtune`
+  executable target into `SymTuneCore` so it is covered by unit tests (#348).
 
 ## [0.9.1] — 2026-08-10
 
