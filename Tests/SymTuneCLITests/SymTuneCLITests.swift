@@ -108,8 +108,15 @@ final class SymTuneCLITests: XCTestCase {
     }
 
     func testAIUsageJSONListsProviders() throws {
-        // No key configured on test machines → provider listed as not set up.
-        let output = try runCommand(args: ["ai-usage", "--json"])
+        // Hermetic (issue #341): override OPENROUTER_API_KEY to an empty
+        // value so the spawned binary short-circuits to "not configured"
+        // before any Keychain read or network fetch — a machine with a real
+        // key used to make this test perform a live openrouter.ai fetch and
+        // take ~4 minutes.
+        let output = try runCommand(
+            args: ["ai-usage", "--json"],
+            environment: ["OPENROUTER_API_KEY": ""]
+        )
         XCTAssert(output.contains("openrouter"))
         XCTAssert(output.contains("provider_id"))
     }
@@ -149,8 +156,9 @@ final class SymTuneCLITests: XCTestCase {
             process.standardOutput = outputPipe
             process.standardError = errorPipe
 
+            let waitForExit = armBoundedWait(process)
             try process.run()
-            process.waitUntilExit()
+            XCTAssertTrue(waitForExit(), "\(command) --bogus did not exit in time")
 
             let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 
@@ -215,24 +223,62 @@ final class SymTuneCLITests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Registers a bounded termination wait, mirroring `ServeChild` in
+    /// `SymTuneServeIntegrationTests.swift`: the handler must be set *before*
+    /// `process.run()` so a process that exits immediately still signals.
+    /// Never use `waitUntilExit()` here — it blocks forever if the child
+    /// itself hangs (e.g. on a wedged Keychain read in a headless/no-GUI
+    /// -session environment). On timeout the child is force-terminated so a
+    /// hang surfaces as a fast, clear test failure instead of stalling the
+    /// whole suite for minutes.
+    private func armBoundedWait(_ process: Process) -> () -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in done.signal() }
+        return {
+            if done.wait(timeout: .now() + 15) == .timedOut {
+                process.terminate()
+                _ = done.wait(timeout: .now() + 3)
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                return false
+            }
+            return true
+        }
+    }
+
     /// Run `symtune` with the given arguments and return stderr (merged with stdout).
     /// - Parameters:
     ///   - args: Arguments to pass to the binary.
     ///   - expectFailure: If true, the process is expected to exit with a non-zero code.
+    ///   - environment: Additional environment overrides applied on top of the
+    ///     parent's environment (Foundation `Process` replaces the whole
+    ///     environment when set, so the parent's is copied first).
     /// - Returns: The combined stdout+stderr output of the process.
     @discardableResult
-    private func runCommand(args: [String], expectFailure: Bool = false) throws -> String {
+    private func runCommand(
+        args: [String],
+        expectFailure: Bool = false,
+        environment: [String: String] = [:]
+    ) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: symtuneBinary)
         process.arguments = args
+
+        if !environment.isEmpty {
+            var childEnvironment = ProcessInfo.processInfo.environment
+            for (key, value) in environment {
+                childEnvironment[key] = value
+            }
+            process.environment = childEnvironment
+        }
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
+        let waitForExit = armBoundedWait(process)
         try process.run()
-        process.waitUntilExit()
+        XCTAssertTrue(waitForExit(), "symtune \(args.joined(separator: " ")) did not exit in time")
 
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
